@@ -1,7 +1,13 @@
-import { Controller, Post, Body, Get, UseGuards, Req } from '@nestjs/common';
+import { Controller, Post, Body, Get, UseGuards, Req, HttpCode, HttpStatus } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
-import { LoginDto, RefreshTokenDto } from './dto/auth.dto';
+import {
+  LoginDto,
+  RefreshTokenDto,
+  BeneficiarySignUpDto,
+  ForgotPasswordDto,
+  ResetPasswordDto,
+} from './dto/auth.dto';
 import { Public } from '../common/decorators/public.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser, RequestUser } from '../common/decorators/current-user.decorator';
@@ -13,6 +19,7 @@ export class AuthController {
 
   @Public()
   @Post('login')
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Login with email and password to obtain JWT pair' })
   async login(@Body() loginDto: LoginDto) {
     return this.authService.login(loginDto);
@@ -20,9 +27,35 @@ export class AuthController {
 
   @Public()
   @Post('refresh')
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Refresh access token using refresh token' })
   async refresh(@Body() dto: RefreshTokenDto) {
     return this.authService.refreshTokens(dto);
+  }
+
+  @Public()
+  @Post('beneficiary-signup')
+  @ApiOperation({ summary: 'Public self-service registration for a new Beneficiary' })
+  async beneficiarySignUp(
+    @Body() dto: BeneficiarySignUpDto,
+    @Req() req: any,
+  ) {
+    const ip = req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+    return this.authService.beneficiarySignUp(dto, ip);
+  }
+
+  @Public()
+  @Post('forgot-password')
+  @ApiOperation({ summary: 'Initiate password recovery flow' })
+  async forgotPassword(@Body() dto: ForgotPasswordDto) {
+    return this.authService.forgotPassword(dto);
+  }
+
+  @Public()
+  @Post('reset-password')
+  @ApiOperation({ summary: 'Reset password with recovery token' })
+  async resetPassword(@Body() dto: ResetPasswordDto) {
+    return this.authService.resetPassword(dto);
   }
 
   @ApiBearerAuth()

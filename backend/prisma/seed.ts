@@ -13,6 +13,7 @@ async function main() {
     { name: RoleName.FIELD_OFFICER, description: 'Field operations, beneficiary & land onboarding, application submission' },
     { name: RoleName.ACCOUNTS, description: 'Billing management, payment recording, and financial reconciliation' },
     { name: RoleName.VIEWER, description: 'Read-only access for audits and monitoring' },
+    { name: RoleName.BENEFICIARY, description: 'Self-service farmer and water recipient portal access' },
   ];
 
   const roleMap: Record<RoleName, string> = {} as any;
@@ -24,7 +25,7 @@ async function main() {
     });
     roleMap[role.name] = createdRole.role_id;
   }
-  console.log('Seeded Roles: ADMIN, FIELD_OFFICER, ACCOUNTS, VIEWER');
+  console.log('Seeded Roles: ADMIN, FIELD_OFFICER, ACCOUNTS, VIEWER, BENEFICIARY');
 
   // 2. Demo Users for all roles
   const passwordHash = await bcrypt.hash('Admin@123456', 10);
@@ -33,6 +34,7 @@ async function main() {
     { email: 'field@water.gov', name: 'R. Kaliappan (Field Officer)', role: RoleName.FIELD_OFFICER },
     { email: 'accounts@water.gov', name: 'S. Muthusamy (Accounts Officer)', role: RoleName.ACCOUNTS },
     { email: 'viewer@water.gov', name: 'Auditor Viewer', role: RoleName.VIEWER },
+    { email: 'beneficiary@water.gov', name: 'Ramasamy Gounder (Beneficiary)', role: RoleName.BENEFICIARY },
   ];
 
   for (const u of demoUsers) {
@@ -178,14 +180,21 @@ async function main() {
 
   // 7. Starter Beneficiary with land holdings & parcels for immediate test drive
   const samplePhone = '9876543210';
+  const beneficiaryUser = await prisma.user.findUnique({
+    where: { email: 'beneficiary@water.gov' },
+  });
+
   const existingBeneficiary = await prisma.beneficiary.findFirst({
     where: { phone_number: samplePhone },
   });
 
+  let beneficiaryId: string;
   if (!existingBeneficiary) {
     const beneficiary = await prisma.beneficiary.create({
       data: {
+        user_id: beneficiaryUser?.user_id,
         name: 'Ramasamy Gounder',
+        email: 'beneficiary@water.gov',
         phone_number: samplePhone,
         address_line_1: 'Survey Field 101, Near North Canal',
         address_line_2: 'Annamalai Village',
@@ -230,6 +239,11 @@ async function main() {
     });
 
     console.log('Seeded Sample Beneficiary: Ramasamy Gounder (9876543210) with 5.0 acres land in 2 parcels');
+  } else if (beneficiaryUser && !existingBeneficiary.user_id) {
+    await prisma.beneficiary.update({
+      where: { beneficiary_id: existingBeneficiary.beneficiary_id },
+      data: { user_id: beneficiaryUser.user_id, email: 'beneficiary@water.gov' },
+    });
   }
 
   console.log('--- Database Seeding Completed Successfully ---');

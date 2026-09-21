@@ -75,17 +75,36 @@ Normalized 3-level administrative tree:
 #### `beneficiaries`
 Agricultural stakeholders receiving water allotments.
 - `beneficiary_id` (`UUID`, PK): Permanent UUID.
+- `user_id` (`UUID`, Unique, Nullable, FK -> `users`): 1-to-1 link for self-service portal authentication.
+- `email` (`VARCHAR(255)`, Nullable): Beneficiary portal email.
 - `project_id` (`UUID`, FK -> `projects`): Associated project.
-- `village_id` (`UUID`, FK -> `villages`): Residential village.
+- `district_id` / `panchayat_id` / `village_id` (`UUID`, Nullable, FK): Administrative location hierarchy.
 - `full_name` (`VARCHAR(255)`): Farmer legal name.
 - `father_or_spouse_name` (`VARCHAR(255)`, Nullable): Patronymic / relative name.
 - `phone_number` (`VARCHAR(20)`, Unique): Primary identifier for fast phone lookup.
 - `alternate_phone` (`VARCHAR(20)`, Nullable): Backup contact.
+- `address_line_1`, `address_line_2`, `address_line_3` (`VARCHAR(255)`, Nullable): Physical address.
+- `pincode` (`VARCHAR(10)`, Nullable): Postal PIN code.
+- `location_direction` (`LocationDirection`, Nullable): `NORTH`, `SOUTH`, `EAST`, `WEST`.
+- `location_description` (`TEXT`, Nullable): Access landmark.
 - `identity_doc_type` (`VARCHAR(64)`, Nullable): e.g. `AADHAAR`, `PATTA`.
 - `identity_doc_number` (`VARCHAR(128)`, Nullable): Document number.
 - `status` (`BeneficiaryStatus`): `ACTIVE`, `INACTIVE`.
 - `created_at` / `updated_at` (`TIMESTAMPTZ`).
-- *Index*: `idx_beneficiaries_phone (phone_number)`, `idx_beneficiaries_village (village_id)`.
+- *Index*: `idx_beneficiaries_phone (phone_number)`, `idx_beneficiaries_village (village_id)`, `idx_beneficiaries_user (user_id)`.
+
+#### `beneficiary_documents`
+Digital document repository for land deeds, approval letters, receipts, and technical reports.
+- `document_id` (`UUID`, PK): Permanent primary key.
+- `beneficiary_id` (`UUID`, FK -> `beneficiaries`): Document owner.
+- `category` (`DocumentCategory`): `LAND_RECORD`, `WATER_APPLICATION`, `APPROVAL_LETTER`, `PAYMENT_RECEIPT`, `INFRASTRUCTURE_REPORT`, `EXTENSION_REQUEST`, `OTHER`.
+- `title` (`VARCHAR(255)`): Document display title.
+- `file_name` (`VARCHAR(255)`): Storage file name.
+- `file_size_bytes` (`INT`, Nullable): File size in bytes.
+- `mime_type` (`VARCHAR(128)`): e.g. `application/pdf`.
+- `storage_path` (`TEXT`): Object storage URI / path.
+- `reference_id` (`VARCHAR(255)`, Nullable): Associated entity ID (e.g. SF number, application ID).
+- `created_at` / `updated_at` (`TIMESTAMPTZ`).
 
 #### `land_holdings`
 Patta or holding declarations owned by beneficiaries.

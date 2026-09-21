@@ -95,7 +95,7 @@ npm run dev
 
 ## 👥 Demo Credentials & Role Switcher
 
-The database is pre-seeded with 4 role-based accounts (Password: `Admin@123456`):
+The database is pre-seeded with 5 role-based accounts (Password: `Admin@123456`):
 
 | Role | Email | Capabilities |
 | :--- | :--- | :--- |
@@ -103,6 +103,7 @@ The database is pre-seeded with 4 role-based accounts (Password: `Admin@123456`)
 | **Field Officer** | `field@water.gov` | Beneficiary onboarding, SF/subdivision land recording, water application submissions. |
 | **Accounts** | `accounts@water.gov` | Payment collection, receipts, 5-stage installments, running charges, payment reversals. |
 | **Viewer** | `viewer@water.gov` | Read-only inspection of dashboards, dossiers, audit logs, and status tracking. |
+| **Beneficiary** | `beneficiary@water.gov` | Self-service portal: profile wizard, land holdings, water quota application, installments, receipts, infrastructure, extensions, documents, and audit history. |
 
 > **Tip**: Use the **Quick Role Switcher** in the top navigation bar to seamlessly test permissions without re-typing passwords.
 
@@ -118,13 +119,13 @@ npm test
 ```
 *Result: 7/7 tests passing.*
 
-### Integration & End-to-End Test Suite (20 Scenarios)
-Verifies full application lifecycle and security against PostgreSQL:
+### Integration & End-to-End Test Suite (46 Scenarios)
+Verifies full application lifecycle, strict multi-tenant beneficiary data isolation, and security against PostgreSQL:
 ```bash
 cd backend
 npm run test:e2e
 ```
-*Result: 20/20 tests passing.*
+*Result: 46/46 tests passing (20 Operational Admin tests + 26 Beneficiary Portal E2E tests).*
 
 ### Frontend Production Build
 Validates TypeScript compilation and Next.js static optimization:
@@ -132,7 +133,7 @@ Validates TypeScript compilation and Next.js static optimization:
 cd frontend
 npm run build
 ```
-*Result: 21/21 routes compiled cleanly.*
+*Result: 38/38 routes compiled cleanly with 0 type errors.*
 
 ---
 
@@ -159,16 +160,16 @@ For in-depth technical details, refer to the documentation suite:
 ├── docker-compose.yml         # Container orchestration (Postgres, Redis, Backend, Frontend)
 ├── backend/
 │   ├── src/
-│   │   ├── modules/           # 15 domain modules (auth, water, billing, land, etc.)
+│   │   ├── modules/           # 16 domain modules (auth, beneficiary-portal, water, billing, land, etc.)
 │   │   └── main.ts            # NestJS entrypoint with Swagger & global validation
 │   ├── prisma/
 │   │   ├── schema.prisma      # Database models, enums, indexes, and relations
 │   │   └── seed.ts            # Starter projects, locations, tariffs, and users
-│   ├── test/                  # End-to-end integration test suite
+│   ├── test/                  # End-to-end integration test suites (workflow & beneficiary-portal)
 │   └── Dockerfile             # Multi-stage production container build
 └── frontend/
     ├── src/
-    │   ├── app/               # Next.js App Router (21 production pages)
+    │   ├── app/               # Next.js App Router (38 production pages, admin & beneficiary portals)
     │   ├── components/        # Layout, Sidebar, Navbar, and UI widgets
     │   └── lib/               # TanStack query client, AuthContext, Axios, formatters
     └── Dockerfile             # Multi-stage Next.js production build

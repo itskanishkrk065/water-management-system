@@ -14,14 +14,14 @@ export default function Navbar() {
     <header className="bg-white border-b border-slate-200 sticky top-0 z-30">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
         <div className="flex items-center space-x-3">
-          <Link href="/dashboard" className="flex items-center space-x-2">
+          <Link href={user.role === 'BENEFICIARY' ? '/beneficiary/dashboard' : '/dashboard'} className="flex items-center space-x-2">
             <div className="bg-sky-600 p-2 rounded-lg text-white">
               <Droplet className="w-5 h-5" />
             </div>
             <div>
               <span className="font-bold text-slate-900 text-lg tracking-tight">WaterGrid V1</span>
               <span className="hidden sm:inline-block ml-2 text-xs font-semibold px-2 py-0.5 bg-sky-50 text-sky-700 border border-sky-200 rounded-full">
-                Production-Grade
+                {user.role === 'BENEFICIARY' ? 'Beneficiary Portal' : 'Production-Grade'}
               </span>
             </div>
           </Link>
@@ -70,6 +70,16 @@ export default function Navbar() {
               }`}
             >
               VIEWER
+            </button>
+            <button
+              onClick={() => switchRoleQuick('BENEFICIARY')}
+              className={`px-2 py-1 rounded font-semibold transition ${
+                user.role === 'BENEFICIARY'
+                  ? 'bg-amber-600 text-white shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              BENEFICIARY
             </button>
           </div>
 

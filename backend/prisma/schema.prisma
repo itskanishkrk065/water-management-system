@@ -12,6 +12,7 @@ enum RoleName {
   FIELD_OFFICER
   ACCOUNTS
   VIEWER
+  BENEFICIARY
 }
 
 enum LocationDirection {
@@ -136,6 +137,7 @@ model User {
   role          Role           @relation(fields: [role_id], references: [role_id])
   refreshTokens RefreshToken[]
   auditLogs     AuditLog[]
+  beneficiary   Beneficiary?
 
   @@map("users")
 }
@@ -212,25 +214,28 @@ model Village {
 }
 
 model Beneficiary {
-  beneficiary_id       String            @id @default(uuid()) @db.Uuid
+  beneficiary_id       String             @id @default(uuid()) @db.Uuid
+  user_id              String?            @unique @db.Uuid
   name                 String
-  phone_number         String
-  address_line_1       String
+  email                String?
+  phone_number         String             @unique
+  address_line_1       String?
   address_line_2       String?
   address_line_3       String?
-  district_id          String            @db.Uuid
-  panchayat_id         String            @db.Uuid
-  village_id           String            @db.Uuid
-  pincode              String
-  location_direction   LocationDirection
+  district_id          String?            @db.Uuid
+  panchayat_id         String?            @db.Uuid
+  village_id           String?            @db.Uuid
+  pincode              String?
+  location_direction   LocationDirection?
   location_description String?
-  status               BeneficiaryStatus @default(ACTIVE)
-  created_at           DateTime          @default(now())
-  updated_at           DateTime          @updatedAt
+  status               BeneficiaryStatus  @default(ACTIVE)
+  created_at           DateTime           @default(now())
+  updated_at           DateTime           @updatedAt
 
-  district          District           @relation(fields: [district_id], references: [district_id], onDelete: Restrict)
-  panchayat         Panchayat          @relation(fields: [panchayat_id], references: [panchayat_id], onDelete: Restrict)
-  village           Village            @relation(fields: [village_id], references: [village_id], onDelete: Restrict)
+  user              User?                  @relation(fields: [user_id], references: [user_id])
+  district          District?              @relation(fields: [district_id], references: [district_id], onDelete: Restrict)
+  panchayat         Panchayat?             @relation(fields: [panchayat_id], references: [panchayat_id], onDelete: Restrict)
+  village           Village?               @relation(fields: [village_id], references: [village_id], onDelete: Restrict)
   landHoldings      LandHolding[]
   waterApplications WaterApplication[]
   waterAllotments   WaterAllotment[]
@@ -239,6 +244,7 @@ model Beneficiary {
   runningBills      RunningBill[]
   extensions        Extension[]
   payments          Payment[]
+  documents         BeneficiaryDocument[]
 
   @@index([phone_number])
   @@map("beneficiaries")
@@ -536,4 +542,32 @@ model AuditLog {
   @@index([user_id])
   @@index([action])
   @@map("audit_logs")
+}
+
+enum DocumentCategory {
+  LAND_RECORD
+  WATER_APPLICATION
+  APPROVAL_LETTER
+  PAYMENT_RECEIPT
+  INFRASTRUCTURE_REPORT
+  EXTENSION_REQUEST
+  OTHER
+}
+
+model BeneficiaryDocument {
+  document_id     String           @id @default(uuid()) @db.Uuid
+  beneficiary_id  String           @db.Uuid
+  category        DocumentCategory
+  title           String
+  file_name       String
+  file_size_bytes Int?
+  mime_type       String?
+  storage_path    String
+  reference_id    String?
+  created_at      DateTime         @default(now())
+
+  beneficiary     Beneficiary      @relation(fields: [beneficiary_id], references: [beneficiary_id], onDelete: Cascade)
+
+  @@index([beneficiary_id, category])
+  @@map("beneficiary_documents")
 }

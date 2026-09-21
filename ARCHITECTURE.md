@@ -50,6 +50,9 @@ erDiagram
     PANCHAYAT ||--|{ VILLAGE : "contains"
     VILLAGE ||--o{ BENEFICIARY : "resides in"
     
+    USER ||--o| BENEFICIARY : "authenticates as"
+    BENEFICIARY ||--o{ BENEFICIARY_DOCUMENT : "stores"
+    
     PROJECT ||--o{ BENEFICIARY : "scoped to"
     PROJECT ||--o{ RATE_CONFIGURATION : "rates"
     PROJECT ||--o{ INSTALLMENT_TEMPLATE : "templates"
@@ -104,9 +107,13 @@ To guarantee absolute traceability and audit compliance:
 2. **Role-Based Access Control (RBAC)**:
    - **`ADMIN`**: Unrestricted access, application approvals, rate versioning, installment schedule templates, commissioning overrides.
    - **`FIELD_OFFICER`**: Phone lookup, beneficiary onboarding, land holding and parcel registration, water application submissions.
-   - **`ACCOUNTS`**: Billing view, payment recording, financial reconciliation, receipt verification.
+   - **`ACCOUNTS`**: Billing view, payment collection, financial reconciliation, receipt verification.
    - **`VIEWER`**: Strict read-only access across all domains.
+   - **`BENEFICIARY`**: Dedicated self-service portal. Strictly isolated to records where `beneficiary_id === req.user.beneficiary_id`. Beneficiaries can register holdings with parcel checksums, view formula previews, submit water applications, monitor 5-stage installments, download receipts, view infrastructure status, request supplemental extensions, upload documents, and review their audit history. They have ZERO administrative authority to approve applications, alter rates, commission infrastructure, or mutate bills.
    - Enforced via NestJS `@Roles(...)` metadata decorator and `RolesGuard` at the controller and route level.
+3. **Strict Multi-Tenant Ownership Security Model**:
+   - Beneficiary endpoints (`/api/v1/beneficiary/*`) resolve identity directly from the authenticated token.
+   - Cross-beneficiary queries are rejected with `404 Not Found` or `403 Forbidden`. Beneficiary A cannot read or write Beneficiary B's parcels, applications, bills, installments, payments, receipts, or history.
 
 ---
 

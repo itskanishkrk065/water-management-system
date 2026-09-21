@@ -62,3 +62,11 @@ export class DecimalUtil {
     return values.reduce<Decimal>((acc, val) => acc.plus(new Decimal(val)), new Decimal(0));
   }
 }
+
+export function d(val: number | string | Decimal): Decimal {
+  return new Decimal(val || 0);
+}
+
+export function toDecimalString(val: number | string | Decimal, places = 2): string {
+  return new Decimal(val || 0).toFixed(places);
+}

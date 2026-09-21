@@ -110,6 +110,7 @@ The database seed (`prisma/seed.ts`) populates role-based demonstration accounts
 | **Field Officer** | `field@water.gov` | `Admin@123456` | Beneficiary phone lookup, profile registration, SF/subdivision land holdings, water application submissions. |
 | **Accounts** | `accounts@water.gov` | `Admin@123456` | Payment recording, 5-stage installment collections, running charges billing, receipts, payment reversals. |
 | **Viewer** | `viewer@water.gov` | `Admin@123456` | Read-only inspection of dashboards, dossiers, audit logs, and status tracking. |
+| **Beneficiary** | `beneficiary@water.gov` | `Admin@123456` | Dedicated self-service portal: profile wizard, land holdings, water quota application, installments, receipts, infrastructure, extensions, documents, and audit history. |
 
 > **Quick Switcher**: The frontend navigation bar includes a one-click demo role switcher to test role permissions on the fly.
 
@@ -123,15 +124,15 @@ Executes pure business logic calculations with Decimal arithmetic:
 cd backend
 npm test
 ```
-*Tests cover: total land calculations, parcel checksums, allotment densities, development costs, 5 installments 100% distribution, payment balances, and extension formulas.*
+*Tests cover: total land calculations, parcel checksums, allotment densities, development costs, 5 installments 100% distribution, payment balances, and extension formulas (7/7 passed).*
 
-### End-to-End Integration & RBAC Tests (20 Scenarios)
-Runs full lifecycle verification against PostgreSQL:
+### End-to-End Integration & RBAC Tests (46 Scenarios)
+Runs full lifecycle and security verification against PostgreSQL:
 ```bash
 cd backend
 npm run test:e2e
 ```
-*Tests cover: phone lookup, parcel sum enforcement, application submission, atomic transactional approval, 5 installment generation, payment recording, infrastructure commissioning gate, extension isolation, RBAC restrictions, and audit logging.*
+*Tests cover: phone lookup, parcel sum enforcement, application submission, atomic transactional approval, 5 installment generation, payment recording, infrastructure commissioning gate, extension isolation, RBAC restrictions, audit logging, beneficiary signup, profile completion scoring, water preview formulas, strict multi-tenant tenant isolation, and audit timeline (46/46 passed).*
 
 ### Frontend Production Build
 Verifies TypeScript compilation, Next.js App Router static optimization, and bundle integrity:
@@ -139,6 +140,7 @@ Verifies TypeScript compilation, Next.js App Router static optimization, and bun
 cd frontend
 npm run build
 ```
+*Result: 38/38 routes compiled cleanly with 0 type errors.*
 
 ---
 

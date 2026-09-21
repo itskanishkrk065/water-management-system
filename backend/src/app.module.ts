@@ -16,6 +16,7 @@ import { PaymentsModule } from './modules/payments/payments.module';
 import { InfrastructureModule } from './modules/infrastructure/infrastructure.module';
 import { ExtensionsModule } from './modules/extensions/extensions.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
+import { BeneficiaryPortalModule } from './modules/beneficiary-portal/beneficiary-portal.module';
 
 @Module({
   imports: [
@@ -36,6 +37,7 @@ import { DashboardModule } from './modules/dashboard/dashboard.module';
     InfrastructureModule,
     ExtensionsModule,
     DashboardModule,
+    BeneficiaryPortalModule,
   ],
 })
 export class AppModule {}

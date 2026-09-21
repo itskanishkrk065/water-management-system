@@ -8,15 +8,17 @@ export interface UserProfile {
   user_id: string;
   email: string;
   full_name: string;
-  role: 'ADMIN' | 'FIELD_OFFICER' | 'ACCOUNTS' | 'VIEWER';
+  role: 'ADMIN' | 'FIELD_OFFICER' | 'ACCOUNTS' | 'VIEWER' | 'BENEFICIARY';
+  beneficiary_id?: string | null;
 }
 
 interface AuthContextType {
   user: UserProfile | null;
   isLoading: boolean;
   login: (email: string, pass: string) => Promise<void>;
+  registerBeneficiary: (data: { full_name: string; phone: string; email: string; password: string }) => Promise<void>;
   logout: () => Promise<void>;
-  switchRoleQuick: (role: 'ADMIN' | 'FIELD_OFFICER' | 'ACCOUNTS' | 'VIEWER') => Promise<void>;
+  switchRoleQuick: (role: 'ADMIN' | 'FIELD_OFFICER' | 'ACCOUNTS' | 'VIEWER' | 'BENEFICIARY') => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -48,7 +50,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.setItem('water_user', JSON.stringify(loggedInUser));
 
     setUser(loggedInUser);
-    router.push('/dashboard');
+    if (loggedInUser.role === 'BENEFICIARY') {
+      router.push('/beneficiary/dashboard');
+    } else {
+      router.push('/dashboard');
+    }
+  };
+
+  const registerBeneficiary = async (data: { full_name: string; phone: string; email: string; password: string }) => {
+    const res = await apiClient.post('/auth/beneficiary-signup', data);
+    const { accessToken, refreshToken, user: loggedInUser } = res.data;
+
+    localStorage.setItem('water_access_token', accessToken);
+    localStorage.setItem('water_refresh_token', refreshToken);
+    localStorage.setItem('water_user', JSON.stringify(loggedInUser));
+
+    setUser(loggedInUser);
+    router.push('/beneficiary/profile');
   };
 
   const logout = async () => {
@@ -65,18 +83,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const switchRoleQuick = async (role: 'ADMIN' | 'FIELD_OFFICER' | 'ACCOUNTS' | 'VIEWER') => {
+  const switchRoleQuick = async (role: 'ADMIN' | 'FIELD_OFFICER' | 'ACCOUNTS' | 'VIEWER' | 'BENEFICIARY') => {
     const roleEmailMap = {
       ADMIN: 'admin@water.gov',
       FIELD_OFFICER: 'field@water.gov',
       ACCOUNTS: 'accounts@water.gov',
       VIEWER: 'viewer@water.gov',
+      BENEFICIARY: 'beneficiary@water.gov',
     };
     await login(roleEmailMap[role], 'Admin@123456');
   };
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, logout, switchRoleQuick }}>
+    <AuthContext.Provider value={{ user, isLoading, login, registerBeneficiary, logout, switchRoleQuick }}>
       {children}
     </AuthContext.Provider>
   );

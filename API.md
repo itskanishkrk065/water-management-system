@@ -10,21 +10,21 @@ The backend provides a strict, RESTful JSON API.
 
 ### Role-Based Access Control (RBAC) Matrix
 
-| Domain / Action | ADMIN | FIELD_OFFICER | ACCOUNTS | VIEWER |
-| :--- | :---: | :---: | :---: | :---: |
-| **System & User Management** | Full | None | None | None |
-| **Location Hierarchy & Projects** | Read/Write | Read | Read | Read |
-| **Rate Tariffs (Versioned)** | Read/Write | Read | Read | Read |
-| **Installment Templates** | Read/Write | Read | Read | Read |
-| **Beneficiary Registration & Land**| Read/Write | Read/Write | Read | Read |
-| **Water Application Submission** | Read/Write | Read/Write | Read | Read |
-| **Water Application Approval** | Full | None | None | None |
-| **Record & Reverse Payments** | Full | None | Read/Write | Read |
-| **Infrastructure Status Progression**| Full | None | None | Read |
-| **Generate Running Charges** | Full | None | Read/Write | Read |
-| **Extension Request** | Read/Write | Read/Write | Read | Read |
-| **Extension Approval** | Full | None | None | Read |
-| **Audit Trail Logs** | Read | Read | Read | Read |
+| Domain / Action | ADMIN | FIELD_OFFICER | ACCOUNTS | VIEWER | BENEFICIARY |
+| :--- | :---: | :---: | :---: | :---: | :---: |
+| **System & User Management** | Full | None | None | None | None |
+| **Location Hierarchy & Projects** | Read/Write | Read | Read | Read | Read |
+| **Rate Tariffs (Versioned)** | Read/Write | Read | Read | Read | Read (Snapshot) |
+| **Installment Templates** | Read/Write | Read | Read | Read | None |
+| **Beneficiary Registration & Land**| Read/Write | Read/Write | Read | Read | Self (Own Holdings) |
+| **Water Application Submission** | Read/Write | Read/Write | Read | Read | Self (Own Quota) |
+| **Water Application Approval** | Full | None | None | None | None (403 Blocked) |
+| **Record & Reverse Payments** | Full | None | Read/Write | Read | None (Treasury Only) |
+| **Infrastructure Status Progression**| Full | None | None | Read | Self (Read Pipeline) |
+| **Generate Running Charges** | Full | None | Read/Write | Read | Self (Read If Comm.) |
+| **Extension Request** | Read/Write | Read/Write | Read | Read | Self (Submit Own) |
+| **Extension Approval** | Full | None | None | Read | None (403 Blocked) |
+| **Audit Trail Logs** | Read | Read | Read | Read | Self (Own Audit Events) |
 
 ---
 
@@ -366,3 +366,93 @@ Queue of water applications awaiting Admin review.
 
 #### `GET /dashboard/infrastructure-queue`
 Queue of infrastructure pending commissioning.
+
+---
+
+### 3.11 Beneficiary Self-Service Portal (`/beneficiary/*`)
+
+All routes under `/beneficiary/*` enforce `@Roles(RoleName.BENEFICIARY, RoleName.ADMIN)`. Identity is determined strictly from the JWT bearer token (`req.user.beneficiary_id`), ensuring multi-tenant isolation. Beneficiary A receives `404 Not Found` when attempting to access Beneficiary B's holdings, applications, bills, installments, payments, or receipts.
+
+#### `GET /beneficiary/me`
+Fetches authenticated beneficiary profile, 5-stage onboarding completion percentage (0–100%), and milestone checklist.
+
+#### `PATCH /beneficiary/me`
+Updates beneficiary physical address, postal PIN, cardinal direction, and location landmark.
+- **Request Body**:
+  ```json
+  {
+    "districtId": "dis-uuid",
+    "panchayatId": "pan-uuid",
+    "villageId": "vil-uuid",
+    "addressLine1": "Door 4/12, Main Road",
+    "pincode": "641604",
+    "locationDirection": "NORTH",
+    "locationDescription": "500m West of Main Canal"
+  }
+  ```
+
+#### `GET /beneficiary/dashboard`
+Aggregated overview payload containing land totals, approved/requested water quotas, billing balances, next due installment, and infrastructure commissioning status.
+
+#### `GET /beneficiary/land`
+Lists all land holdings and survey parcels owned by the authenticated beneficiary with computed active extent.
+
+#### `POST /beneficiary/land`
+Registers a new land holding with individual SF / subdivision parcels. Enforces strict checksum: $\sum \text{parcels} = \text{declared area}$ within $0.0001$ acre tolerance.
+- **Request Body**:
+  ```json
+  {
+    "declaredTotalArea": 3.5,
+    "parcels": [
+      { "surveyNumber": "104/1A", "subdivisionNumber": "1", "areaAcres": 2.0 },
+      { "surveyNumber": "104/1B", "subdivisionNumber": "2", "areaAcres": 1.5 }
+    ]
+  }
+  ```
+
+#### `GET /beneficiary/land/:id`
+Retrieves single land holding and SF parcels. Returns `isLocked: true` if referenced by an approved water allotment.
+
+#### `GET /beneficiary/water/preview`
+Transparent Section 28 mathematical formula preview:
+$\text{Total Registered Land} \times \text{Tariff Litres/Acre} = \text{Calculated Allocation Quota}$.
+
+#### `POST /beneficiary/water/applications`
+Submits a water quota allocation request for administration review.
+- **Request Body**:
+  ```json
+  {
+    "requiredLitres": 35000
+  }
+  ```
+
+#### `GET /beneficiary/water/applications`
+Lists all historical water applications and review statuses (`SUBMITTED`, `UNDER_REVIEW`, `APPROVED`, `REJECTED`).
+
+#### `GET /beneficiary/allotments`
+Returns approved water allotments, snapshotted historical tariff rates, and development bill summaries.
+
+#### `GET /beneficiary/installments`
+Retrieves the 5-stage development bill installment schedule, amounts due, paid, pending, and due dates.
+
+#### `GET /beneficiary/payments`
+Lists all completed payments recorded on the beneficiary's ledger.
+
+#### `GET /beneficiary/receipts/:id`
+Returns official printable fiscal receipt data (Project, Receipt Number, Mode, Transaction Ref, Beneficiary Particulars, Milestone Info, Amount).
+
+#### `GET /beneficiary/infrastructure`
+Returns physical pipeline grid construction status (`PLANNED`, `UNDER_CONSTRUCTION`, `COMPLETED`, `COMMISSIONED`) and commissioning date.
+
+#### `GET /beneficiary/running-bills`
+Returns recurring monthly operation bills. Strictly gated: returns `isInfrastructureCommissioned: false` and empty bill list if infrastructure is not yet commissioned.
+
+#### `GET /beneficiary/extensions` & `POST /beneficiary/extensions`
+Lists and submits supplementary quota extensions without altering or overwriting root allotment records.
+
+#### `GET /beneficiary/documents` & `POST /beneficiary/documents`
+Lists and registers digital documents categorized by `LAND_RECORD`, `WATER_APPLICATION`, `APPROVAL_LETTER`, `PAYMENT_RECEIPT`, `INFRASTRUCTURE_REPORT`, `EXTENSION_REQUEST`, `OTHER`.
+
+#### `GET /beneficiary/history`
+Returns chronological audit timeline derived from PostgreSQL audit logs covering all lifecycle events on the account.
+

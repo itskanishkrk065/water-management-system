@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { Droplet, Shield, Lock, Mail, ArrowRight } from 'lucide-react';
+import Link from 'next/link';
 
 export default function LoginPage() {
   const { login } = useAuth();
@@ -98,7 +99,7 @@ export default function LoginPage() {
           <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider text-center mb-3">
             Quick-Select Demo Credentials
           </p>
-          <div className="grid grid-cols-2 gap-2 text-xs">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
             <button
               onClick={() => handleQuickFill('admin@water.gov')}
               className="p-2 bg-slate-50 hover:bg-purple-50 hover:border-purple-300 border border-slate-200 rounded-lg text-left transition"
@@ -127,10 +128,25 @@ export default function LoginPage() {
               <div className="font-semibold text-slate-700">VIEWER</div>
               <div className="text-[11px] text-slate-500 truncate">viewer@water.gov</div>
             </button>
+            <button
+              onClick={() => handleQuickFill('beneficiary@water.gov')}
+              className="p-2 bg-amber-50 hover:bg-amber-100 hover:border-amber-300 border border-amber-200 rounded-lg text-left transition col-span-2 sm:col-span-2"
+            >
+              <div className="font-semibold text-amber-800">BENEFICIARY (SELF-SERVICE)</div>
+              <div className="text-[11px] text-amber-700 truncate">beneficiary@water.gov</div>
+            </button>
           </div>
           <p className="text-center text-[11px] text-slate-400 mt-2">
             Default password: <code className="bg-slate-100 px-1 py-0.5 rounded">Admin@123456</code>
           </p>
+          <div className="mt-4 pt-3 border-t border-slate-100 text-center">
+            <Link
+              href="/beneficiary/login"
+              className="text-xs font-semibold text-amber-600 hover:text-amber-700 inline-flex items-center space-x-1"
+            >
+              <span>Switch to Dedicated Beneficiary Self-Service Portal &rarr;</span>
+            </Link>
+          </div>
         </div>
       </div>
     </div>
