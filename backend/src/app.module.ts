@@ -1,0 +1,41 @@
+import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
+import { PrismaModule } from './modules/prisma/prisma.module';
+import { AuditModule } from './modules/audit/audit.module';
+import { AuthModule } from './modules/auth/auth.module';
+import { UsersModule } from './modules/users/users.module';
+import { RolesModule } from './modules/roles/roles.module';
+import { LocationsModule } from './modules/locations/locations.module';
+import { ProjectsModule } from './modules/projects/projects.module';
+import { BeneficiariesModule } from './modules/beneficiaries/beneficiaries.module';
+import { LandModule } from './modules/land/land.module';
+import { RatesModule } from './modules/rates/rates.module';
+import { WaterModule } from './modules/water/water.module';
+import { BillingModule } from './modules/billing/billing.module';
+import { PaymentsModule } from './modules/payments/payments.module';
+import { InfrastructureModule } from './modules/infrastructure/infrastructure.module';
+import { ExtensionsModule } from './modules/extensions/extensions.module';
+import { DashboardModule } from './modules/dashboard/dashboard.module';
+
+@Module({
+  imports: [
+    ConfigModule.forRoot({ isGlobal: true }),
+    PrismaModule,
+    AuditModule,
+    AuthModule,
+    UsersModule,
+    RolesModule,
+    LocationsModule,
+    ProjectsModule,
+    BeneficiariesModule,
+    LandModule,
+    RatesModule,
+    WaterModule,
+    BillingModule,
+    PaymentsModule,
+    InfrastructureModule,
+    ExtensionsModule,
+    DashboardModule,
+  ],
+})
+export class AppModule {}
