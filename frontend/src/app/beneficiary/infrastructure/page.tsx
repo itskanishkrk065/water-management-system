@@ -39,24 +39,28 @@ export default function BeneficiaryInfrastructurePage() {
       id: 'PLANNED',
       name: 'Planned',
       desc: 'Route alignment survey, material allocation, and initial clearance',
+      date: infra?.planned_date,
       icon: Clock,
     },
     {
       id: 'UNDER_CONSTRUCTION',
       name: 'Under Construction',
       desc: 'Trenching, HDPE pipe fusion, sluice valve placement, and sump construction',
+      date: infra?.construction_start_date,
       icon: Hammer,
     },
     {
       id: 'COMPLETED',
       name: 'Physical Works Completed',
       desc: 'Hydrostatic pressure testing, pump machinery checks, and safety certification',
+      date: infra?.completion_date,
       icon: CheckCircle2,
     },
     {
       id: 'COMMISSIONED',
       name: 'Officially Commissioned',
       desc: 'Water release activated; regular maintenance and monthly running charges begin',
+      date: infra?.commissioned_date,
       icon: Sparkles,
     },
   ];
@@ -102,7 +106,7 @@ export default function BeneficiaryInfrastructurePage() {
             return (
               <div
                 key={stage.id}
-                className={`p-4 rounded-xl border relative transition ${
+                className={`p-4 rounded-xl border relative transition flex flex-col justify-between ${
                   isCompleted
                     ? 'bg-emerald-50/70 border-emerald-300 text-emerald-950'
                     : isCurrent
@@ -110,25 +114,34 @@ export default function BeneficiaryInfrastructurePage() {
                     : 'bg-slate-50 border-slate-200 text-slate-400'
                 }`}
               >
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-[10px] font-mono font-bold uppercase tracking-wider">
-                    Stage {idx + 1}
-                  </span>
-                  <div
-                    className={`h-7 w-7 rounded-full flex items-center justify-center ${
-                      isCompleted
-                        ? 'bg-emerald-600 text-white'
-                        : isCurrent
-                        ? 'bg-amber-600 text-white'
-                        : 'bg-slate-200 text-slate-500'
-                    }`}
-                  >
-                    <Icon className="w-4 h-4" />
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[10px] font-mono font-bold uppercase tracking-wider">
+                      Stage {idx + 1}
+                    </span>
+                    <div
+                      className={`h-7 w-7 rounded-full flex items-center justify-center ${
+                        isCompleted
+                          ? 'bg-emerald-600 text-white'
+                          : isCurrent
+                          ? 'bg-amber-600 text-white'
+                          : 'bg-slate-200 text-slate-500'
+                      }`}
+                    >
+                      <Icon className="w-4 h-4" />
+                    </div>
                   </div>
+
+                  <div className="text-sm font-bold">{stage.name}</div>
+                  <p className="text-xs mt-1 leading-relaxed opacity-80">{stage.desc}</p>
                 </div>
 
-                <div className="text-sm font-bold">{stage.name}</div>
-                <p className="text-xs mt-1 leading-relaxed opacity-80">{stage.desc}</p>
+                <div className="mt-4 pt-2.5 border-t border-current/10 flex items-center justify-between text-[11px]">
+                  <span className="font-semibold uppercase tracking-wider opacity-75">Milestone</span>
+                  <span className="font-mono font-bold">
+                    {stage.date ? formatDate(stage.date) : isCompleted ? 'Verified' : isCurrent ? 'In Progress' : 'Pending'}
+                  </span>
+                </div>
               </div>
             );
           })}
@@ -139,31 +152,45 @@ export default function BeneficiaryInfrastructurePage() {
       {infra ? (
         <div className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-sm space-y-4">
           <h3 className="text-base font-bold text-slate-900 border-b border-slate-100 pb-3">
-            Grid Specifications &amp; Commissioning Data
+            Grid Specifications &amp; Milestone Records
           </h3>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs">
             <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
-              <span className="text-slate-500 font-semibold uppercase">Infrastructure ID</span>
-              <div className="text-sm font-bold font-mono text-slate-900 mt-1 truncate">
-                {infra.infrastructure_id}
+              <span className="text-slate-500 font-semibold uppercase">1. Planned Date</span>
+              <div className="text-sm font-bold font-mono text-slate-900 mt-1">
+                {formatDate(infra.planned_date)}
               </div>
             </div>
 
             <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
-              <span className="text-slate-500 font-semibold uppercase">Distribution Network</span>
-              <div className="text-sm font-bold text-slate-900 mt-1">
-                Kongu Basin Secondary Lateral
+              <span className="text-slate-500 font-semibold uppercase">2. Construction Start</span>
+              <div className="text-sm font-bold font-mono text-slate-900 mt-1">
+                {formatDate(infra.construction_start_date)}
               </div>
             </div>
 
             <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
-              <span className="text-slate-500 font-semibold uppercase">Commissioned Date</span>
-              <div className="text-sm font-bold text-slate-900 mt-1">
-                {infra.commissioned_date ? formatDate(infra.commissioned_date) : 'Pending Execution'}
+              <span className="text-slate-500 font-semibold uppercase">3. Completion Date</span>
+              <div className="text-sm font-bold font-mono text-slate-900 mt-1">
+                {formatDate(infra.completion_date)}
+              </div>
+            </div>
+
+            <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
+              <span className="text-slate-500 font-semibold uppercase">4. Commissioned Date</span>
+              <div className="text-sm font-bold font-mono text-emerald-700 mt-1">
+                {formatDate(infra.commissioned_date)}
               </div>
             </div>
           </div>
+
+          {infra.remarks && (
+            <div className="p-4 bg-slate-50 rounded-xl border border-slate-100 text-xs mt-2">
+              <span className="text-slate-500 font-semibold uppercase tracking-wider">Engineering Inspection Notes</span>
+              <p className="text-slate-800 mt-1 font-medium italic">"{infra.remarks}"</p>
+            </div>
+          )}
 
           {infra.status === 'COMMISSIONED' ? (
             <div className="p-4 bg-emerald-50 rounded-xl border border-emerald-200 text-xs text-emerald-900 flex items-start space-x-3 mt-4">

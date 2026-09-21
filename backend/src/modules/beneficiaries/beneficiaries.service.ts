@@ -212,7 +212,7 @@ export class BeneficiariesService {
           orderBy: { payment_date: 'desc' },
         },
         infrastructures: {
-          orderBy: { created_at: 'desc' },
+          orderBy: [{ updated_at: 'desc' }, { created_at: 'desc' }],
         },
         runningBills: {
           orderBy: { created_at: 'desc' },

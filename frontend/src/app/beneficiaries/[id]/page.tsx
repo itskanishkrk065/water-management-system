@@ -228,6 +228,13 @@ function BeneficiaryDetailPageContent() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['beneficiary', id] });
+      queryClient.invalidateQueries({ queryKey: ['beneficiaries'] });
+      queryClient.invalidateQueries({ queryKey: ['infrastructure-list'] });
+      queryClient.invalidateQueries({ queryKey: ['infrastructure-queue'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['beneficiary-infrastructure'] });
+      queryClient.invalidateQueries({ queryKey: ['beneficiary-dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['beneficiary-running-bills'] });
     },
   });
 
@@ -848,8 +855,21 @@ function BeneficiaryDetailPageContent() {
             </div>
           </div>
 
-          {b.infrastructures && b.infrastructures.length > 0 ? (
-            b.infrastructures.map((infra: any) => (
+          {(() => {
+            const list = (b.infrastructures && b.infrastructures.length > 0)
+              ? b.infrastructures
+              : (b.waterAllotments?.map((a: any) => a.infrastructure).filter(Boolean) || []);
+            const canManageInfra = ['ADMIN', 'FIELD_OFFICER', 'ACCOUNTS'].includes(user?.role || '');
+
+            if (list.length === 0) {
+              return (
+                <div className="p-8 bg-white border border-slate-200 rounded-xl text-center text-slate-400 text-sm">
+                  Infrastructure lifecycle record will be initialized upon water application approval.
+                </div>
+              );
+            }
+
+            return list.map((infra: any) => (
               <div key={infra.infrastructure_id} className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm space-y-6">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-3">
@@ -886,16 +906,17 @@ function BeneficiaryDetailPageContent() {
                   </div>
                 </div>
 
-                {/* Admin Status Transitions */}
-                {user?.role === 'ADMIN' && (
+                {/* Operations Status Transitions */}
+                {canManageInfra && (
                   <div className="pt-4 border-t border-slate-100 flex flex-wrap items-center gap-3">
-                    <span className="text-xs font-semibold text-slate-600">Admin Transitions:</span>
+                    <span className="text-xs font-semibold text-slate-600">Operations Transitions:</span>
                     {infra.status === 'PLANNED' && (
                       <button
                         onClick={() =>
                           updateInfraStatus.mutate({ infraId: infra.infrastructure_id, status: 'UNDER_CONSTRUCTION' })
                         }
-                        className="px-3 py-1.5 bg-sky-600 hover:bg-sky-700 text-white rounded text-xs font-semibold"
+                        disabled={updateInfraStatus.isPending}
+                        className="px-3 py-1.5 bg-sky-600 hover:bg-sky-700 text-white rounded text-xs font-semibold transition disabled:opacity-50"
                       >
                         Start Construction &rarr;
                       </button>
@@ -905,7 +926,8 @@ function BeneficiaryDetailPageContent() {
                         onClick={() =>
                           updateInfraStatus.mutate({ infraId: infra.infrastructure_id, status: 'COMPLETED' })
                         }
-                        className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs font-semibold"
+                        disabled={updateInfraStatus.isPending}
+                        className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs font-semibold transition disabled:opacity-50"
                       >
                         Mark Completed &rarr;
                       </button>
@@ -915,7 +937,8 @@ function BeneficiaryDetailPageContent() {
                         onClick={() =>
                           updateInfraStatus.mutate({ infraId: infra.infrastructure_id, status: 'COMMISSIONED' })
                         }
-                        className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-xs font-semibold"
+                        disabled={updateInfraStatus.isPending}
+                        className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-xs font-semibold transition disabled:opacity-50"
                       >
                         Commission Grid (Enables Running Bills) &rarr;
                       </button>
@@ -928,12 +951,8 @@ function BeneficiaryDetailPageContent() {
                   </div>
                 )}
               </div>
-            ))
-          ) : (
-            <div className="p-8 bg-white border border-slate-200 rounded-xl text-center text-slate-400 text-sm">
-              Infrastructure lifecycle record will be initialized upon water application approval.
-            </div>
-          )}
+            ));
+          })()}
         </div>
       )}
 

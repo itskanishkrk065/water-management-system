@@ -14,8 +14,10 @@ export default function InfrastructureGridPage() {
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState('');
 
+  const canManage = ['ADMIN', 'FIELD_OFFICER', 'ACCOUNTS'].includes(user?.role || '');
   const [selectedInfra, setSelectedInfra] = useState<any>(null);
   const [nextStatus, setNextStatus] = useState('UNDER_CONSTRUCTION');
+  const [milestoneDate, setMilestoneDate] = useState(new Date().toISOString().split('T')[0]);
   const [statusRemarks, setStatusRemarks] = useState('');
   const [error, setError] = useState<string | null>(null);
 
@@ -30,16 +32,25 @@ export default function InfrastructureGridPage() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: async ({ id, status, remarks }: { id: string; status: string; remarks: string }) => {
+    mutationFn: async ({ id, status, date, remarks }: { id: string; status: string; date?: string; remarks: string }) => {
       const res = await apiClient.patch(`/infrastructure/${id}/status`, {
         status,
+        date: date || undefined,
         remarks: remarks || undefined,
       });
       return res.data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['infrastructure-list'] });
+      queryClient.invalidateQueries({ queryKey: ['infrastructure-queue'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['beneficiary'] });
+      queryClient.invalidateQueries({ queryKey: ['beneficiaries'] });
+      queryClient.invalidateQueries({ queryKey: ['beneficiary-infrastructure'] });
+      queryClient.invalidateQueries({ queryKey: ['beneficiary-dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['beneficiary-running-bills'] });
+      queryClient.invalidateQueries({ queryKey: ['beneficiary-allotments'] });
+      queryClient.invalidateQueries({ queryKey: ['allotments-for-running'] });
       setSelectedInfra(null);
       setStatusRemarks('');
       setError(null);
@@ -55,7 +66,8 @@ export default function InfrastructureGridPage() {
     else if (infra.status === 'UNDER_CONSTRUCTION') setNextStatus('COMPLETED');
     else if (infra.status === 'COMPLETED') setNextStatus('COMMISSIONED');
     else setNextStatus('COMMISSIONED');
-    setStatusRemarks('');
+    setMilestoneDate(new Date().toISOString().split('T')[0]);
+    setStatusRemarks(infra.remarks || '');
     setError(null);
   };
 
@@ -65,6 +77,7 @@ export default function InfrastructureGridPage() {
     updateMutation.mutate({
       id: selectedInfra.infrastructure_id,
       status: nextStatus,
+      date: milestoneDate ? new Date(milestoneDate).toISOString() : undefined,
       remarks: statusRemarks,
     });
   };
@@ -140,13 +153,19 @@ export default function InfrastructureGridPage() {
                       {formatDate(infra.commissioned_date)}
                     </td>
                     <td className="px-5 py-4 text-right">
-                      {infra.status !== 'COMMISSIONED' && user?.role === 'ADMIN' ? (
-                        <button
-                          onClick={() => handleOpenStatusModal(infra)}
-                          className="px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-lg text-xs font-semibold transition"
-                        >
-                          Advance Status &rarr;
-                        </button>
+                      {infra.status !== 'COMMISSIONED' ? (
+                        canManage ? (
+                          <button
+                            onClick={() => handleOpenStatusModal(infra)}
+                            className="px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-lg text-xs font-semibold transition"
+                          >
+                            Advance Status &rarr;
+                          </button>
+                        ) : (
+                          <span className="text-xs text-amber-700 font-semibold inline-flex items-center">
+                            In Progress
+                          </span>
+                        )
                       ) : (
                         <span className="text-xs text-emerald-700 font-bold inline-flex items-center">
                           <CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Ready
@@ -194,10 +213,24 @@ export default function InfrastructureGridPage() {
                   onChange={(e) => setNextStatus(e.target.value)}
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-bold bg-white"
                 >
-                  <option value="UNDER_CONSTRUCTION">UNDER_CONSTRUCTION (Pipes being laid)</option>
+                  <option value="PLANNED">PLANNED (Alignment &amp; survey clearance)</option>
+                  <option value="UNDER_CONSTRUCTION">UNDER_CONSTRUCTION (Pipes &amp; valves being laid)</option>
                   <option value="COMPLETED">COMPLETED (Physical installation finished)</option>
                   <option value="COMMISSIONED">COMMISSIONED (Tested &amp; flowing - unlocks running charges)</option>
                 </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 uppercase mb-1">
+                  Milestone Date *
+                </label>
+                <input
+                  type="date"
+                  value={milestoneDate}
+                  onChange={(e) => setMilestoneDate(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-semibold bg-white"
+                  required
+                />
               </div>
 
               <div>

@@ -95,15 +95,37 @@ export class InfrastructureService {
     const eventDate = dto.date ? new Date(dto.date) : new Date();
     const updateData: Prisma.InfrastructureUpdateInput = {
       status: dto.status,
-      remarks: dto.remarks || existing.remarks,
+      remarks: dto.remarks !== undefined ? dto.remarks : existing.remarks,
     };
 
-    if (dto.status === InfrastructureStatus.UNDER_CONSTRUCTION && !existing.construction_start_date) {
-      updateData.construction_start_date = eventDate;
-    } else if (dto.status === InfrastructureStatus.COMPLETED && !existing.completion_date) {
-      updateData.completion_date = eventDate;
-    } else if (dto.status === InfrastructureStatus.COMMISSIONED && !existing.commissioned_date) {
-      updateData.commissioned_date = eventDate;
+    if (dto.status === InfrastructureStatus.PLANNED) {
+      if (!existing.planned_date || dto.date) {
+        updateData.planned_date = eventDate;
+      }
+    } else if (dto.status === InfrastructureStatus.UNDER_CONSTRUCTION) {
+      if (!existing.planned_date) {
+        updateData.planned_date = existing.created_at || eventDate;
+      }
+      updateData.construction_start_date = dto.date ? eventDate : (existing.construction_start_date || eventDate);
+    } else if (dto.status === InfrastructureStatus.COMPLETED) {
+      if (!existing.planned_date) {
+        updateData.planned_date = existing.created_at || eventDate;
+      }
+      if (!existing.construction_start_date) {
+        updateData.construction_start_date = eventDate;
+      }
+      updateData.completion_date = dto.date ? eventDate : (existing.completion_date || eventDate);
+    } else if (dto.status === InfrastructureStatus.COMMISSIONED) {
+      if (!existing.planned_date) {
+        updateData.planned_date = existing.created_at || eventDate;
+      }
+      if (!existing.construction_start_date) {
+        updateData.construction_start_date = eventDate;
+      }
+      if (!existing.completion_date) {
+        updateData.completion_date = eventDate;
+      }
+      updateData.commissioned_date = dto.date ? eventDate : (existing.commissioned_date || eventDate);
     }
 
     const updated = await this.prisma.infrastructure.update({

@@ -10,6 +10,7 @@ describe('Beneficiary Portal E2E & Ownership Security Suite', () => {
   let prisma: PrismaService;
 
   let adminToken: string;
+  let fieldToken: string;
   let beneficiaryAToken: string;
   let beneficiaryAId: string;
   let beneficiaryBToken: string;
@@ -53,6 +54,13 @@ describe('Beneficiary Portal E2E & Ownership Security Suite', () => {
       .send({ email: 'admin@water.gov', password: 'Admin@123456' })
       .expect(200);
     adminToken = adminLoginRes.body.accessToken;
+
+    // Field Officer login
+    const fieldLoginRes = await request(app.getHttpServer())
+      .post('/api/v1/auth/login')
+      .send({ email: 'field@water.gov', password: 'Admin@123456' })
+      .expect(200);
+    fieldToken = fieldLoginRes.body.accessToken;
 
     // Fetch sample village and project
     const village = await prisma.village.findFirst({
@@ -398,7 +406,73 @@ describe('Beneficiary Portal E2E & Ownership Security Suite', () => {
       expect(res.body.infrastructureStatus).toBe('PLANNED');
     });
 
-    it('Step 20: Admin commissions infrastructure and status updates in beneficiary portal', async () => {
+    it('Step 20a: FIELD_OFFICER transitions infrastructure to UNDER_CONSTRUCTION and milestone reflects in beneficiary portal', async () => {
+      const infra = await prisma.infrastructure.findFirst({
+        where: { beneficiary_id: beneficiaryAId },
+      });
+
+      const startTestDate = '2026-09-22T08:30:00.000Z';
+      const patchRes = await request(app.getHttpServer())
+        .patch(`/api/v1/infrastructure/${infra!.infrastructure_id}/status`)
+        .set('Authorization', `Bearer ${fieldToken}`)
+        .send({
+          status: 'UNDER_CONSTRUCTION',
+          date: startTestDate,
+          remarks: 'Trenching underway, 110mm HDPE pipe fusion started on site',
+        })
+        .expect(200);
+
+      expect(patchRes.body.status).toBe('UNDER_CONSTRUCTION');
+      expect(patchRes.body.construction_start_date).toBeDefined();
+
+      // Beneficiary views infrastructure page
+      const infraRes = await request(app.getHttpServer())
+        .get('/api/v1/beneficiary/infrastructure')
+        .set('Authorization', `Bearer ${beneficiaryAToken}`)
+        .expect(200);
+
+      expect(infraRes.body.status).toBe('UNDER_CONSTRUCTION');
+      expect(new Date(infraRes.body.construction_start_date).toISOString()).toBe(startTestDate);
+      expect(infraRes.body.remarks).toContain('Trenching underway');
+
+      // Beneficiary dashboard reflects updated milestone
+      const dashRes = await request(app.getHttpServer())
+        .get('/api/v1/beneficiary/dashboard')
+        .set('Authorization', `Bearer ${beneficiaryAToken}`)
+        .expect(200);
+
+      expect(dashRes.body.infrastructure.status).toBe('UNDER_CONSTRUCTION');
+      expect(dashRes.body.infrastructure.constructionStartedAt).toBeDefined();
+      expect(dashRes.body.runningCharges.isInfrastructureCommissioned).toBe(false);
+    });
+
+    it('Step 20b: FIELD_OFFICER transitions infrastructure to COMPLETED', async () => {
+      const infra = await prisma.infrastructure.findFirst({
+        where: { beneficiary_id: beneficiaryAId },
+      });
+
+      const completedDate = '2026-09-22T14:00:00.000Z';
+      await request(app.getHttpServer())
+        .patch(`/api/v1/infrastructure/${infra!.infrastructure_id}/status`)
+        .set('Authorization', `Bearer ${fieldToken}`)
+        .send({
+          status: 'COMPLETED',
+          date: completedDate,
+          remarks: 'Hydrostatic pressure tested at 4.0 bar, zero leakage',
+        })
+        .expect(200);
+
+      const infraRes = await request(app.getHttpServer())
+        .get('/api/v1/beneficiary/infrastructure')
+        .set('Authorization', `Bearer ${beneficiaryAToken}`)
+        .expect(200);
+
+      expect(infraRes.body.status).toBe('COMPLETED');
+      expect(infraRes.body.completion_date).toBeDefined();
+      expect(infraRes.body.construction_start_date).toBeDefined();
+    });
+
+    it('Step 20c: Admin commissions infrastructure and unlocks running charges in beneficiary portal', async () => {
       const infra = await prisma.infrastructure.findFirst({
         where: { beneficiary_id: beneficiaryAId },
       });
@@ -408,7 +482,7 @@ describe('Beneficiary Portal E2E & Ownership Security Suite', () => {
         .set('Authorization', `Bearer ${adminToken}`)
         .send({
           status: 'COMMISSIONED',
-          remarks: 'Pipeline pressurized and commissioned',
+          remarks: 'Pipeline pressurized and commissioned for live water flow',
         })
         .expect(200);
 
@@ -419,6 +493,16 @@ describe('Beneficiary Portal E2E & Ownership Security Suite', () => {
 
       expect(res.body.status).toBe('COMMISSIONED');
       expect(res.body.commissioned_date).toBeDefined();
+      expect(res.body.construction_start_date).toBeDefined();
+      expect(res.body.completion_date).toBeDefined();
+
+      const runningRes = await request(app.getHttpServer())
+        .get('/api/v1/beneficiary/running-bills')
+        .set('Authorization', `Bearer ${beneficiaryAToken}`)
+        .expect(200);
+
+      expect(runningRes.body.isInfrastructureCommissioned).toBe(true);
+      expect(runningRes.body.infrastructureStatus).toBe('COMMISSIONED');
     });
   });
 

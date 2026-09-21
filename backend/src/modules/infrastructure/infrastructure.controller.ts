@@ -38,8 +38,8 @@ export class InfrastructureController {
   }
 
   @Patch(':id/status')
-  @Roles(RoleName.ADMIN)
-  @ApiOperation({ summary: 'Update infrastructure lifecycle status (Admin only - Planned -> Under Construction -> Completed -> Commissioned)' })
+  @Roles(RoleName.ADMIN, RoleName.FIELD_OFFICER, RoleName.ACCOUNTS)
+  @ApiOperation({ summary: 'Update infrastructure lifecycle status (Planned -> Under Construction -> Completed -> Commissioned)' })
   async updateStatus(
     @Param('id') id: string,
     @Body() dto: UpdateInfrastructureStatusDto,

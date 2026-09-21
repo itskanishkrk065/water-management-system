@@ -307,8 +307,19 @@ export default function BeneficiaryDashboardPage() {
             <div className="text-xs text-slate-500 mt-2">
               {infra?.commissionedAt
                 ? `Commissioned on ${formatDate(infra.commissionedAt)}`
+                : infra?.completedAt
+                ? `Works completed on ${formatDate(infra.completedAt)}`
+                : infra?.constructionStartedAt
+                ? `Construction started on ${formatDate(infra.constructionStartedAt)}`
+                : infra?.plannedAt
+                ? `Planned on ${formatDate(infra.plannedAt)}`
                 : 'Subject to engineering execution'}
             </div>
+            {infra?.remarks && (
+              <p className="text-[11px] text-slate-400 italic mt-1 truncate">
+                &ldquo;{infra.remarks}&rdquo;
+              </p>
+            )}
           </div>
           <div className="mt-4 pt-3 border-t border-slate-100 flex justify-end">
             <Link

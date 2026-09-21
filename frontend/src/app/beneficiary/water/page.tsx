@@ -124,6 +124,8 @@ export default function BeneficiaryWaterPage() {
               <p className="text-[11px] text-slate-400 mt-1">
                 {activeAllotment.infrastructure?.commissioned_date
                   ? `Commissioned on ${formatDate(activeAllotment.infrastructure.commissioned_date)}`
+                  : activeAllotment.infrastructure?.construction_start_date
+                  ? `Construction started on ${formatDate(activeAllotment.infrastructure.construction_start_date)}`
                   : 'Pending final engineering commissioning'}
               </p>
             </div>

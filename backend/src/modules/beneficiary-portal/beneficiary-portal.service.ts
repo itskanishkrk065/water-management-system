@@ -217,6 +217,18 @@ export class BeneficiaryPortalService {
       },
     });
 
+    const latestInfra =
+      activeAllotment?.infrastructure ||
+      (await this.prisma.infrastructure.findFirst({
+        where: {
+          OR: [
+            { beneficiary_id: b.beneficiary_id },
+            { allotment: { beneficiary_id: b.beneficiary_id } },
+          ],
+        },
+        orderBy: [{ updated_at: 'desc' }, { created_at: 'desc' }],
+      }));
+
     // 4. Financial totals
     const devBill = activeAllotment?.developmentBill;
     const totalDevelopmentCost = devBill ? d(devBill.total_amount) : new Decimal(0);
@@ -273,11 +285,15 @@ export class BeneficiaryPortalService {
             developmentCost: devBill ? toDecimalString(devBill.total_amount, 2) : '0.00',
           }
         : null,
-      infrastructure: activeAllotment?.infrastructure
+      infrastructure: latestInfra
         ? {
-            id: activeAllotment.infrastructure.infrastructure_id,
-            status: activeAllotment.infrastructure.status,
-            commissionedAt: activeAllotment.infrastructure.commissioned_date,
+            id: latestInfra.infrastructure_id,
+            status: latestInfra.status,
+            plannedAt: latestInfra.planned_date,
+            constructionStartedAt: latestInfra.construction_start_date,
+            completedAt: latestInfra.completion_date,
+            commissionedAt: latestInfra.commissioned_date,
+            remarks: latestInfra.remarks,
           }
         : null,
       nextInstallment: nextInstallment
@@ -292,7 +308,7 @@ export class BeneficiaryPortalService {
           }
         : null,
       runningCharges: {
-        isInfrastructureCommissioned: activeAllotment?.infrastructure?.status === 'COMMISSIONED',
+        isInfrastructureCommissioned: latestInfra?.status === 'COMMISSIONED',
         latestBill: latestRunningBill
           ? {
               id: latestRunningBill.running_bill_id,
@@ -710,9 +726,14 @@ export class BeneficiaryPortalService {
     const b = await this.getAuthenticatedBeneficiary(userId);
 
     return this.prisma.infrastructure.findFirst({
-      where: { allotment: { beneficiary_id: b.beneficiary_id } },
+      where: {
+        OR: [
+          { beneficiary_id: b.beneficiary_id },
+          { allotment: { beneficiary_id: b.beneficiary_id } },
+        ],
+      },
       include: { allotment: true },
-      orderBy: { created_at: 'desc' },
+      orderBy: [{ updated_at: 'desc' }, { created_at: 'desc' }],
     });
   }
 
@@ -723,7 +744,13 @@ export class BeneficiaryPortalService {
     const b = await this.getAuthenticatedBeneficiary(userId);
 
     const infra = await this.prisma.infrastructure.findFirst({
-      where: { allotment: { beneficiary_id: b.beneficiary_id } },
+      where: {
+        OR: [
+          { beneficiary_id: b.beneficiary_id },
+          { allotment: { beneficiary_id: b.beneficiary_id } },
+        ],
+      },
+      orderBy: [{ updated_at: 'desc' }, { created_at: 'desc' }],
     });
 
     const isCommissioned = infra?.status === 'COMMISSIONED';
