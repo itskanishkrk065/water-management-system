@@ -92,6 +92,24 @@ describe('Beneficiary Portal E2E & Ownership Security Suite', () => {
       beneficiaryAId = res.body.beneficiary.beneficiary_id;
     });
 
+    it('Step 1b: Sign up with snake_case payload (full_name and phone) successfully', async () => {
+      const snakePhone = `9555${uniqueSuffix}`;
+      const snakeEmail = `snake_${uniqueSuffix}@water.gov`;
+      const res = await request(app.getHttpServer())
+        .post('/api/v1/auth/beneficiary-signup')
+        .send({
+          full_name: 'Snake Case Beneficiary',
+          phone: snakePhone,
+          email: snakeEmail,
+          password: 'Secret@123456',
+        })
+        .expect(201);
+
+      expect(res.body).toHaveProperty('accessToken');
+      expect(res.body.user.full_name).toBe('Snake Case Beneficiary');
+      expect(res.body.beneficiary.phone_number).toBe(snakePhone);
+    });
+
     it('Step 2: Reject duplicate registration with same phone number', async () => {
       const res = await request(app.getHttpServer())
         .post('/api/v1/auth/beneficiary-signup')

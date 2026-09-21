@@ -16,7 +16,14 @@ interface AuthContextType {
   user: UserProfile | null;
   isLoading: boolean;
   login: (email: string, pass: string) => Promise<void>;
-  registerBeneficiary: (data: { full_name: string; phone: string; email: string; password: string }) => Promise<void>;
+  registerBeneficiary: (data: {
+    fullName?: string;
+    full_name?: string;
+    phoneNumber?: string;
+    phone?: string;
+    email: string;
+    password: string;
+  }) => Promise<void>;
   logout: () => Promise<void>;
   switchRoleQuick: (role: 'ADMIN' | 'FIELD_OFFICER' | 'ACCOUNTS' | 'VIEWER' | 'BENEFICIARY') => Promise<void>;
 }
@@ -57,8 +64,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const registerBeneficiary = async (data: { full_name: string; phone: string; email: string; password: string }) => {
-    const res = await apiClient.post('/auth/beneficiary-signup', data);
+  const registerBeneficiary = async (data: {
+    fullName?: string;
+    full_name?: string;
+    phoneNumber?: string;
+    phone?: string;
+    email: string;
+    password: string;
+  }) => {
+    const fullName = (data.fullName || data.full_name || '').trim();
+    const phoneNumber = (data.phoneNumber || data.phone || '').trim();
+
+    const payload = {
+      fullName,
+      full_name: fullName,
+      phoneNumber,
+      phone: phoneNumber,
+      email: data.email,
+      password: data.password,
+    };
+
+    const res = await apiClient.post('/auth/beneficiary-signup', payload);
     const { accessToken, refreshToken, user: loggedInUser } = res.data;
 
     localStorage.setItem('water_access_token', accessToken);

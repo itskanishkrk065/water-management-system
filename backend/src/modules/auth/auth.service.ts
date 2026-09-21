@@ -74,7 +74,18 @@ export class AuthService {
   }
 
   async beneficiarySignUp(dto: any, ipAddress?: string) {
-    const cleanPhone = dto.phoneNumber.trim();
+    const rawFullName = dto.fullName || dto.full_name;
+    const rawPhone = dto.phoneNumber || dto.phone;
+
+    if (!rawFullName || !String(rawFullName).trim()) {
+      throw new (await import('@nestjs/common')).BadRequestException('Full name is required');
+    }
+    if (!rawPhone || !String(rawPhone).trim()) {
+      throw new (await import('@nestjs/common')).BadRequestException('Phone number is required');
+    }
+
+    const cleanName = String(rawFullName).trim();
+    const cleanPhone = String(rawPhone).trim();
     const cleanEmail = dto.email.trim().toLowerCase();
 
     // Check existing email in users
@@ -120,7 +131,7 @@ export class AuthService {
         data: {
           email: cleanEmail,
           password_hash: passwordHash,
-          full_name: dto.fullName.trim(),
+          full_name: cleanName,
           role_id: role.role_id,
           is_active: true,
         },
@@ -130,7 +141,7 @@ export class AuthService {
       const newBeneficiary = await tx.beneficiary.create({
         data: {
           user_id: newUser.user_id,
-          name: dto.fullName.trim(),
+          name: cleanName,
           phone_number: cleanPhone,
           email: cleanEmail,
           status: BeneficiaryStatus.ACTIVE,
@@ -146,7 +157,7 @@ export class AuthService {
           new_values: {
             email: cleanEmail,
             phone: cleanPhone,
-            name: dto.fullName.trim(),
+            name: cleanName,
             role: 'BENEFICIARY',
           },
           reason: 'Beneficiary self-service online registration',

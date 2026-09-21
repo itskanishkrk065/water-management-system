@@ -44,8 +44,8 @@ export default function BeneficiarySignupPage() {
     setLoading(true);
     try {
       await registerBeneficiary({
-        full_name: formData.full_name,
-        phone: formData.phone,
+        fullName: formData.full_name,
+        phoneNumber: formData.phone,
         email: formData.email,
         password: formData.password,
       });
