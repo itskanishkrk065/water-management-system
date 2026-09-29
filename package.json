@@ -16,7 +16,9 @@
     "desktop:dev": "cross-env NODE_ENV=development electron .",
     "desktop:build": "npm run build:all",
     "desktop:package": "electron-builder --dir",
-    "desktop:installer": "electron-builder --win nsis"
+    "desktop:installer": "electron-builder --win nsis --x64",
+    "desktop:installer:x64": "electron-builder --win nsis --x64",
+    "desktop:installer:all": "electron-builder --win nsis --x64 --ia32"
   },
   "devDependencies": {
     "concurrently": "^8.2.2",
