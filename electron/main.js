@@ -151,22 +151,50 @@ function startFrontendService() {
   logDesktop(`Initializing embedded Next.js frontend on ${FRONTEND_HOST}:${FRONTEND_PORT}...`);
 
   const frontendDir = path.join(__dirname, '..', 'frontend');
+  const standaloneServer = path.join(frontendDir, '.next', 'standalone', 'server.js');
+  const standaloneCwd = path.join(frontendDir, '.next', 'standalone');
   const nextBinPath = path.join(frontendDir, 'node_modules', 'next', 'dist', 'bin', 'next');
 
-  if (fs.existsSync(nextBinPath)) {
+  const frontendEnv = {
+    ...process.env,
+    PORT: String(FRONTEND_PORT),
+    HOSTNAME: FRONTEND_HOST,
+    NODE_ENV: 'production',
+    NEXT_PUBLIC_API_URL: `http://${BACKEND_HOST}:${BACKEND_PORT}/api/v1`,
+  };
+
+  if (fs.existsSync(standaloneServer)) {
+    try {
+      frontendProcess = fork(standaloneServer, [], {
+        cwd: standaloneCwd,
+        env: frontendEnv,
+        stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
+      });
+
+      frontendProcess.stdout?.on('data', (data) => {
+        logDesktop(`[Frontend stdout]: ${data.toString().trim()}`);
+      });
+
+      frontendProcess.stderr?.on('data', (data) => {
+        logDesktop(`[Frontend stderr]: ${data.toString().trim()}`);
+      });
+
+      frontendProcess.on('exit', (code, signal) => {
+        logDesktop(`Frontend standalone process exited with code=${code}, signal=${signal}`);
+      });
+
+      logDesktop(`Frontend standalone server process spawned (PID: ${frontendProcess.pid})`);
+    } catch (err) {
+      logDesktop(`Failed to fork standalone frontend server: ${err.message}`);
+    }
+  } else if (fs.existsSync(nextBinPath)) {
     try {
       frontendProcess = fork(
         nextBinPath,
         ['start', '-p', String(FRONTEND_PORT), '-H', FRONTEND_HOST],
         {
           cwd: frontendDir,
-          env: {
-            ...process.env,
-            PORT: String(FRONTEND_PORT),
-            HOSTNAME: FRONTEND_HOST,
-            NODE_ENV: 'production',
-            NEXT_PUBLIC_API_URL: `http://${BACKEND_HOST}:${BACKEND_PORT}/api/v1`,
-          },
+          env: frontendEnv,
           stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
         }
       );
@@ -183,12 +211,12 @@ function startFrontendService() {
         logDesktop(`Frontend process exited with code=${code}, signal=${signal}`);
       });
 
-      logDesktop(`Frontend child process spawned (PID: ${frontendProcess.pid})`);
+      logDesktop(`Frontend CLI process spawned (PID: ${frontendProcess.pid})`);
     } catch (err) {
       logDesktop(`Failed to fork frontend process: ${err.message}`);
     }
   } else {
-    logDesktop(`Next.js CLI binary not found at ${nextBinPath}`);
+    logDesktop(`Neither standalone server.js nor Next.js CLI binary found.`);
   }
 }
 
