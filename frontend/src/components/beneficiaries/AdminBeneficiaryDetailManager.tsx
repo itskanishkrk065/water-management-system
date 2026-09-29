@@ -218,9 +218,9 @@ function AdminBeneficiaryDetailContent() {
     setEditName(b.name || '');
     setEditPhone(b.phone_number || '');
     setEditEmail(b.email || '');
-    setEditAddress1(b.address_line1 || '');
-    setEditAddress2(b.address_line2 || '');
-    setEditAddress3(b.address_line3 || '');
+    setEditAddress1(b.address_line_1 || b.address_line1 || '');
+    setEditAddress2(b.address_line_2 || b.address_line2 || '');
+    setEditAddress3(b.address_line_3 || b.address_line3 || '');
     setEditDistrictId(b.district_id || '');
     setEditBlockId(b.block_id || '');
     setEditVillageId(b.village_id || '');
@@ -813,12 +813,18 @@ function AdminBeneficiaryDetailContent() {
               </div>
               <div className="py-2.5 flex justify-between">
                 <span className="text-slate-500">Address Line 1:</span>
-                <span className="text-slate-900">{b.address_line1}</span>
+                <span className="text-slate-900 font-medium">{b.address_line_1 || b.address_line1 || '—'}</span>
               </div>
               <div className="py-2.5 flex justify-between">
                 <span className="text-slate-500">Address Line 2:</span>
-                <span className="text-slate-900">{b.address_line2 || '—'}</span>
+                <span className="text-slate-900 font-medium">{b.address_line_2 || b.address_line2 || '—'}</span>
               </div>
+              {(b.address_line_3 || b.address_line3) && (
+                <div className="py-2.5 flex justify-between">
+                  <span className="text-slate-500">Address Line 3:</span>
+                  <span className="text-slate-900 font-medium">{b.address_line_3 || b.address_line3}</span>
+                </div>
+              )}
               <div className="py-2.5 flex justify-between">
                 <span className="text-slate-500">Profile Created:</span>
                 <span className="text-slate-700">{formatDate(b.created_at)}</span>
