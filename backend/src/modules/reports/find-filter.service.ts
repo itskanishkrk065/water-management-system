@@ -125,7 +125,7 @@ export class FindFilterService {
     // 2. Beneficiary Filters
     if (dto.beneficiaryName) {
       andConditions.push({
-        name: { contains: dto.beneficiaryName.trim(), mode: 'insensitive' },
+        name: { contains: dto.beneficiaryName.trim() },
       });
     }
     if (dto.phoneNumber) {
@@ -154,10 +154,10 @@ export class FindFilterService {
       hasLandFilter = true;
       const parcelWhere: Prisma.LandParcelWhereInput = {};
       if (dto.surveyNumber) {
-        parcelWhere.survey_number = { contains: dto.surveyNumber.trim(), mode: 'insensitive' };
+        parcelWhere.survey_number = { contains: dto.surveyNumber.trim() };
       }
       if (dto.subdivisionNumber) {
-        parcelWhere.subdivision_number = { contains: dto.subdivisionNumber.trim(), mode: 'insensitive' };
+        parcelWhere.subdivision_number = { contains: dto.subdivisionNumber.trim() };
       }
       landWhere.parcels = { some: parcelWhere };
     }
@@ -298,8 +298,8 @@ export class FindFilterService {
     ) {
       const payWhere: Prisma.PaymentWhereInput = { is_reversal: false };
       if (dto.paymentMode) payWhere.payment_mode = dto.paymentMode;
-      if (dto.paymentReference) payWhere.payment_reference = { contains: dto.paymentReference.trim(), mode: 'insensitive' };
-      if (dto.receiptNumber) payWhere.receipt_number = { contains: dto.receiptNumber.trim(), mode: 'insensitive' };
+      if (dto.paymentReference) payWhere.payment_reference = { contains: dto.paymentReference.trim() };
+      if (dto.receiptNumber) payWhere.receipt_number = { contains: dto.receiptNumber.trim() };
       if (dto.paymentDateFrom || dto.paymentDateTo) {
         const pDateFilter: Prisma.DateTimeFilter = {};
         if (dto.paymentDateFrom) pDateFilter.gte = new Date(dto.paymentDateFrom);

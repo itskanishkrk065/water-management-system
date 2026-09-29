@@ -167,11 +167,11 @@ export class LocationImportService {
           valid_rows: 0,
           invalid_rows: Math.max(0, rawData.length - 1),
           status: LocationImportStatus.FAILED,
-          error_summary: {
+          error_summary: JSON.stringify({
             reason: `Import failed: Missing required column(s): ${missingList}`,
             missingColumns: missingColumns.map((c) => c.label),
             foundHeaders: headerRow,
-          },
+          }) as any,
         },
       });
 
@@ -635,7 +635,7 @@ export class LocationImportService {
             action: AuditAction.CREATE,
             entity_type: 'LocationImport',
             entity_id: importId,
-            new_values: {
+            new_values: JSON.stringify({
               importId,
               status: LocationImportStatus.IMPORTED,
               districtsCreated,
@@ -644,7 +644,7 @@ export class LocationImportService {
               blocksUpdated,
               villagesCreated,
               villagesUpdated,
-            },
+            }) as any,
             reason: `Admin confirmed and applied location master data import '${importRecord.file_name}'`,
             ip_address: ipAddress || null,
           },

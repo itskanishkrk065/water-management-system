@@ -24,7 +24,7 @@ export class LocationsService {
       where.is_active = query.activeOnly;
     }
     if (query?.search) {
-      where.name = { contains: query.search.trim(), mode: 'insensitive' };
+      where.name = { contains: query.search.trim() };
     }
 
     return this.prisma.district.findMany({
@@ -100,7 +100,7 @@ export class LocationsService {
       where.is_active = query.activeOnly;
     }
     if (query?.search) {
-      where.name = { contains: query.search.trim(), mode: 'insensitive' };
+      where.name = { contains: query.search.trim() };
     }
 
     return this.prisma.block.findMany({
@@ -188,7 +188,7 @@ export class LocationsService {
 
     if (query?.search) {
       const s = query.search.trim();
-      where.name = { contains: s, mode: 'insensitive' };
+      where.name = { contains: s };
     }
 
     const [items, total] = await Promise.all([
@@ -287,7 +287,7 @@ export class LocationsService {
     const [districts, blocks, villages] = await Promise.all([
       this.prisma.district.findMany({
         where: {
-          name: { contains: search, mode: 'insensitive' },
+          name: { contains: search },
           is_active: true,
         },
         take: limit,
@@ -295,7 +295,7 @@ export class LocationsService {
       }),
       this.prisma.block.findMany({
         where: {
-          name: { contains: search, mode: 'insensitive' },
+          name: { contains: search },
           is_active: true,
         },
         take: limit,
@@ -306,7 +306,7 @@ export class LocationsService {
       }),
       this.prisma.village.findMany({
         where: {
-          name: { contains: search, mode: 'insensitive' },
+          name: { contains: search },
           is_active: true,
         },
         take: limit,

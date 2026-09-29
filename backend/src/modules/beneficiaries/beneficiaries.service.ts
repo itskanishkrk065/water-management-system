@@ -108,7 +108,7 @@ export class BeneficiariesService {
       return { found: false, beneficiary: null };
     }
 
-    const totalLand = this.calculateTotalLand(beneficiary.landHoldings);
+    const totalLand = this.calculateTotalLand(beneficiary.landHoldings as any);
 
     return {
       found: true,
@@ -196,7 +196,7 @@ export class BeneficiariesService {
 
     if (query.search) {
       where.OR = [
-        { name: { contains: query.search, mode: 'insensitive' } },
+        { name: { contains: query.search } },
         { phone_number: { contains: query.search } },
       ];
     }
@@ -311,7 +311,7 @@ export class BeneficiariesService {
       throw new NotFoundException('Beneficiary not found');
     }
 
-    const totalLand = this.calculateTotalLand(beneficiary.landHoldings);
+    const totalLand = this.calculateTotalLand(beneficiary.landHoldings as any);
 
     // Fetch related audit logs for History
     const auditLogs = await this.prisma.auditLog.findMany({
@@ -634,7 +634,7 @@ export class BeneficiariesService {
 
     if (dto.name && dto.villageId) {
       conditions.push({
-        name: { equals: dto.name.trim(), mode: 'insensitive' },
+        name: { equals: dto.name.trim() },
         village_id: dto.villageId,
       });
     }

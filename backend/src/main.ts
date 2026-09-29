@@ -46,4 +46,14 @@ async function bootstrap() {
   logger.log(`🚀 Backend running strictly offline on http://127.0.0.1:${port}/api/v1`);
   logger.log(`📚 Swagger documentation at http://localhost:${port}/api/docs`);
 }
-bootstrap();
+
+bootstrap().catch((err) => {
+  console.error('==============================================');
+  console.error('[NestJS Bootstrap Fatal Error]:', err?.message || err);
+  if (err?.stack) {
+    console.error('[NestJS Stack]:', err.stack);
+  }
+  console.error('==============================================');
+  process.exit(1);
+});
+

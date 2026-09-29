@@ -154,12 +154,12 @@ export class AuthService {
           action: AuditAction.CREATE,
           entity_type: 'BeneficiarySignup',
           entity_id: newBeneficiary.beneficiary_id,
-          new_values: {
+          new_values: JSON.stringify({
             email: cleanEmail,
             phone: cleanPhone,
             name: cleanName,
             role: 'BENEFICIARY',
-          },
+          }) as any,
           reason: 'Beneficiary self-service online registration',
           ip_address: ipAddress || null,
         },

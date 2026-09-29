@@ -58,6 +58,11 @@ if (!gotSingleLock) {
   });
 }
 
+let backendStderrLogs = [];
+let backendExitedState = { exited: false, code: null };
+let frontendStderrLogs = [];
+let frontendExitedState = { exited: false, code: null };
+
 // 3. Multi-Candidate Application Path Resolver
 function resolveAppPath(subpath) {
   const candidates = [
@@ -75,12 +80,22 @@ function resolveAppPath(subpath) {
   return candidates[0];
 }
 
-// 4. HTTP Health Check Helper
-function waitForHttpService(host, port, endpoint = '/', maxRetries = 75, intervalMs = 400) {
+// 4. HTTP Health Check Helper with Immediate Crash Detection
+function waitForHttpService(host, port, endpoint = '/', maxRetries = 75, intervalMs = 400, isDeadCheck = null) {
   return new Promise((resolve) => {
     let attempts = 0;
 
     const check = () => {
+      if (isDeadCheck) {
+        const deadInfo = isDeadCheck();
+        if (deadInfo && deadInfo.exited) {
+          const errorMsg = `Service process terminated unexpectedly with code ${deadInfo.code}.\n${deadInfo.logs ? deadInfo.logs.slice(-15).join('\n') : ''}`;
+          logDesktop(errorMsg);
+          resolve({ success: false, error: errorMsg });
+          return;
+        }
+      }
+
       attempts++;
       const req = http.get(
         {
@@ -110,6 +125,16 @@ function waitForHttpService(host, port, endpoint = '/', maxRetries = 75, interva
     };
 
     const retry = () => {
+      if (isDeadCheck) {
+        const deadInfo = isDeadCheck();
+        if (deadInfo && deadInfo.exited) {
+          const errorMsg = `Service process crashed (code ${deadInfo.code}).\n${deadInfo.logs ? deadInfo.logs.slice(-15).join('\n') : ''}`;
+          logDesktop(errorMsg);
+          resolve({ success: false, error: errorMsg });
+          return;
+        }
+      }
+
       if (attempts >= maxRetries) {
         const errorMsg = `Service at http://${host}:${port}${endpoint} timed out after ${(maxRetries * intervalMs) / 1000}s`;
         logDesktop(errorMsg);
@@ -135,7 +160,7 @@ function spawnNodeScript(scriptPath, args = [], options = {}) {
 
   const workingDir = options.cwd || path.dirname(scriptPath);
 
-  // 1. Primary: Use Electron's native utilityProcess (DO NOT pass ELECTRON_RUN_AS_NODE here)
+  // 1. Primary: Use Electron's native utilityProcess
   if (utilityProcess && typeof utilityProcess.fork === 'function') {
     try {
       const child = utilityProcess.fork(scriptPath, args, {
@@ -149,16 +174,30 @@ function spawnNodeScript(scriptPath, args = [], options = {}) {
 
       if (child.stdout) {
         child.stdout.on('data', (data) => {
-          logDesktop(`[${name} stdout]: ${data.toString().trim()}`);
+          const str = data.toString().trim();
+          logDesktop(`[${name} stdout]: ${str}`);
         });
       }
       if (child.stderr) {
         child.stderr.on('data', (data) => {
-          logDesktop(`[${name} stderr]: ${data.toString().trim()}`);
+          const str = data.toString().trim();
+          logDesktop(`[${name} stderr]: ${str}`);
+          if (name === 'Backend') {
+            backendStderrLogs.push(str);
+            if (backendStderrLogs.length > 50) backendStderrLogs.shift();
+          } else if (name === 'Frontend') {
+            frontendStderrLogs.push(str);
+            if (frontendStderrLogs.length > 50) frontendStderrLogs.shift();
+          }
         });
       }
       child.on('exit', (code) => {
         logDesktop(`[${name}] exited with code=${code}`);
+        if (name === 'Backend') {
+          backendExitedState = { exited: true, code, logs: backendStderrLogs };
+        } else if (name === 'Frontend') {
+          frontendExitedState = { exited: true, code, logs: frontendStderrLogs };
+        }
       });
 
       logDesktop(`[${name}] utilityProcess spawned successfully`);
@@ -182,13 +221,27 @@ function spawnNodeScript(scriptPath, args = [], options = {}) {
     });
 
     child.stdout?.on('data', (data) => {
-      logDesktop(`[${name} stdout]: ${data.toString().trim()}`);
+      const str = data.toString().trim();
+      logDesktop(`[${name} stdout]: ${str}`);
     });
     child.stderr?.on('data', (data) => {
-      logDesktop(`[${name} stderr]: ${data.toString().trim()}`);
+      const str = data.toString().trim();
+      logDesktop(`[${name} stderr]: ${str}`);
+      if (name === 'Backend') {
+        backendStderrLogs.push(str);
+        if (backendStderrLogs.length > 50) backendStderrLogs.shift();
+      } else if (name === 'Frontend') {
+        frontendStderrLogs.push(str);
+        if (frontendStderrLogs.length > 50) frontendStderrLogs.shift();
+      }
     });
     child.on('exit', (code, signal) => {
       logDesktop(`[${name}] process exited with code=${code}, signal=${signal}`);
+      if (name === 'Backend') {
+        backendExitedState = { exited: true, code, logs: backendStderrLogs };
+      } else if (name === 'Frontend') {
+        frontendExitedState = { exited: true, code, logs: frontendStderrLogs };
+      }
     });
 
     logDesktop(`[${name}] child_process.fork spawned successfully (PID: ${child.pid})`);
@@ -209,15 +262,45 @@ function startBackendService() {
   ];
   const backendDistPath = backendDistCandidates.find((p) => fs.existsSync(p)) || backendDistCandidates[0];
   const backendCwd = resolveAppPath('backend');
-  const sqliteDbPath = path.join(appDataDir, 'database', 'water_management.db');
+
+  // Ensure database directory exists
+  const dbDir = path.join(appDataDir, 'database');
+  if (!fs.existsSync(dbDir)) {
+    try {
+      fs.mkdirSync(dbDir, { recursive: true });
+    } catch {}
+  }
+
+  const sqliteDbPath = path.join(dbDir, 'water_management.db');
+
+  // Copy template DB if this is a fresh installation
+  if (!fs.existsSync(sqliteDbPath)) {
+    const templateDbCandidates = [
+      resolveAppPath(path.join('backend', 'prisma', 'template.db')),
+      path.join(process.resourcesPath || '', 'backend', 'prisma', 'template.db'),
+      path.join(__dirname, '..', 'backend', 'prisma', 'template.db'),
+    ];
+    const foundTemplate = templateDbCandidates.find((p) => fs.existsSync(p));
+    if (foundTemplate) {
+      try {
+        fs.copyFileSync(foundTemplate, sqliteDbPath);
+        logDesktop(`✓ Initialized fresh database from template: ${foundTemplate}`);
+      } catch (err) {
+        logDesktop(`Failed to copy template DB: ${err.message}`);
+      }
+    }
+  }
+
+  // Windows SQLite URL format: file:C:/path/to/db.db (normalized forward slashes)
+  const normalizedDbUrl = 'file:' + sqliteDbPath.replace(/\\/g, '/');
 
   logDesktop(`Backend dist path: ${backendDistPath}`);
   logDesktop(`Backend working dir: ${backendCwd}`);
-  logDesktop(`SQLite database path: ${sqliteDbPath}`);
+  logDesktop(`SQLite database URL: ${normalizedDbUrl}`);
 
   const backendEnv = {
     PORT: String(BACKEND_PORT),
-    DATABASE_URL: `file:${sqliteDbPath}`,
+    DATABASE_URL: normalizedDbUrl,
     WATER_APP_DATA_DIR: appDataDir,
     NODE_ENV: 'production',
     NODE_PATH: path.join(backendCwd, 'node_modules'),
@@ -474,8 +557,22 @@ app.whenReady().then(async () => {
   // 4. Await health checks
   logDesktop('Awaiting backend and frontend services readiness...');
   const [backendStatus, frontendStatus] = await Promise.all([
-    waitForHttpService(BACKEND_HOST, BACKEND_PORT, '/api/docs', 75, 400),
-    waitForHttpService(FRONTEND_HOST, FRONTEND_PORT, '/login', 75, 400),
+    waitForHttpService(
+      BACKEND_HOST,
+      BACKEND_PORT,
+      '/api/docs',
+      75,
+      400,
+      () => (backendExitedState.exited ? backendExitedState : null)
+    ),
+    waitForHttpService(
+      FRONTEND_HOST,
+      FRONTEND_PORT,
+      '/login',
+      75,
+      400,
+      () => (frontendExitedState.exited ? frontendExitedState : null)
+    ),
   ]);
 
   if (backendStatus.success && frontendStatus.success) {
@@ -491,11 +588,15 @@ app.whenReady().then(async () => {
     });
   } else {
     const errors = [];
-    if (!backendStatus.success) errors.push(`Backend API (Port ${BACKEND_PORT}) failed to respond.`);
-    if (!frontendStatus.success) errors.push(`Frontend UI (Port ${FRONTEND_PORT}) failed to respond.`);
-    const fullError = errors.join('<br/>') + `<br/><br/>Detailed logs available in:<br/><code>${logFilePath}</code>`;
+    if (!backendStatus.success) {
+      errors.push(`<strong>Backend API Failure:</strong><br/>${backendStatus.error || 'Port 4000 failed to respond.'}`);
+    }
+    if (!frontendStatus.success) {
+      errors.push(`<strong>Frontend UI Failure:</strong><br/>${frontendStatus.error || 'Port 3000 failed to respond.'}`);
+    }
+    const fullError = errors.join('<br/><br/>') + `<br/><br/><strong>Log Path:</strong><br/><code>${logFilePath}</code>`;
 
-    logDesktop(`Startup failed: ${errors.join(' ')}`);
+    logDesktop(`Startup failed: ${backendStatus.error || ''} ${frontendStatus.error || ''}`);
     mainWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(getStartupHtml(null, fullError))}`);
   }
 

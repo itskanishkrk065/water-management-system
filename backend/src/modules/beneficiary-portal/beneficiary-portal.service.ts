@@ -442,11 +442,11 @@ export class BeneficiaryPortalService {
           action: AuditAction.CREATE,
           entity_type: 'LandHolding',
           entity_id: createdHolding.land_id,
-          new_values: {
+          new_values: JSON.stringify({
             beneficiaryId: b.beneficiary_id,
             declaredTotalArea: toDecimalString(declared, 4),
             parcelsCount: dto.parcels.length,
-          },
+          }) as any,
           reason: 'Beneficiary self-service added land holding with parcels',
           ip_address: ipAddress || null,
         },
