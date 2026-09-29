@@ -50,23 +50,56 @@ Cryptographic refresh token store for session rotation.
 
 ---
 
-### 2.2 Geographic Hierarchy & Project Scope
+### 2.2 Official Geographic Hierarchy & LGD Master Data
 
-#### `projects`
-Water management schemes / canal distribution projects.
-- `project_id` (`UUID`, PK): Primary key.
-- `code` (`VARCHAR(64)`, Unique): Human-readable code (e.g. `WMP-2026-01`).
-- `name` (`VARCHAR(255)`): Project title.
-- `description` (`TEXT`, Nullable): Scope notes.
-- `status` (`ProjectStatus`): `PLANNING`, `ACTIVE`, `SUSPENDED`, `COMPLETED`.
-- `start_date` / `end_date` (`DATE`, Nullable): Scheduled duration.
+#### `districts`
+Authoritative LGD-coded administrative districts.
+- `district_id` (`UUID`, PK): Primary key (`gen_random_uuid()`).
+- `lgd_district_code` (`INT`, Unique, Nullable): Official Local Government Directory (LGD) district code.
+- `name` (`VARCHAR(255)`): District name (e.g., `Coimbatore`, `Kancheepuram`).
+- `is_active` (`BOOLEAN`, Default: `true`): Active status flag.
+- `created_at` / `updated_at` (`TIMESTAMPTZ`): Timestamps.
+- *Indexes*: `idx_districts_lgd (lgd_district_code)`, `idx_districts_name (name)`.
+
+#### `blocks`
+Dedicated administrative block level between District and Village.
+- `block_id` (`UUID`, PK): Primary key (`gen_random_uuid()`).
+- `district_id` (`UUID`, FK -> `districts.district_id`, `ON DELETE RESTRICT`): Parent district.
+- `lgd_block_code` (`INT`, Unique): Official LGD block identifier.
+- `name` (`VARCHAR(255)`): Block name (e.g., `Pollachi North`, `Walajabad`).
+- `is_active` (`BOOLEAN`, Default: `true`): Active status flag.
+- `created_at` / `updated_at` (`TIMESTAMPTZ`): Timestamps.
+- *Indexes*: `idx_blocks_lgd (lgd_block_code)`, `idx_blocks_district (district_id)`, `idx_blocks_dist_lgd (district_id, lgd_block_code)`.
+
+#### `villages`
+Granular revenue villages mapped to blocks.
+- `village_id` (`UUID`, PK): Primary key (`gen_random_uuid()`).
+- `block_id` (`UUID`, FK -> `blocks.block_id`, `ON DELETE RESTRICT`): Parent administrative block.
+- `panchayat_id` (`UUID`, Nullable, FK -> `panchayats.panchayat_id`): Legacy backward compatibility.
+- `lgd_village_code` (`INT`, Unique, Nullable): Official LGD village code (e.g., `223994`).
+- `name` (`VARCHAR(255)`): Village name (e.g., `Angambakkam`, `Annamalai`).
+- `is_active` (`BOOLEAN`, Default: `true`): Active status flag.
+- `created_at` / `updated_at` (`TIMESTAMPTZ`): Timestamps.
+- *Indexes*: `idx_villages_block (block_id)`, `idx_villages_lgd (lgd_village_code)`, `idx_villages_name (name)`.
+
+#### `location_imports`
+Administrative audit and tracking table for Excel master data imports.
+- `import_id` (`UUID`, PK): Primary key.
+- `file_name` (`VARCHAR(255)`): Uploaded spreadsheet file name.
+- `file_hash` (`VARCHAR(64)`): SHA-256 cryptographic checksum of raw file buffer.
+- `uploaded_by` (`VARCHAR(255)`): Email of administrator who uploaded the file.
+- `uploaded_at` (`TIMESTAMPTZ`, Default: `now()`): Timestamp of upload.
+- `total_rows` (`INT`): Total rows in spreadsheet sheet.
+- `valid_rows` (`INT`): Number of valid, parsed rows ready for import.
+- `invalid_rows` (`INT`): Number of row validation errors detected.
+- `districts_created` / `districts_updated` (`INT`, Default: `0`): Districts upsert counts.
+- `blocks_created` / `blocks_updated` (`INT`, Default: `0`): Blocks upsert counts.
+- `villages_created` / `villages_updated` (`INT`, Default: `0`): Villages upsert counts.
+- `status` (`LocationImportStatus`): `UPLOADED`, `VALIDATING`, `VALIDATED`, `IMPORTED`, `FAILED`, `CANCELLED`.
+- `error_summary` (`JSONB`, Nullable): Detailed row-by-row validation error diagnostics.
+- `preview_data` (`JSONB`, Nullable): Stored preview metrics, new/existing entity counts, and parsed records.
 - `created_at` / `updated_at` (`TIMESTAMPTZ`).
-
-#### `districts`, `panchayats`, `villages`
-Normalized 3-level administrative tree:
-- **`districts`**: `district_id` (PK), `project_id` (FK -> `projects`), `name`, `code` (Unique per project).
-- **`panchayats`**: `panchayat_id` (PK), `district_id` (FK -> `districts`), `name`, `code`, `direction` (`NORTH`, `SOUTH`, `EAST`, `WEST`).
-- **`villages`**: `village_id` (PK), `panchayat_id` (FK -> `panchayats`), `name`, `code` (Unique per panchayat).
+- *Indexes*: `idx_location_imports_date (uploaded_at)`, `idx_location_imports_status (status)`.
 
 ---
 

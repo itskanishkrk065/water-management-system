@@ -175,15 +175,49 @@ model Project {
   @@map("projects")
 }
 
-model District {
-  district_id String   @id @default(uuid()) @db.Uuid
-  name        String   @unique
-  created_at  DateTime @default(now())
+enum LocationImportStatus {
+  UPLOADED
+  VALIDATING
+  VALIDATED
+  IMPORTED
+  FAILED
+  CANCELLED
+}
 
+model District {
+  district_id       String   @id @default(uuid()) @db.Uuid
+  lgd_district_code Int?     @unique
+  name              String
+  is_active         Boolean  @default(true)
+  created_at        DateTime @default(now())
+  updated_at        DateTime @updatedAt @default(now())
+
+  blocks        Block[]
   panchayats    Panchayat[]
   beneficiaries Beneficiary[]
 
+  @@index([lgd_district_code])
+  @@index([name])
   @@map("districts")
+}
+
+model Block {
+  block_id       String   @id @default(uuid()) @db.Uuid
+  district_id    String   @db.Uuid
+  lgd_block_code Int      @unique
+  name           String
+  is_active      Boolean  @default(true)
+  created_at     DateTime @default(now())
+  updated_at     DateTime @updatedAt @default(now())
+
+  district      District      @relation(fields: [district_id], references: [district_id], onDelete: Restrict)
+  villages      Village[]
+  beneficiaries Beneficiary[]
+
+  @@index([district_id])
+  @@index([lgd_block_code])
+  @@index([district_id, lgd_block_code])
+  @@map("blocks")
 }
 
 model Panchayat {
@@ -201,16 +235,50 @@ model Panchayat {
 }
 
 model Village {
-  village_id   String   @id @default(uuid()) @db.Uuid
-  panchayat_id String   @db.Uuid
-  name         String
-  created_at   DateTime @default(now())
+  village_id       String   @id @default(uuid()) @db.Uuid
+  block_id         String?  @db.Uuid
+  panchayat_id     String?  @db.Uuid
+  lgd_village_code Int?     @unique
+  name             String
+  is_active        Boolean  @default(true)
+  created_at       DateTime @default(now())
+  updated_at       DateTime @updatedAt @default(now())
 
-  panchayat     Panchayat     @relation(fields: [panchayat_id], references: [panchayat_id], onDelete: Restrict)
+  block         Block?        @relation(fields: [block_id], references: [block_id], onDelete: Restrict)
+  panchayat     Panchayat?    @relation(fields: [panchayat_id], references: [panchayat_id], onDelete: Restrict)
   beneficiaries Beneficiary[]
 
-  @@unique([panchayat_id, name])
+  @@index([block_id])
+  @@index([panchayat_id])
+  @@index([lgd_village_code])
+  @@index([name])
   @@map("villages")
+}
+
+model LocationImport {
+  import_id         String               @id @default(uuid()) @db.Uuid
+  file_name         String
+  file_hash         String
+  uploaded_by       String
+  uploaded_at       DateTime             @default(now())
+  total_rows        Int
+  valid_rows        Int
+  invalid_rows      Int
+  districts_created Int                  @default(0)
+  districts_updated Int                  @default(0)
+  blocks_created    Int                  @default(0)
+  blocks_updated    Int                  @default(0)
+  villages_created  Int                  @default(0)
+  villages_updated  Int                  @default(0)
+  status            LocationImportStatus @default(UPLOADED)
+  error_summary     Json?
+  preview_data      Json?
+  created_at        DateTime             @default(now())
+  updated_at        DateTime             @updatedAt @default(now())
+
+  @@index([uploaded_at])
+  @@index([status])
+  @@map("location_imports")
 }
 
 model Beneficiary {
@@ -223,6 +291,7 @@ model Beneficiary {
   address_line_2       String?
   address_line_3       String?
   district_id          String?            @db.Uuid
+  block_id             String?            @db.Uuid
   panchayat_id         String?            @db.Uuid
   village_id           String?            @db.Uuid
   pincode              String?
@@ -234,6 +303,7 @@ model Beneficiary {
 
   user              User?                  @relation(fields: [user_id], references: [user_id])
   district          District?              @relation(fields: [district_id], references: [district_id], onDelete: Restrict)
+  block             Block?                 @relation(fields: [block_id], references: [block_id], onDelete: Restrict)
   panchayat         Panchayat?             @relation(fields: [panchayat_id], references: [panchayat_id], onDelete: Restrict)
   village           Village?               @relation(fields: [village_id], references: [village_id], onDelete: Restrict)
   landHoldings      LandHolding[]
@@ -247,6 +317,9 @@ model Beneficiary {
   documents         BeneficiaryDocument[]
 
   @@index([phone_number])
+  @@index([district_id])
+  @@index([block_id])
+  @@index([village_id])
   @@map("beneficiaries")
 }
 

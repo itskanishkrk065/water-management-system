@@ -360,8 +360,8 @@ function BeneficiaryDetailPageContent() {
                 <div className="font-medium text-slate-800 mt-0.5">{b.district?.name}</div>
               </div>
               <div>
-                <span className="text-slate-400">Panchayat:</span>
-                <div className="font-medium text-slate-800 mt-0.5">{b.panchayat?.name}</div>
+                <span className="text-slate-400">Block:</span>
+                <div className="font-medium text-slate-800 mt-0.5">{b.block?.name || b.panchayat?.name || '—'}</div>
               </div>
               <div>
                 <span className="text-slate-400">Village:</span>

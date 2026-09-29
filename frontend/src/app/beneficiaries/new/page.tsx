@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '@/lib/api';
 import { useQuery } from '@tanstack/react-query';
-import { Phone, Search, UserCheck, AlertCircle, ArrowRight, PlusCircle, FileText } from 'lucide-react';
+import { Phone, Search, UserCheck, AlertCircle, ArrowRight, PlusCircle, FileText, CheckCircle2 } from 'lucide-react';
 import Link from 'next/link';
 import { formatAcres } from '@/lib/utils';
 
@@ -19,20 +19,22 @@ export default function NewBeneficiaryPage() {
 
   // Form State for new beneficiary
   const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
   const [addressLine1, setAddressLine1] = useState('');
   const [addressLine2, setAddressLine2] = useState('');
   const [addressLine3, setAddressLine3] = useState('');
   const [districtId, setDistrictId] = useState('');
-  const [panchayatId, setPanchayatId] = useState('');
+  const [blockId, setBlockId] = useState('');
   const [villageId, setVillageId] = useState('');
+  const [villageSearch, setVillageSearch] = useState('');
   const [pincode, setPincode] = useState('642001');
   const [locationDirection, setLocationDirection] = useState('NORTH');
   const [locationDescription, setLocationDescription] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch geographic hierarchy for dropdowns
-  const { data: districts } = useQuery({
+  // Fetch Districts
+  const { data: districts, isLoading: districtsLoading } = useQuery({
     queryKey: ['districts'],
     queryFn: async () => {
       const res = await apiClient.get('/locations/districts');
@@ -40,25 +42,34 @@ export default function NewBeneficiaryPage() {
     },
   });
 
-  const { data: panchayats } = useQuery({
-    queryKey: ['panchayats', districtId],
+  // Fetch Blocks when districtId changes
+  const { data: blocks, isLoading: blocksLoading } = useQuery({
+    queryKey: ['blocks', districtId],
     queryFn: async () => {
       if (!districtId) return [];
-      const res = await apiClient.get('/locations/panchayats', { params: { districtId } });
+      const res = await apiClient.get(`/locations/districts/${districtId}/blocks`);
       return res.data;
     },
     enabled: !!districtId,
   });
 
-  const { data: villages } = useQuery({
-    queryKey: ['villages', panchayatId],
+  // Fetch Villages when blockId changes (with search query)
+  const { data: villageData, isLoading: villagesLoading } = useQuery({
+    queryKey: ['villages', blockId, villageSearch],
     queryFn: async () => {
-      if (!panchayatId) return [];
-      const res = await apiClient.get('/locations/villages', { params: { panchayatId } });
+      if (!blockId) return { items: [] };
+      const res = await apiClient.get(`/locations/blocks/${blockId}/villages`, {
+        params: {
+          search: villageSearch.trim() || undefined,
+          limit: 100,
+        },
+      });
       return res.data;
     },
-    enabled: !!panchayatId,
+    enabled: !!blockId,
   });
+
+  const villages = Array.isArray(villageData) ? villageData : villageData?.items || [];
 
   const handlePhoneLookup = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -86,17 +97,18 @@ export default function NewBeneficiaryPage() {
 
     try {
       const res = await apiClient.post('/beneficiaries', {
-        name,
+        name: name.trim(),
+        email: email.trim() || undefined,
         phoneNumber: phoneNumber.trim(),
-        addressLine1,
-        addressLine2: addressLine2 || undefined,
-        addressLine3: addressLine3 || undefined,
+        addressLine1: addressLine1.trim(),
+        addressLine2: addressLine2.trim() || undefined,
+        addressLine3: addressLine3.trim() || undefined,
         districtId,
-        panchayatId,
+        blockId,
         villageId,
-        pincode,
+        pincode: pincode.trim(),
         locationDirection,
-        locationDescription: locationDescription || undefined,
+        locationDescription: locationDescription.trim() || undefined,
       });
 
       router.push(`/beneficiaries/${res.data.beneficiary_id}`);
@@ -190,7 +202,7 @@ export default function NewBeneficiaryPage() {
             <div>
               <span className="text-slate-400">Location:</span>
               <div className="font-semibold text-slate-800">
-                {lookupResult.beneficiary.village?.name}, {lookupResult.beneficiary.district?.name}
+                {lookupResult.beneficiary.village?.name}, {lookupResult.beneficiary.block?.name || lookupResult.beneficiary.panchayat?.name}, {lookupResult.beneficiary.district?.name}
               </div>
             </div>
             <div>
@@ -274,6 +286,20 @@ export default function NewBeneficiaryPage() {
               />
             </div>
 
+            <div className="sm:col-span-2">
+              <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+                Email Address (Optional)
+              </label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="farmer@water.gov"
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:outline-none"
+              />
+            </div>
+
+            {/* Cascading Location Hierarchy: District -> Block -> Village */}
             <div>
               <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
                 District *
@@ -283,15 +309,16 @@ export default function NewBeneficiaryPage() {
                 value={districtId}
                 onChange={(e) => {
                   setDistrictId(e.target.value);
-                  setPanchayatId('');
+                  setBlockId('');
                   setVillageId('');
+                  setVillageSearch('');
                 }}
                 className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:outline-none bg-white"
               >
-                <option value="">Select District</option>
+                <option value="">{districtsLoading ? 'Loading districts...' : '-- Select District --'}</option>
                 {districts?.map((d: any) => (
                   <option key={d.district_id} value={d.district_id}>
-                    {d.name}
+                    {d.name} {d.lgd_district_code ? `(LGD ${d.lgd_district_code})` : ''}
                   </option>
                 ))}
               </select>
@@ -299,42 +326,67 @@ export default function NewBeneficiaryPage() {
 
             <div>
               <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
-                Panchayat *
+                Block *
               </label>
               <select
                 required
-                disabled={!districtId}
-                value={panchayatId}
+                disabled={!districtId || blocksLoading}
+                value={blockId}
                 onChange={(e) => {
-                  setPanchayatId(e.target.value);
+                  setBlockId(e.target.value);
                   setVillageId('');
+                  setVillageSearch('');
                 }}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:outline-none bg-white disabled:opacity-50"
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:outline-none bg-white disabled:bg-slate-100 disabled:text-slate-400 transition"
               >
-                <option value="">Select Panchayat</option>
-                {panchayats?.map((p: any) => (
-                  <option key={p.panchayat_id} value={p.panchayat_id}>
-                    {p.name}
+                <option value="">
+                  {!districtId ? 'First select District' : blocksLoading ? 'Loading blocks...' : '-- Select Block --'}
+                </option>
+                {blocks?.map((b: any) => (
+                  <option key={b.block_id} value={b.block_id}>
+                    {b.name} {b.lgd_block_code ? `(LGD ${b.lgd_block_code})` : ''}
                   </option>
                 ))}
               </select>
             </div>
 
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
-                Village *
-              </label>
+            <div className="sm:col-span-2 space-y-1.5">
+              <div className="flex items-center justify-between">
+                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                  Revenue Village *
+                </label>
+                {blockId && (
+                  <div className="flex items-center space-x-1 text-xs text-slate-500">
+                    <Search className="w-3 h-3 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder="Search village name..."
+                      value={villageSearch}
+                      onChange={(e) => setVillageSearch(e.target.value)}
+                      className="px-2 py-0.5 border border-slate-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-sky-500"
+                    />
+                  </div>
+                )}
+              </div>
               <select
                 required
-                disabled={!panchayatId}
+                disabled={!blockId || villagesLoading}
                 value={villageId}
                 onChange={(e) => setVillageId(e.target.value)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:outline-none bg-white disabled:opacity-50"
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:outline-none bg-white disabled:bg-slate-100 disabled:text-slate-400 transition"
               >
-                <option value="">Select Village</option>
-                {villages?.map((v: any) => (
+                <option value="">
+                  {!blockId
+                    ? 'First select Block'
+                    : villagesLoading
+                    ? 'Loading villages...'
+                    : villages.length === 0
+                    ? 'No villages found'
+                    : '-- Select Village --'}
+                </option>
+                {villages.map((v: any) => (
                   <option key={v.village_id} value={v.village_id}>
-                    {v.name}
+                    {v.name} {v.lgd_village_code ? `(LGD ${v.lgd_village_code})` : ''}
                   </option>
                 ))}
               </select>
@@ -342,29 +394,16 @@ export default function NewBeneficiaryPage() {
 
             <div>
               <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
-                Pincode *
+                Postal PIN Code *
               </label>
               <input
                 type="text"
                 required
+                maxLength={6}
                 value={pincode}
                 onChange={(e) => setPincode(e.target.value)}
                 placeholder="642001"
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:outline-none"
-              />
-            </div>
-
-            <div className="sm:col-span-2">
-              <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
-                Address Line 1 (Street / Landmark) *
-              </label>
-              <input
-                type="text"
-                required
-                value={addressLine1}
-                onChange={(e) => setAddressLine1(e.target.value)}
-                placeholder="Door No, Street Name"
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:outline-none"
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono focus:ring-2 focus:ring-sky-500 focus:outline-none"
               />
             </div>
 
@@ -384,9 +423,36 @@ export default function NewBeneficiaryPage() {
               </select>
             </div>
 
+            <div className="sm:col-span-2">
+              <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+                Address Line 1 (Street / Landmark) *
+              </label>
+              <input
+                type="text"
+                required
+                value={addressLine1}
+                onChange={(e) => setAddressLine1(e.target.value)}
+                placeholder="Door No, Street Name"
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:outline-none"
+              />
+            </div>
+
             <div>
               <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
-                Location Description
+                Address Line 2 (Area / Locality)
+              </label>
+              <input
+                type="text"
+                value={addressLine2}
+                onChange={(e) => setAddressLine2(e.target.value)}
+                placeholder="Locality area"
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+                Location Description / Landmark
               </label>
               <input
                 type="text"

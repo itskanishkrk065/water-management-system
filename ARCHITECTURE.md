@@ -21,11 +21,12 @@ The NestJS backend is organized into domain-specific modules with strict encapsu
 src/modules/
 ├── auth/            # JWT issuance, refresh tokens, passport strategies, AuthGuard
 ├── users/           # User accounts and profile management
-├── roles/           # RBAC permissions (ADMIN, FIELD_OFFICER, ACCOUNTS, VIEWER)
-├── projects/        # Water management projects lifecycle & metadata
-├── locations/       # Administrative hierarchy: District -> Panchayat -> Village
+├── roles/           # RBAC permissions (ADMIN, FIELD_OFFICER, ACCOUNTS, VIEWER, BENEFICIARY)
+├── projects/        # Water management schemes lifecycle & metadata
+├── locations/       # Official LGD hierarchy (District -> Block -> Village) & Excel Import engine
 ├── beneficiaries/   # Beneficiary records, phone lookup workflow, permanent UUIDs
-├── land/            # Land holdings & SF/subdivision parcels with area checksums
+├── beneficiary-portal/ # Farmer self-service portal, 5-stage onboarding, quota requests
+├── land/            # Land holdings & SF/subdivision parcels with strict area checksums
 ├── rates/           # Versioned volumetric & development rate configurations
 ├── water/           # Water applications & approvals with rate/land snapshots
 ├── billing/         # Development bills, 5-installment schedules, running bills
@@ -45,9 +46,8 @@ Each module provides its own `Controller`, `Service`, `DTOs` (with `class-valida
 
 ```mermaid
 erDiagram
-    PROJECT ||--o{ DISTRICT : "covers"
-    DISTRICT ||--|{ PANCHAYAT : "contains"
-    PANCHAYAT ||--|{ VILLAGE : "contains"
+    DISTRICT ||--|{ BLOCK : "contains"
+    BLOCK ||--|{ VILLAGE : "contains"
     VILLAGE ||--o{ BENEFICIARY : "resides in"
     
     USER ||--o| BENEFICIARY : "authenticates as"
@@ -74,6 +74,8 @@ erDiagram
     
     WATER_ALLOTMENT ||--o{ EXTENSION : "extended by"
     EXTENSION ||--o{ PAYMENT : "receives"
+    
+    LOCATION_IMPORT ||--o{ DISTRICT : "populates"
 ```
 
 ---

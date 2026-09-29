@@ -34,6 +34,11 @@ export class UpdateProfileDto {
   @IsUUID()
   districtId?: string;
 
+  @ApiPropertyOptional({ example: 'UUID of Block' })
+  @IsOptional()
+  @IsUUID()
+  blockId?: string;
+
   @ApiPropertyOptional({ example: 'UUID of Panchayat' })
   @IsOptional()
   @IsUUID()

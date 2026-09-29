@@ -1,5 +1,5 @@
 import { IsEnum, IsNotEmpty, IsOptional, IsString, IsUUID } from 'class-validator';
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { BeneficiaryStatus, LocationDirection } from '@prisma/client';
 
 export class CreateBeneficiaryDto {
@@ -13,17 +13,22 @@ export class CreateBeneficiaryDto {
   @IsNotEmpty()
   phoneNumber: string;
 
+  @ApiPropertyOptional({ example: 'farmer@water.gov' })
+  @IsOptional()
+  @IsString()
+  email?: string;
+
   @ApiProperty({ example: 'Door 45, North Street' })
   @IsString()
   @IsNotEmpty()
   addressLine1: string;
 
-  @ApiProperty({ example: 'Near Murugan Temple', required: false })
+  @ApiPropertyOptional({ example: 'Near Murugan Temple' })
   @IsOptional()
   @IsString()
   addressLine2?: string;
 
-  @ApiProperty({ example: 'Post Box 12', required: false })
+  @ApiPropertyOptional({ example: 'Post Box 12' })
   @IsOptional()
   @IsString()
   addressLine3?: string;
@@ -33,10 +38,15 @@ export class CreateBeneficiaryDto {
   @IsNotEmpty()
   districtId: string;
 
-  @ApiProperty({ example: 'UUID of Panchayat' })
+  @ApiPropertyOptional({ example: 'UUID of Block' })
+  @IsOptional()
   @IsUUID()
-  @IsNotEmpty()
-  panchayatId: string;
+  blockId?: string;
+
+  @ApiPropertyOptional({ example: 'UUID of Legacy Panchayat' })
+  @IsOptional()
+  @IsUUID()
+  panchayatId?: string;
 
   @ApiProperty({ example: 'UUID of Village' })
   @IsUUID()
@@ -53,59 +63,84 @@ export class CreateBeneficiaryDto {
   @IsNotEmpty()
   locationDirection: LocationDirection;
 
-  @ApiProperty({ example: 'Farmland bordering the high-level canal', required: false })
+  @ApiPropertyOptional({ example: 'Farmland bordering the high-level canal' })
   @IsOptional()
   @IsString()
   locationDescription?: string;
 
-  @ApiProperty({ enum: BeneficiaryStatus, default: BeneficiaryStatus.ACTIVE })
+  @ApiPropertyOptional({ enum: BeneficiaryStatus, default: BeneficiaryStatus.ACTIVE })
   @IsOptional()
   @IsEnum(BeneficiaryStatus)
   status?: BeneficiaryStatus;
 }
 
 export class UpdateBeneficiaryDto {
-  @ApiProperty({ required: false })
+  @ApiPropertyOptional({ example: 'K. Ramasamy Gounder' })
   @IsOptional()
   @IsString()
   name?: string;
 
-  @ApiProperty({ required: false })
+  @ApiPropertyOptional({ example: '9876543210' })
   @IsOptional()
   @IsString()
   phoneNumber?: string;
 
-  @ApiProperty({ required: false })
+  @ApiPropertyOptional({ example: 'farmer@water.gov' })
+  @IsOptional()
+  @IsString()
+  email?: string;
+
+  @ApiPropertyOptional({ example: 'Door 45, North Street' })
   @IsOptional()
   @IsString()
   addressLine1?: string;
 
-  @ApiProperty({ required: false })
+  @ApiPropertyOptional({ example: 'Near Murugan Temple' })
   @IsOptional()
   @IsString()
   addressLine2?: string;
 
-  @ApiProperty({ required: false })
+  @ApiPropertyOptional({ example: 'Post Box 12' })
   @IsOptional()
   @IsString()
   addressLine3?: string;
 
-  @ApiProperty({ required: false })
+  @ApiPropertyOptional({ example: 'UUID of District' })
+  @IsOptional()
+  @IsUUID()
+  districtId?: string;
+
+  @ApiPropertyOptional({ example: 'UUID of Block' })
+  @IsOptional()
+  @IsUUID()
+  blockId?: string;
+
+  @ApiPropertyOptional({ example: 'UUID of Legacy Panchayat' })
+  @IsOptional()
+  @IsUUID()
+  panchayatId?: string;
+
+  @ApiPropertyOptional({ example: 'UUID of Village' })
+  @IsOptional()
+  @IsUUID()
+  villageId?: string;
+
+  @ApiPropertyOptional({ example: '642001' })
   @IsOptional()
   @IsString()
   pincode?: string;
 
-  @ApiProperty({ enum: LocationDirection, required: false })
+  @ApiPropertyOptional({ enum: LocationDirection, example: LocationDirection.NORTH })
   @IsOptional()
   @IsEnum(LocationDirection)
   locationDirection?: LocationDirection;
 
-  @ApiProperty({ required: false })
+  @ApiPropertyOptional({ example: 'Farmland bordering the high-level canal' })
   @IsOptional()
   @IsString()
   locationDescription?: string;
 
-  @ApiProperty({ enum: BeneficiaryStatus, required: false })
+  @ApiPropertyOptional({ enum: BeneficiaryStatus })
   @IsOptional()
   @IsEnum(BeneficiaryStatus)
   status?: BeneficiaryStatus;

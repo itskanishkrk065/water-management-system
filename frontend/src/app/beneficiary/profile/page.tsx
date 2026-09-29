@@ -13,6 +13,7 @@ import {
   Building,
   ShieldCheck,
   ArrowRight,
+  Search,
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -33,7 +34,7 @@ export default function BeneficiaryProfilePage() {
 
   const [formData, setFormData] = useState({
     districtId: '',
-    panchayatId: '',
+    blockId: '',
     villageId: '',
     addressLine1: '',
     addressLine2: '',
@@ -43,6 +44,7 @@ export default function BeneficiaryProfilePage() {
     locationDescription: '',
   });
 
+  const [villageSearch, setVillageSearch] = useState('');
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -51,7 +53,7 @@ export default function BeneficiaryProfilePage() {
     if (b) {
       setFormData({
         districtId: b.district_id || '',
-        panchayatId: b.panchayat_id || '',
+        blockId: b.block_id || '',
         villageId: b.village_id || '',
         addressLine1: b.address_line_1 || '',
         addressLine2: b.address_line_2 || '',
@@ -64,7 +66,7 @@ export default function BeneficiaryProfilePage() {
   }, [b]);
 
   // Fetch Districts
-  const { data: districts } = useQuery({
+  const { data: districts, isLoading: districtsLoading } = useQuery({
     queryKey: ['districts'],
     queryFn: async () => {
       const res = await apiClient.get('/locations/districts');
@@ -72,27 +74,34 @@ export default function BeneficiaryProfilePage() {
     },
   });
 
-  // Fetch Panchayats when districtId changes
-  const { data: panchayats } = useQuery({
-    queryKey: ['panchayats', formData.districtId],
+  // Fetch Blocks when districtId changes
+  const { data: blocks, isLoading: blocksLoading } = useQuery({
+    queryKey: ['blocks', formData.districtId],
     queryFn: async () => {
       if (!formData.districtId) return [];
-      const res = await apiClient.get(`/locations/panchayats?districtId=${formData.districtId}`);
+      const res = await apiClient.get(`/locations/districts/${formData.districtId}/blocks`);
       return res.data;
     },
     enabled: !!formData.districtId,
   });
 
-  // Fetch Villages when panchayatId changes
-  const { data: villages } = useQuery({
-    queryKey: ['villages', formData.panchayatId],
+  // Fetch Villages when blockId changes (with search)
+  const { data: villageData, isLoading: villagesLoading } = useQuery({
+    queryKey: ['villages', formData.blockId, villageSearch],
     queryFn: async () => {
-      if (!formData.panchayatId) return [];
-      const res = await apiClient.get(`/locations/villages?panchayatId=${formData.panchayatId}`);
+      if (!formData.blockId) return { items: [] };
+      const res = await apiClient.get(`/locations/blocks/${formData.blockId}/villages`, {
+        params: {
+          search: villageSearch.trim() || undefined,
+          limit: 100,
+        },
+      });
       return res.data;
     },
-    enabled: !!formData.panchayatId,
+    enabled: !!formData.blockId,
   });
+
+  const villages = Array.isArray(villageData) ? villageData : villageData?.items || [];
 
   const updateProfileMutation = useMutation({
     mutationFn: async (payload: any) => {
@@ -100,7 +109,7 @@ export default function BeneficiaryProfilePage() {
       return res.data;
     },
     onSuccess: () => {
-      setSuccessMsg('Profile details successfully saved and verified!');
+      setSuccessMsg('Profile details and cascading location successfully saved and verified!');
       setErrorMsg(null);
       queryClient.invalidateQueries({ queryKey: ['beneficiary-me'] });
       queryClient.invalidateQueries({ queryKey: ['beneficiary-dashboard'] });
@@ -121,7 +130,7 @@ export default function BeneficiaryProfilePage() {
       addressLine2: formData.addressLine2 || undefined,
       addressLine3: formData.addressLine3 || undefined,
       districtId: formData.districtId || undefined,
-      panchayatId: formData.panchayatId || undefined,
+      blockId: formData.blockId || undefined,
       villageId: formData.villageId || undefined,
       pincode: formData.pincode || undefined,
       locationDirection: formData.locationDirection,
@@ -145,7 +154,7 @@ export default function BeneficiaryProfilePage() {
       <div>
         <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Beneficiary Profile &amp; Location Setup</h1>
         <p className="text-sm text-slate-500 mt-1">
-          Complete your administrative hierarchy and address details to register survey parcels and water quotas
+          Complete your official administrative hierarchy (District &rarr; Block &rarr; Village) to enable survey parcels and water quotas
         </p>
       </div>
 
@@ -245,11 +254,11 @@ export default function BeneficiaryProfilePage() {
           </div>
         </div>
 
-        {/* Section 2: Administrative Revenue Hierarchy */}
+        {/* Section 2: Administrative Revenue Hierarchy (Cascading District -> Block -> Village) */}
         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-6">
           <div className="flex items-center space-x-2 border-b border-slate-100 pb-3">
             <Building className="w-5 h-5 text-amber-600" />
-            <h2 className="text-base font-bold text-slate-900">Revenue Jurisdiction (Cascading)</h2>
+            <h2 className="text-base font-bold text-slate-900">Official Location Hierarchy (Cascading LGD Master)</h2>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -265,64 +274,94 @@ export default function BeneficiaryProfilePage() {
                   setFormData({
                     ...formData,
                     districtId: e.target.value,
-                    panchayatId: '',
+                    blockId: '',
                     villageId: '',
                   });
+                  setVillageSearch('');
                 }}
                 className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition"
               >
-                <option value="">-- Select District --</option>
+                <option value="">{districtsLoading ? 'Loading districts...' : '-- Select District --'}</option>
                 {districts?.map((d: any) => (
                   <option key={d.district_id} value={d.district_id}>
-                    {d.name} ({d.code})
+                    {d.name} {d.lgd_district_code ? `(LGD ${d.lgd_district_code})` : ''}
                   </option>
                 ))}
               </select>
             </div>
 
-            {/* Panchayat */}
+            {/* Block */}
             <div>
               <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
-                Panchayat / Block *
+                Block *
               </label>
               <select
                 required
-                disabled={!formData.districtId}
-                value={formData.panchayatId}
+                disabled={!formData.districtId || blocksLoading}
+                value={formData.blockId}
                 onChange={(e) => {
                   setFormData({
                     ...formData,
-                    panchayatId: e.target.value,
+                    blockId: e.target.value,
                     villageId: '',
                   });
+                  setVillageSearch('');
                 }}
                 className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition disabled:bg-slate-100 disabled:text-slate-400"
               >
-                <option value="">-- Select Panchayat --</option>
-                {panchayats?.map((p: any) => (
-                  <option key={p.panchayat_id} value={p.panchayat_id}>
-                    {p.name}
+                <option value="">
+                  {!formData.districtId
+                    ? 'First select District'
+                    : blocksLoading
+                    ? 'Loading blocks...'
+                    : '-- Select Block --'}
+                </option>
+                {blocks?.map((blk: any) => (
+                  <option key={blk.block_id} value={blk.block_id}>
+                    {blk.name} {blk.lgd_block_code ? `(LGD ${blk.lgd_block_code})` : ''}
                   </option>
                 ))}
               </select>
             </div>
 
             {/* Village */}
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
-                Revenue Village *
-              </label>
+            <div className="space-y-1">
+              <div className="flex items-center justify-between">
+                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                  Village *
+                </label>
+                {formData.blockId && (
+                  <div className="flex items-center space-x-1 text-xs text-slate-500">
+                    <Search className="w-3 h-3 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder="Search..."
+                      value={villageSearch}
+                      onChange={(e) => setVillageSearch(e.target.value)}
+                      className="px-1.5 py-0.5 border border-slate-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-amber-500 w-24"
+                    />
+                  </div>
+                )}
+              </div>
               <select
                 required
-                disabled={!formData.panchayatId}
+                disabled={!formData.blockId || villagesLoading}
                 value={formData.villageId}
                 onChange={(e) => setFormData({ ...formData, villageId: e.target.value })}
                 className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition disabled:bg-slate-100 disabled:text-slate-400"
               >
-                <option value="">-- Select Village --</option>
-                {villages?.map((v: any) => (
+                <option value="">
+                  {!formData.blockId
+                    ? 'First select Block'
+                    : villagesLoading
+                    ? 'Loading villages...'
+                    : villages.length === 0
+                    ? 'No villages found'
+                    : '-- Select Village --'}
+                </option>
+                {villages.map((v: any) => (
                   <option key={v.village_id} value={v.village_id}>
-                    {v.name}
+                    {v.name} {v.lgd_village_code ? `(LGD ${v.lgd_village_code})` : ''}
                   </option>
                 ))}
               </select>

@@ -52,69 +52,61 @@ async function main() {
   }
   console.log('Seeded Users: admin@water.gov, field@water.gov, accounts@water.gov, viewer@water.gov (password: Admin@123456)');
 
-  // 3. Location Hierarchy: District -> Panchayat -> Village
+  // 3. Location Hierarchy: District -> Block -> Village
   const district = await prisma.district.upsert({
-    where: { name: 'Coimbatore' },
-    update: {},
-    create: { name: 'Coimbatore' },
+    where: { lgd_district_code: 528 },
+    update: { name: 'Coimbatore', is_active: true },
+    create: {
+      name: 'Coimbatore',
+      lgd_district_code: 528,
+      is_active: true,
+    },
   });
 
-  const panchayatNorth = await prisma.panchayat.upsert({
-    where: {
-      district_id_name: {
-        district_id: district.district_id,
-        name: 'Pollachi North',
-      },
-    },
-    update: {},
+  const blockNorth = await prisma.block.upsert({
+    where: { lgd_block_code: 6482 },
+    update: { name: 'Pollachi North', district_id: district.district_id, is_active: true },
     create: {
       district_id: district.district_id,
+      lgd_block_code: 6482,
       name: 'Pollachi North',
+      is_active: true,
     },
   });
 
-  const panchayatSouth = await prisma.panchayat.upsert({
-    where: {
-      district_id_name: {
-        district_id: district.district_id,
-        name: 'Pollachi South',
-      },
-    },
-    update: {},
+  const blockSouth = await prisma.block.upsert({
+    where: { lgd_block_code: 6483 },
+    update: { name: 'Pollachi South', district_id: district.district_id, is_active: true },
     create: {
       district_id: district.district_id,
+      lgd_block_code: 6483,
       name: 'Pollachi South',
+      is_active: true,
     },
   });
 
   const village1 = await prisma.village.upsert({
-    where: {
-      panchayat_id_name: {
-        panchayat_id: panchayatNorth.panchayat_id,
-        name: 'Annamalai',
-      },
-    },
-    update: {},
+    where: { lgd_village_code: 223994 },
+    update: { name: 'Annamalai', block_id: blockNorth.block_id, is_active: true },
     create: {
-      panchayat_id: panchayatNorth.panchayat_id,
+      block_id: blockNorth.block_id,
+      lgd_village_code: 223994,
       name: 'Annamalai',
+      is_active: true,
     },
   });
 
   const village2 = await prisma.village.upsert({
-    where: {
-      panchayat_id_name: {
-        panchayat_id: panchayatSouth.panchayat_id,
-        name: 'Kinathukadavu',
-      },
-    },
-    update: {},
+    where: { lgd_village_code: 223995 },
+    update: { name: 'Kinathukadavu', block_id: blockSouth.block_id, is_active: true },
     create: {
-      panchayat_id: panchayatSouth.panchayat_id,
+      block_id: blockSouth.block_id,
+      lgd_village_code: 223995,
       name: 'Kinathukadavu',
+      is_active: true,
     },
   });
-  console.log('Seeded Locations: Coimbatore -> Pollachi North/South -> Annamalai/Kinathukadavu');
+  console.log('Seeded Locations: Coimbatore (528) -> Pollachi North (6482) / South (6483) -> Annamalai (223994) / Kinathukadavu (223995)');
 
   // 4. Project
   const project = await prisma.project.upsert({
@@ -199,7 +191,7 @@ async function main() {
         address_line_1: 'Survey Field 101, Near North Canal',
         address_line_2: 'Annamalai Village',
         district_id: district.district_id,
-        panchayat_id: panchayatNorth.panchayat_id,
+        block_id: blockNorth.block_id,
         village_id: village1.village_id,
         pincode: '642001',
         location_direction: LocationDirection.NORTH,

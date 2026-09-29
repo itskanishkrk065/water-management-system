@@ -32,10 +32,19 @@ Built for real-world government and irrigation authority deployments with strict
 6. **Isolated Extensions Architecture**:
    - Supplemental land or water requests create independent extension records.
    - Approving an extension never alters or overwrites the root allotment or original development bill.
-7. **Immutable Financial Ledger & Reversals**:
+7. **Official LGD Location Master & Excel Import Engine**:
+   - Direct upload & parsing of Local Government Directory (LGD) spreadsheets (`.xls`, `.xlsx`).
+   - Strict 3-tier hierarchy: **District (1) $\to$ Block (N) $\to$ Village (N)** (blocks are distinct entities from panchayats).
+   - Multi-phase import workflow: Upload $\to$ Parse $\to$ Validate $\to$ Preview Metrics $\to$ Admin Confirm $\to$ PostgreSQL Transactional Upsert.
+   - Preserves official names and LGD codes as stable external identifiers without destroying existing beneficiary references.
+8. **Cascading Dropdowns & Server-Side Search**:
+   - Progressive dynamic selection (District $\to$ Block $\to$ Village) with downstream auto-clear on parent change.
+   - Paginated, searchable village endpoint handles tens of thousands of revenue villages efficiently.
+   - Dual-layer backend verification: strictly rejects any beneficiary record where the block does not belong to the district, or the village does not belong to the block.
+9. **Immutable Financial Ledger & Reversals**:
    - Payments are append-only with sequential fiscal receipt generation.
    - Accounting corrections occur via offsetting reversal transactions (`is_reversal: true`), maintaining an uncorrupted paper trail.
-8. **Comprehensive System Audit Trail**:
+10. **Comprehensive System Audit Trail**:
    - Full event sink with JSON diffs (`old_values`, `new_values`), actor ID, IP address, and timestamp.
    - Dedicated UI inspector with search, filters, and JSON viewer.
 

@@ -1,9 +1,13 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ConflictException,
+  BadRequestException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { CreateBeneficiaryDto, UpdateBeneficiaryDto } from './dto/beneficiary.dto';
 import { AuditAction, BeneficiaryStatus, LandStatus, Prisma } from '@prisma/client';
-import { DecimalUtil } from '../common/decimal.util';
 import { Decimal } from 'decimal.js';
 
 @Injectable()
@@ -13,12 +17,77 @@ export class BeneficiariesService {
     private readonly auditService: AuditService,
   ) {}
 
+  /**
+   * Validates cascading location consistency:
+   * 1. District exists
+   * 2. If blockId provided, block exists and belongs to districtId
+   * 3. If villageId provided, village exists and belongs to blockId (or panchayatId)
+   */
+  private async validateLocationHierarchy(
+    districtId?: string,
+    blockId?: string,
+    villageId?: string,
+    panchayatId?: string,
+  ) {
+    if (districtId) {
+      const district = await this.prisma.district.findUnique({
+        where: { district_id: districtId },
+      });
+      if (!district) {
+        throw new BadRequestException(`District with ID '${districtId}' not found`);
+      }
+    }
+
+    if (blockId) {
+      const block = await this.prisma.block.findUnique({
+        where: { block_id: blockId },
+      });
+      if (!block) {
+        throw new BadRequestException(`Block with ID '${blockId}' not found`);
+      }
+      if (districtId && block.district_id !== districtId) {
+        throw new BadRequestException(
+          `Location mismatch: Selected Block does not belong to the selected District.`,
+        );
+      }
+    }
+
+    if (villageId) {
+      const village = await this.prisma.village.findUnique({
+        where: { village_id: villageId },
+        include: {
+          block: true,
+          panchayat: true,
+        },
+      });
+      if (!village) {
+        throw new BadRequestException(`Village with ID '${villageId}' not found`);
+      }
+
+      if (blockId && village.block_id && village.block_id !== blockId) {
+        throw new BadRequestException(
+          `Location mismatch: Selected Village does not belong to the selected Block.`,
+        );
+      }
+
+      if (districtId) {
+        const parentDistId = village.block?.district_id || village.panchayat?.district_id;
+        if (parentDistId && parentDistId !== districtId) {
+          throw new BadRequestException(
+            `Location mismatch: Selected Village does not belong to the selected District.`,
+          );
+        }
+      }
+    }
+  }
+
   async lookupByPhone(phone: string) {
     const trimmed = phone.trim();
     const beneficiary = await this.prisma.beneficiary.findFirst({
       where: { phone_number: trimmed },
       include: {
         district: true,
+        block: true,
         panchayat: true,
         village: true,
         landHoldings: {
@@ -60,23 +129,34 @@ export class BeneficiariesService {
       );
     }
 
+    // Strictly validate location hierarchy
+    await this.validateLocationHierarchy(
+      dto.districtId,
+      dto.blockId,
+      dto.villageId,
+      dto.panchayatId,
+    );
+
     const beneficiary = await this.prisma.beneficiary.create({
       data: {
-        name: dto.name,
+        name: dto.name.trim(),
+        email: dto.email?.trim() || null,
         phone_number: dto.phoneNumber.trim(),
-        address_line_1: dto.addressLine1,
-        address_line_2: dto.addressLine2,
-        address_line_3: dto.addressLine3,
+        address_line_1: dto.addressLine1?.trim(),
+        address_line_2: dto.addressLine2?.trim() || null,
+        address_line_3: dto.addressLine3?.trim() || null,
         district_id: dto.districtId,
-        panchayat_id: dto.panchayatId,
+        block_id: dto.blockId || null,
+        panchayat_id: dto.panchayatId || null,
         village_id: dto.villageId,
-        pincode: dto.pincode,
+        pincode: dto.pincode?.trim(),
         location_direction: dto.locationDirection,
-        location_description: dto.locationDescription,
+        location_description: dto.locationDescription?.trim() || null,
         status: dto.status || BeneficiaryStatus.ACTIVE,
       },
       include: {
         district: true,
+        block: true,
         panchayat: true,
         village: true,
       },
@@ -88,7 +168,7 @@ export class BeneficiariesService {
       entityType: 'Beneficiary',
       entityId: beneficiary.beneficiary_id,
       newValues: beneficiary,
-      reason: 'Created new beneficiary profile',
+      reason: 'Created new beneficiary profile with verified location hierarchy',
       ipAddress,
     });
 
@@ -98,6 +178,7 @@ export class BeneficiariesService {
   async findAll(query: {
     search?: string;
     districtId?: string;
+    blockId?: string;
     panchayatId?: string;
     status?: BeneficiaryStatus;
     page?: number;
@@ -110,6 +191,7 @@ export class BeneficiariesService {
     const where: Prisma.BeneficiaryWhereInput = {};
     if (query.status) where.status = query.status;
     if (query.districtId) where.district_id = query.districtId;
+    if (query.blockId) where.block_id = query.blockId;
     if (query.panchayatId) where.panchayat_id = query.panchayatId;
 
     if (query.search) {
@@ -127,6 +209,7 @@ export class BeneficiariesService {
         take: limit,
         include: {
           district: true,
+          block: true,
           panchayat: true,
           village: true,
           landHoldings: {
@@ -172,6 +255,7 @@ export class BeneficiariesService {
       where: { beneficiary_id: id },
       include: {
         district: true,
+        block: true,
         panchayat: true,
         village: true,
         landHoldings: {
@@ -229,7 +313,7 @@ export class BeneficiariesService {
 
     const totalLand = this.calculateTotalLand(beneficiary.landHoldings);
 
-    // Fetch related audit logs for the History tab
+    // Fetch related audit logs for History
     const auditLogs = await this.prisma.auditLog.findMany({
       where: {
         OR: [
@@ -261,21 +345,39 @@ export class BeneficiariesService {
       throw new NotFoundException('Beneficiary not found');
     }
 
+    const effectiveDistrictId = dto.districtId !== undefined ? dto.districtId : existing.district_id;
+    const effectiveBlockId = dto.blockId !== undefined ? dto.blockId : existing.block_id;
+    const effectiveVillageId = dto.villageId !== undefined ? dto.villageId : existing.village_id;
+
+    if (dto.districtId || dto.blockId || dto.villageId) {
+      await this.validateLocationHierarchy(
+        effectiveDistrictId || undefined,
+        effectiveBlockId || undefined,
+        effectiveVillageId || undefined,
+      );
+    }
+
     const updated = await this.prisma.beneficiary.update({
       where: { beneficiary_id: id },
       data: {
-        name: dto.name,
+        name: dto.name?.trim(),
+        email: dto.email?.trim(),
         phone_number: dto.phoneNumber?.trim(),
-        address_line_1: dto.addressLine1,
-        address_line_2: dto.addressLine2,
-        address_line_3: dto.addressLine3,
-        pincode: dto.pincode,
+        address_line_1: dto.addressLine1?.trim(),
+        address_line_2: dto.addressLine2?.trim(),
+        address_line_3: dto.addressLine3?.trim(),
+        district_id: dto.districtId !== undefined ? dto.districtId : undefined,
+        block_id: dto.blockId !== undefined ? dto.blockId : undefined,
+        panchayat_id: dto.panchayatId !== undefined ? dto.panchayatId : undefined,
+        village_id: dto.villageId !== undefined ? dto.villageId : undefined,
+        pincode: dto.pincode?.trim(),
         location_direction: dto.locationDirection,
-        location_description: dto.locationDescription,
+        location_description: dto.locationDescription?.trim(),
         status: dto.status,
       },
       include: {
         district: true,
+        block: true,
         panchayat: true,
         village: true,
       },
@@ -288,7 +390,7 @@ export class BeneficiariesService {
       entityId: id,
       oldValues: existing,
       newValues: updated,
-      reason: 'Updated beneficiary details',
+      reason: 'Updated beneficiary profile and location hierarchy',
       ipAddress,
     });
 

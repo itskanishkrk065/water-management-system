@@ -39,6 +39,7 @@ export class BeneficiaryPortalService {
       where: { user_id: userId },
       include: {
         district: true,
+        block: true,
         panchayat: true,
         village: true,
       },
@@ -66,7 +67,7 @@ export class BeneficiaryPortalService {
 
     // Dynamic profile completion scoring (20% per domain)
     const hasPersonal = !!(b.name && b.phone_number && b.email);
-    const hasAddress = !!(b.address_line_1 && b.district_id && b.panchayat_id && b.village_id && b.pincode);
+    const hasAddress = !!(b.address_line_1 && b.district_id && (b.block_id || b.panchayat_id) && b.village_id && b.pincode);
     const hasLocation = !!b.location_direction;
 
     const [activeLandCount, applicationCount] = await Promise.all([
@@ -110,20 +111,46 @@ export class BeneficiaryPortalService {
   async updateMyProfile(userId: string, dto: UpdateProfileDto, ipAddress?: string) {
     const b = await this.getAuthenticatedBeneficiary(userId);
 
-    // Verify village hierarchy if villageId is provided
-    if (dto.villageId) {
+    const effDistrictId = dto.districtId !== undefined ? dto.districtId : b.district_id;
+    const effBlockId = dto.blockId !== undefined ? dto.blockId : b.block_id;
+    const effVillageId = dto.villageId !== undefined ? dto.villageId : b.village_id;
+
+    // Validate block hierarchy
+    if (effBlockId) {
+      const block = await this.prisma.block.findUnique({
+        where: { block_id: effBlockId },
+      });
+      if (!block) {
+        throw new BadRequestException('Selected block does not exist');
+      }
+      if (effDistrictId && block.district_id !== effDistrictId) {
+        throw new BadRequestException('Selected block does not belong to the selected district');
+      }
+    }
+
+    // Validate village hierarchy
+    if (effVillageId) {
       const village = await this.prisma.village.findUnique({
-        where: { village_id: dto.villageId },
-        include: { panchayat: { include: { district: true } } },
+        where: { village_id: effVillageId },
+        include: {
+          block: true,
+          panchayat: true,
+        },
       });
       if (!village) {
         throw new BadRequestException('Selected village does not exist');
       }
-      if (dto.panchayatId && village.panchayat_id !== dto.panchayatId) {
+      if (effBlockId && village.block_id && village.block_id !== effBlockId) {
+        throw new BadRequestException('Selected village does not belong to the selected block');
+      }
+      if (dto.panchayatId && village.panchayat_id && village.panchayat_id !== dto.panchayatId) {
         throw new BadRequestException('Selected village does not belong to the selected panchayat');
       }
-      if (dto.districtId && village.panchayat.district_id !== dto.districtId) {
-        throw new BadRequestException('Selected panchayat does not belong to the selected district');
+      if (effDistrictId) {
+        const parentDistId = village.block?.district_id || village.panchayat?.district_id;
+        if (parentDistId && parentDistId !== effDistrictId) {
+          throw new BadRequestException('Selected village does not belong to the selected district');
+        }
       }
     }
 
@@ -134,6 +161,7 @@ export class BeneficiaryPortalService {
         address_line_2: dto.addressLine2 !== undefined ? dto.addressLine2 : b.address_line_2,
         address_line_3: dto.addressLine3 !== undefined ? dto.addressLine3 : b.address_line_3,
         district_id: dto.districtId !== undefined ? dto.districtId : b.district_id,
+        block_id: dto.blockId !== undefined ? dto.blockId : b.block_id,
         panchayat_id: dto.panchayatId !== undefined ? dto.panchayatId : b.panchayat_id,
         village_id: dto.villageId !== undefined ? dto.villageId : b.village_id,
         pincode: dto.pincode !== undefined ? dto.pincode : b.pincode,
@@ -142,6 +170,7 @@ export class BeneficiaryPortalService {
       },
       include: {
         district: true,
+        block: true,
         panchayat: true,
         village: true,
       },
@@ -155,12 +184,14 @@ export class BeneficiaryPortalService {
       oldValues: {
         address_line_1: b.address_line_1,
         district_id: b.district_id,
+        block_id: b.block_id,
         panchayat_id: b.panchayat_id,
         village_id: b.village_id,
       },
       newValues: {
         address_line_1: updated.address_line_1,
         district_id: updated.district_id,
+        block_id: updated.block_id,
         panchayat_id: updated.panchayat_id,
         village_id: updated.village_id,
       },

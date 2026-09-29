@@ -456,3 +456,140 @@ Lists and registers digital documents categorized by `LAND_RECORD`, `WATER_APPLI
 #### `GET /beneficiary/history`
 Returns chronological audit timeline derived from PostgreSQL audit logs covering all lifecycle events on the account.
 
+---
+
+### 3.12 Geographic Locations & Cascading Hierarchy (`/locations`)
+
+#### `GET /locations/districts`
+Fetch all administrative districts.
+- **Query Params**: `search` (string), `activeOnly` (boolean).
+- **Response `200 OK`**:
+  ```json
+  [
+    {
+      "district_id": "8905b1c2-...",
+      "lgd_district_code": 528,
+      "name": "Kancheepuram",
+      "is_active": true,
+      "_count": { "blocks": 13, "beneficiaries": 45 }
+    }
+  ]
+  ```
+
+#### `GET /locations/districts/:districtId/blocks`
+Fetch cascading blocks belonging strictly to a parent district.
+- **Query Params**: `search` (string), `activeOnly` (boolean).
+- **Response `200 OK`**:
+  ```json
+  [
+    {
+      "block_id": "60a1...",
+      "district_id": "8905b1c2-...",
+      "lgd_block_code": 6482,
+      "name": "Kancheepuram",
+      "is_active": true,
+      "_count": { "villages": 42 }
+    }
+  ]
+  ```
+
+#### `GET /locations/blocks/:blockId/villages`
+Fetch cascading villages belonging strictly to a parent block (supports server-side search and pagination).
+- **Query Params**: `search` (string), `page` (default 1), `limit` (default 50), `activeOnly` (boolean).
+- **Response `200 OK`**:
+  ```json
+  {
+    "items": [
+      {
+        "village_id": "90b2...",
+        "block_id": "60a1...",
+        "lgd_village_code": 223994,
+        "name": "Angambakkam",
+        "is_active": true
+      }
+    ],
+    "meta": {
+      "total": 42,
+      "page": 1,
+      "limit": 50,
+      "totalPages": 1
+    }
+  }
+  ```
+
+#### `GET /locations/villages/:villageId`
+Fetch village particulars including parent block and district details.
+
+#### `GET /locations/search?search=coimbatore&limit=10`
+Global indexed search across districts, blocks, and villages.
+
+#### `GET /locations/tree`
+Hierarchical tree of districts, blocks, and sample villages.
+
+---
+
+### 3.13 Admin Location Master Data Import (`/admin`)
+
+All routes under `/admin/location-import*` enforce `@Roles(RoleName.ADMIN)` with JWT authentication.
+
+#### `POST /admin/location-import`
+Upload and validate LGD Excel spreadsheet (`.xls`, `.xlsx`).
+- **Content-Type**: `multipart/form-data`
+- **Payload**: `file` (Excel binary)
+- **Validation**:
+  - Column matching (tolerant of spaces and case): `LGD District Code`, `District Name`, `LGD Block code`, `Block Name`, `LGD Village Code`, `Village Name`.
+  - Data integrity: positive integer codes, non-empty names, duplicate/conflict detection.
+  - Generates cryptographic SHA-256 hash and records `LocationImport` entity.
+- **Response `201 Created`**:
+  ```json
+  {
+    "importId": "866014e5-...",
+    "fileName": "village_eng1.xls",
+    "fileHash": "022d4f...",
+    "status": "VALIDATED",
+    "totalRows": 12525,
+    "validRows": 12525,
+    "invalidRows": 0,
+    "newDistricts": 36,
+    "existingDistricts": 1,
+    "newBlocks": 385,
+    "existingBlocks": 3,
+    "newVillages": 12521,
+    "existingVillages": 4,
+    "potentialDuplicates": 0,
+    "sampleValidRows": [...],
+    "errors": []
+  }
+  ```
+
+#### `POST /admin/location-import/:id/confirm`
+Executes transactional database upsert into PostgreSQL (`districts`, `blocks`, `villages`).
+- **Response `201 Created`**:
+  ```json
+  {
+    "message": "Location master data successfully imported into PostgreSQL database.",
+    "importId": "866014e5-...",
+    "status": "IMPORTED",
+    "summary": {
+      "districtsCreated": 36,
+      "districtsUpdated": 1,
+      "blocksCreated": 385,
+      "blocksUpdated": 3,
+      "villagesCreated": 12521,
+      "villagesUpdated": 4,
+      "totalDistricts": 37,
+      "totalBlocks": 388,
+      "totalVillages": 12525
+    }
+  }
+  ```
+
+#### `GET /admin/location-imports`
+List previous location import batches and statuses (`page`, `limit`).
+
+#### `GET /admin/location-imports/:id`
+Fetch single import batch diagnostics and error logs.
+
+#### `POST /admin/location-import/:id/cancel`
+Cancel or discard a pending validated import run.
+
