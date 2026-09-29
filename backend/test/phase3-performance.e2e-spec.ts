@@ -47,7 +47,7 @@ describe('Phase 3 Performance Test Suite (Lazy Loading, Query Optimization, Inde
     // Login as Admin
     const adminRes = await request(app.getHttpServer())
       .post('/api/v1/auth/login')
-      .send({ email: 'admin@water.gov.in', password: 'Admin@123' });
+      .send({ email: 'admin@water.gov', password: 'Admin@123456' });
     adminToken = adminRes.body.accessToken;
 
     const v = await prisma.village.findFirst({

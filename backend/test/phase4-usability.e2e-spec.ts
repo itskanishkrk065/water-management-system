@@ -52,13 +52,13 @@ describe('Phase 4 Usability & Admin Experience E2E Test Suite', () => {
     // Login as Admin
     const adminRes = await request(app.getHttpServer())
       .post('/api/v1/auth/login')
-      .send({ email: 'admin@water.gov.in', password: 'Admin@123' });
+      .send({ email: 'admin@water.gov', password: 'Admin@123456' });
     adminToken = adminRes.body.accessToken;
 
     // Login as Field Officer
     const fieldRes = await request(app.getHttpServer())
       .post('/api/v1/auth/login')
-      .send({ email: 'field@water.gov.in', password: 'Admin@123' });
+      .send({ email: 'field@water.gov', password: 'Admin@123456' });
     fieldToken = fieldRes.body.accessToken;
 
     const v = await prisma.village.findFirst({

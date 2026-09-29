@@ -7,8 +7,8 @@ import Link from 'next/link';
 
 export default function BeneficiaryLoginPage() {
   const { login } = useAuth();
-  const [email, setEmail] = useState('beneficiary@water.gov');
-  const [password, setPassword] = useState('Admin@123456');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -23,11 +23,6 @@ export default function BeneficiaryLoginPage() {
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleQuickFill = () => {
-    setEmail('beneficiary@water.gov');
-    setPassword('Admin@123456');
   };
 
   return (
@@ -88,6 +83,7 @@ export default function BeneficiaryLoginPage() {
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
                 className="w-full pl-10 pr-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition"
               />
             </div>
@@ -102,25 +98,6 @@ export default function BeneficiaryLoginPage() {
             <ArrowRight className="ml-2 h-4 w-4" />
           </button>
         </form>
-
-        <div className="pt-6 border-t border-slate-200">
-          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider text-center mb-3">
-            Demo Beneficiary Account
-          </p>
-          <button
-            onClick={handleQuickFill}
-            className="w-full p-2.5 bg-amber-50 hover:bg-amber-100 hover:border-amber-300 border border-amber-200 rounded-lg text-left transition flex items-center justify-between"
-          >
-            <div>
-              <div className="font-semibold text-amber-800 text-sm flex items-center space-x-1.5">
-                <UserCheck className="w-4 h-4 text-amber-700" />
-                <span>Ramasamy Gounder</span>
-              </div>
-              <div className="text-xs text-amber-700">beneficiary@water.gov (Password: Admin@123456)</div>
-            </div>
-            <span className="text-xs font-semibold text-amber-800 bg-amber-200/70 px-2 py-1 rounded">Quick Load</span>
-          </button>
-        </div>
 
         <div className="text-center pt-2 space-y-2">
           <div className="text-sm text-slate-600">

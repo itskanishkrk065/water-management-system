@@ -46,7 +46,7 @@ describe('Core Business Rules & Integrity Test Suite (Tests 1-12)', () => {
     // Login as Admin
     const adminRes = await request(app.getHttpServer())
       .post('/api/v1/auth/login')
-      .send({ email: 'admin@water.gov.in', password: 'Admin@123' });
+      .send({ email: 'admin@water.gov', password: 'Admin@123456' });
     adminToken = adminRes.body.accessToken;
 
     // Get location hierarchy from database ensuring village belongs to block/district
@@ -352,6 +352,23 @@ describe('Core Business Rules & Integrity Test Suite (Tests 1-12)', () => {
       const totalDue = installments.reduce((acc, inst) => acc + parseFloat(inst.amount_due.toString()), 0);
       const bill = await prisma.developmentBill.findUnique({ where: { bill_id: billId } });
       expect(totalDue).toBeCloseTo(parseFloat(bill.total_amount.toString()), 2);
+
+      // Reset baseline rate configuration
+      await prisma.rateConfiguration.updateMany({
+        where: { project_id: projectId },
+        data: { is_active: false },
+      });
+      await prisma.rateConfiguration.create({
+        data: {
+          project_id: projectId,
+          litres_per_acre: 10000,
+          development_cost_per_litre: 2.0,
+          running_cost_per_litre: 0.5,
+          effective_from: new Date(),
+          is_active: true,
+          created_by: 'admin@water.gov',
+        },
+      });
     });
   });
 

@@ -25,7 +25,6 @@ interface AuthContextType {
     password: string;
   }) => Promise<void>;
   logout: () => Promise<void>;
-  switchRoleQuick: (role: 'ADMIN' | 'FIELD_OFFICER' | 'ACCOUNTS' | 'VIEWER' | 'BENEFICIARY') => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -109,19 +108,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const switchRoleQuick = async (role: 'ADMIN' | 'FIELD_OFFICER' | 'ACCOUNTS' | 'VIEWER' | 'BENEFICIARY') => {
-    const roleEmailMap = {
-      ADMIN: 'admin@water.gov',
-      FIELD_OFFICER: 'field@water.gov',
-      ACCOUNTS: 'accounts@water.gov',
-      VIEWER: 'viewer@water.gov',
-      BENEFICIARY: 'beneficiary@water.gov',
-    };
-    await login(roleEmailMap[role], 'Admin@123456');
-  };
-
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, registerBeneficiary, logout, switchRoleQuick }}>
+    <AuthContext.Provider value={{ user, isLoading, login, registerBeneficiary, logout }}>
       {children}
     </AuthContext.Provider>
   );

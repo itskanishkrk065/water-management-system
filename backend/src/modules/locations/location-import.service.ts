@@ -407,8 +407,8 @@ export class LocationImportService {
         valid_rows: validRows,
         invalid_rows: invalidRows,
         status,
-        error_summary: errors.length > 0 ? (errors.slice(0, 200) as any) : Prisma.JsonNull,
-        preview_data: {
+        error_summary: errors.length > 0 ? JSON.stringify(errors.slice(0, 200)) : null,
+        preview_data: JSON.stringify({
           newDistricts: newDistrictsCount,
           existingDistricts: existingDistrictsCount,
           newBlocks: newBlocksCount,
@@ -418,7 +418,7 @@ export class LocationImportService {
           potentialDuplicates: duplicateRowsCount,
           sampleRows: sampleValidRows,
           parsedRows: validParsedRows, // Stored to execute import deterministically
-        } as any,
+        }),
       },
     });
 
@@ -478,7 +478,14 @@ export class LocationImportService {
       throw new BadRequestException(`Cannot confirm an import in '${importRecord.status}' status.`);
     }
 
-    const previewData = importRecord.preview_data as any;
+    let previewData: any = importRecord.preview_data;
+    if (typeof previewData === 'string') {
+      try {
+        previewData = JSON.parse(previewData);
+      } catch {
+        previewData = null;
+      }
+    }
     const parsedRows: ParsedRow[] = previewData?.parsedRows || [];
 
     if (!parsedRows || parsedRows.length === 0) {
@@ -621,10 +628,10 @@ export class LocationImportService {
             blocks_updated: blocksUpdated,
             villages_created: villagesCreated,
             villages_updated: villagesUpdated,
-            preview_data: {
-              ...previewData,
+            preview_data: JSON.stringify({
+              ...(previewData || {}),
               parsedRows: undefined, // Clear large array after import
-            },
+            }),
           },
         });
 

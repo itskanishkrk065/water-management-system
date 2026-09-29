@@ -53,7 +53,7 @@ describe('Phase 2 Reliability Test Suite (Audit, Transactions, Backup/Restore, R
     // Login as Admin
     const adminRes = await request(app.getHttpServer())
       .post('/api/v1/auth/login')
-      .send({ email: 'admin@water.gov.in', password: 'Admin@123' });
+      .send({ email: 'admin@water.gov', password: 'Admin@123456' });
     adminToken = adminRes.body.accessToken;
 
     const v = await prisma.village.findFirst({

@@ -37,28 +37,22 @@ async function main() {
   console.log('✓ Roles initialized');
 
   // 2. Seed Default Staff Accounts
-  const adminEmail = 'admin@water.gov.in';
-  const passwordHash = await bcrypt.hash('Admin@123', 10);
-  const adminUser = await prisma.user.upsert({
-    where: { email: adminEmail },
-    update: { is_active: true, password_hash: passwordHash, role_id: roleMap['ADMIN'] },
-    create: {
-      email: adminEmail,
-      password_hash: passwordHash,
-      full_name: 'System Administrator',
-      role_id: roleMap['ADMIN'],
-      is_active: true,
-    },
-  });
-
+  const passwordHash = await bcrypt.hash('Admin@123456', 10);
   const staffUsers = [
+    { email: 'admin@water.gov', name: 'System Administrator', role: 'ADMIN' },
+    { email: 'field@water.gov', name: 'Field Officer', role: 'FIELD_OFFICER' },
+    { email: 'accounts@water.gov', name: 'Accounts Officer', role: 'ACCOUNTS' },
+    { email: 'viewer@water.gov', name: 'Auditor Viewer', role: 'VIEWER' },
+    { email: 'beneficiary@water.gov', name: 'Ramasamy Gounder', role: 'BENEFICIARY' },
+    { email: 'admin@water.gov.in', name: 'System Administrator', role: 'ADMIN' },
     { email: 'field@water.gov.in', name: 'Field Officer', role: 'FIELD_OFFICER' },
     { email: 'accounts@water.gov.in', name: 'Accounts Officer', role: 'ACCOUNTS' },
     { email: 'viewer@water.gov.in', name: 'Auditor Viewer', role: 'VIEWER' },
   ];
 
+  let adminUser: any = null;
   for (const s of staffUsers) {
-    await prisma.user.upsert({
+    const user = await prisma.user.upsert({
       where: { email: s.email },
       update: { is_active: true, password_hash: passwordHash, role_id: roleMap[s.role] },
       create: {
@@ -69,8 +63,12 @@ async function main() {
         is_active: true,
       },
     });
+    if (s.email === 'admin@water.gov') {
+      adminUser = user;
+    }
   }
-  console.log(`✓ Staff users initialized (${adminUser.email}, field, accounts, viewer)`);
+  if (!adminUser) adminUser = await prisma.user.findFirst({ where: { email: 'admin@water.gov' } });
+  console.log(`✓ Staff users initialized (admin@water.gov, field, accounts, viewer)`);
 
   // 3. Seed Default Project
   const project = await prisma.project.upsert({
@@ -86,7 +84,7 @@ async function main() {
   });
   console.log(`✓ Project initialized: ${project.project_name}`);
 
-  // 4. Seed Rate Tariff Configuration (₹0.05/L dev, ₹0.01/L running, 10,000 L/acre)
+  // 4. Seed Rate Tariff Configuration (₹2.00/L dev, ₹0.50/L running, 10,000 L/acre)
   const existingRate = await prisma.rateConfiguration.findFirst({
     where: { project_id: project.project_id, is_active: true },
   });
@@ -96,14 +94,24 @@ async function main() {
       data: {
         project_id: project.project_id,
         litres_per_acre: 10000,
-        development_cost_per_litre: 0.05,
-        running_cost_per_litre: 0.01,
+        development_cost_per_litre: 2.0,
+        running_cost_per_litre: 0.5,
         effective_from: new Date('2026-01-01'),
         is_active: true,
         created_by: adminUser.user_id,
       },
     });
-    console.log('✓ Rate tariff initialized (₹0.05/L dev, 10,000 L/acre)');
+    console.log('✓ Rate tariff initialized (₹2.00/L dev, 10,000 L/acre)');
+  } else {
+    await prisma.rateConfiguration.update({
+      where: { rate_id: existingRate.rate_id },
+      data: {
+        litres_per_acre: 10000,
+        development_cost_per_litre: 2.0,
+        running_cost_per_litre: 0.5,
+      },
+    });
+    console.log('✓ Rate tariff updated (₹2.00/L dev, 10,000 L/acre)');
   }
 
   // 5. Seed 5-Stage Installment Template

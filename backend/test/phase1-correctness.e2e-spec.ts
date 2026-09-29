@@ -49,7 +49,7 @@ describe('Phase 1 Correctness & Integrity Test Suite (Tests 1-32)', () => {
     // Login as Admin
     const adminRes = await request(app.getHttpServer())
       .post('/api/v1/auth/login')
-      .send({ email: 'admin@water.gov.in', password: 'Admin@123' });
+      .send({ email: 'admin@water.gov', password: 'Admin@123456' });
     adminToken = adminRes.body.accessToken;
 
     const v = await prisma.village.findFirst({
@@ -575,6 +575,23 @@ describe('Phase 1 Correctness & Integrity Test Suite (Tests 1-32)', () => {
       const billAfterNewRate = await prisma.developmentBill.findUnique({ where: { bill_id: billId } });
       expect(parseFloat(billAfterNewRate.development_cost_per_litre_snapshot.toString())).toBe(initialDevRate);
       expect(parseFloat(billAfterNewRate.total_amount.toString())).toBe(initialTotalAmount);
+
+      // Reset baseline rate configuration for subsequent test suites
+      await prisma.rateConfiguration.updateMany({
+        where: { project_id: projectId },
+        data: { is_active: false },
+      });
+      await prisma.rateConfiguration.create({
+        data: {
+          project_id: projectId,
+          litres_per_acre: 10000,
+          development_cost_per_litre: 2.0,
+          running_cost_per_litre: 0.5,
+          effective_from: new Date(),
+          is_active: true,
+          created_by: 'admin@water.gov',
+        },
+      });
     });
   });
 

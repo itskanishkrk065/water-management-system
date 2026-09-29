@@ -4,14 +4,18 @@ import * as dotenv from 'dotenv';
 
 dotenv.config();
 
+import * as path from 'path';
+
 function getNormalizedDatabaseUrl(): string | undefined {
   let dbUrl = process.env.DATABASE_URL;
   if (!dbUrl) return undefined;
 
   if (dbUrl.startsWith('file:')) {
     const rawPath = dbUrl.slice(5);
+    // Resolve relative path to absolute path
+    const resolvedPath = path.isAbsolute(rawPath) ? rawPath : path.resolve(process.cwd(), rawPath);
     // Convert backslashes to forward slashes for SQLite URL compatibility on Windows
-    const normalized = rawPath.replace(/\\/g, '/');
+    const normalized = resolvedPath.replace(/\\/g, '/');
     dbUrl = `file:${normalized}`;
     process.env.DATABASE_URL = dbUrl;
   }
