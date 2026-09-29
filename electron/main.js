@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell, utilityProcess } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, utilityProcess, globalShortcut } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
@@ -75,7 +75,7 @@ function waitForHttpService(host, port, endpoint = '/', maxRetries = 60, interva
         (res) => {
           if (res.statusCode && res.statusCode < 500) {
             logDesktop(`Service at http://${host}:${port}${endpoint} ready after ${attempts} attempts`);
-            resolve(true);
+            resolve({ success: true, attempts });
           } else {
             retry();
           }
@@ -94,12 +94,9 @@ function waitForHttpService(host, port, endpoint = '/', maxRetries = 60, interva
 
     const retry = () => {
       if (attempts >= maxRetries) {
-        logDesktop(
-          `Service at http://${host}:${port}${endpoint} failed to respond within ${
-            (maxRetries * intervalMs) / 1000
-          }s`
-        );
-        resolve(false);
+        const errorMsg = `Service at http://${host}:${port}${endpoint} timed out after ${(maxRetries * intervalMs) / 1000}s`;
+        logDesktop(errorMsg);
+        resolve({ success: false, error: errorMsg });
       } else {
         setTimeout(check, intervalMs);
       }
@@ -120,7 +117,6 @@ function spawnNodeScript(scriptPath, args = [], options = {}) {
   const name = options.name || 'Child';
   logDesktop(`Spawning background process [${name}]: ${scriptPath}`);
 
-  // Use Electron's native utilityProcess if available
   if (utilityProcess && typeof utilityProcess.fork === 'function') {
     try {
       const child = utilityProcess.fork(scriptPath, args, {
@@ -150,7 +146,6 @@ function spawnNodeScript(scriptPath, args = [], options = {}) {
     }
   }
 
-  // Fallback to standard child_process.fork
   try {
     const child = fork(scriptPath, args, {
       cwd: options.cwd || process.cwd(),
@@ -236,7 +231,146 @@ function startFrontendService() {
   }
 }
 
-// 7. Create Native Main Desktop Window
+// 7. Initial Startup HTML Screen
+function getStartupHtml(statusText = 'Starting Services...', error = null) {
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Kongu Water Management System</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background: #0f172a;
+      color: #f8fafc;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      box-sizing: border-box;
+    }
+    .card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 20px;
+      padding: 40px;
+      width: 520px;
+      text-align: center;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+    }
+    .logo {
+      width: 56px;
+      height: 56px;
+      margin: 0 auto 16px;
+      background: linear-gradient(135deg, #0284c7, #38bdf8);
+      border-radius: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 28px;
+    }
+    h1 {
+      font-size: 20px;
+      font-weight: 700;
+      margin: 0 0 8px;
+      color: #ffffff;
+    }
+    p {
+      color: #94a3b8;
+      font-size: 13px;
+      margin: 0 0 24px;
+      line-height: 1.5;
+    }
+    .spinner {
+      width: 28px;
+      height: 28px;
+      border: 3px solid #334155;
+      border-top-color: #38bdf8;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto 16px;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    .status {
+      font-size: 13px;
+      font-weight: 600;
+      color: #38bdf8;
+    }
+    .error-box {
+      background: rgba(239, 68, 68, 0.1);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      color: #fca5a5;
+      padding: 16px;
+      border-radius: 12px;
+      font-size: 12px;
+      text-align: left;
+      margin-top: 16px;
+      word-break: break-word;
+    }
+    .btn-row {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+      margin-top: 20px;
+    }
+    button {
+      background: #0284c7;
+      color: white;
+      border: none;
+      padding: 10px 18px;
+      border-radius: 10px;
+      font-weight: 600;
+      font-size: 12px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    button:hover { background: #0369a1; }
+    button.secondary {
+      background: #334155;
+    }
+    button.secondary:hover { background: #475569; }
+    .hint {
+      margin-top: 20px;
+      font-size: 11px;
+      color: #64748b;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">💧</div>
+    <h1>Kongu Water Management</h1>
+    <p>Offline Administrative & Beneficiary Control System</p>
+    
+    ${
+      error
+        ? `
+      <div class="error-box">
+        <strong>Startup Error:</strong><br/>
+        ${error}
+      </div>
+      <div class="btn-row">
+        <button onclick="window.electronAPI.openStorageFolder()">Open Logs Folder</button>
+        <button class="secondary" onclick="location.reload()">Retry Startup</button>
+      </div>
+    `
+        : `
+      <div class="spinner"></div>
+      <div class="status">${statusText}</div>
+    `
+    }
+
+    <div class="hint">Press <strong>F12</strong> or <strong>Ctrl+Shift+I</strong> to open Developer Diagnostics</div>
+  </div>
+</body>
+</html>`;
+}
+
+// 8. Create Native Main Desktop Window
 async function createMainWindow() {
   mainWindow = new BrowserWindow({
     width: 1366,
@@ -260,6 +394,14 @@ async function createMainWindow() {
     logDesktop('Main window displayed to user');
   });
 
+  // Toggle DevTools with F12 or CommandOrControl+Shift+I
+  mainWindow.webContents.on('before-input-event', (event, input) => {
+    if (input.key === 'F12' || (input.control && input.shift && input.key.toUpperCase() === 'I')) {
+      mainWindow.webContents.toggleDevTools();
+      event.preventDefault();
+    }
+  });
+
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith('http:') || url.startsWith('https:')) {
       shell.openExternal(url);
@@ -267,18 +409,12 @@ async function createMainWindow() {
     return { action: 'deny' };
   });
 
-  const frontendUrl = `http://${FRONTEND_HOST}:${FRONTEND_PORT}/login`;
-  logDesktop(`Loading frontend URL: ${frontendUrl}`);
-  mainWindow.loadURL(frontendUrl).catch((err) => {
-    logDesktop(`Failed to load ${frontendUrl}: ${err.message}`);
-  });
-
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
 }
 
-// 8. Application Lifecycle & Startup Protocol
+// 9. Application Lifecycle & Startup Protocol
 app.whenReady().then(async () => {
   logDesktop('==============================================');
   logDesktop('Water Management Desktop Application Starting');
@@ -286,25 +422,48 @@ app.whenReady().then(async () => {
   logDesktop(`App Path: ${app.getAppPath()}`);
   logDesktop('==============================================');
 
+  await createMainWindow();
+
+  // 1. Show startup screen while initializing services
+  mainWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(getStartupHtml('Starting Offline Database & Services...'))}`);
+
   const isDev = process.env.NODE_ENV === 'development';
 
-  // 1. Start embedded backend process
+  // 2. Start embedded backend
   startBackendService();
 
-  // 2. Start embedded frontend process in production
+  // 3. Start embedded frontend in production
   if (!isDev) {
     startFrontendService();
   }
 
-  // 3. Wait for backend and frontend to be responsive
-  logDesktop('Awaiting backend and frontend services...');
-  await Promise.all([
-    waitForHttpService(BACKEND_HOST, BACKEND_PORT, '/api/docs'),
-    waitForHttpService(FRONTEND_HOST, FRONTEND_PORT, '/login'),
+  // 4. Await health checks
+  logDesktop('Awaiting backend and frontend services readiness...');
+  const [backendStatus, frontendStatus] = await Promise.all([
+    waitForHttpService(BACKEND_HOST, BACKEND_PORT, '/api/docs', 60, 400),
+    waitForHttpService(FRONTEND_HOST, FRONTEND_PORT, '/login', 60, 400),
   ]);
 
-  // 4. Open native window
-  await createMainWindow();
+  if (backendStatus.success && frontendStatus.success) {
+    const frontendUrl = `http://${FRONTEND_HOST}:${FRONTEND_PORT}/login`;
+    logDesktop(`Both services ready! Loading application URL: ${frontendUrl}`);
+    mainWindow.loadURL(frontendUrl).catch((err) => {
+      logDesktop(`Navigation error to ${frontendUrl}: ${err.message}`);
+      mainWindow.loadURL(
+        `data:text/html;charset=utf-8,${encodeURIComponent(
+          getStartupHtml(null, `Failed to connect to UI: ${err.message}`)
+        )}`
+      );
+    });
+  } else {
+    const errors = [];
+    if (!backendStatus.success) errors.push(`Backend API (Port ${BACKEND_PORT}) failed to respond.`);
+    if (!frontendStatus.success) errors.push(`Frontend UI (Port ${FRONTEND_PORT}) failed to respond.`);
+    const fullError = errors.join('<br/>') + `<br/><br/>Detailed logs available in:<br/><code>${logFilePath}</code>`;
+
+    logDesktop(`Startup failed: ${errors.join(' ')}`);
+    mainWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(getStartupHtml(null, fullError))}`);
+  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -313,7 +472,7 @@ app.whenReady().then(async () => {
   });
 });
 
-// 9. IPC Handlers
+// 10. IPC Handlers
 ipcMain.handle('app:get-info', () => {
   return {
     version: app.getVersion(),
@@ -328,7 +487,7 @@ ipcMain.handle('app:open-storage-folder', () => {
   return true;
 });
 
-// 10. Graceful Application Shutdown
+// 11. Graceful Application Shutdown
 app.on('before-quit', () => {
   logDesktop('Application closing. Initiating graceful shutdown...');
 

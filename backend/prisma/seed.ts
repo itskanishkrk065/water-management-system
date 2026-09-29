@@ -1,5 +1,5 @@
 import { PrismaClient, RoleName, LocationDirection, BeneficiaryStatus, LandStatus, ProjectStatus } from '@prisma/client';
-import * as bcrypt from 'bcrypt';
+import * as bcrypt from 'bcryptjs';
 import { Decimal } from 'decimal.js';
 import { importCoimbatoreAndTiruppur } from './seed-coimbatore-tiruppur';
 
