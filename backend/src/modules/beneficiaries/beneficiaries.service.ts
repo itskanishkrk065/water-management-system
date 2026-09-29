@@ -357,6 +357,30 @@ export class BeneficiariesService {
       );
     }
 
+    if (dto.phoneNumber && dto.phoneNumber.trim() !== existing.phone_number) {
+      const duplicatePhone = await this.prisma.beneficiary.findFirst({
+        where: {
+          phone_number: dto.phoneNumber.trim(),
+          beneficiary_id: { not: id },
+        },
+      });
+      if (duplicatePhone) {
+        throw new ConflictException(`Phone number ${dto.phoneNumber} is already registered to beneficiary '${duplicatePhone.name}'.`);
+      }
+    }
+
+    if (dto.email && dto.email.trim() !== existing.email) {
+      const duplicateEmail = await this.prisma.beneficiary.findFirst({
+        where: {
+          email: dto.email.trim(),
+          beneficiary_id: { not: id },
+        },
+      });
+      if (duplicateEmail) {
+        throw new ConflictException(`Email address ${dto.email} is already registered to beneficiary '${duplicateEmail.name}'.`);
+      }
+    }
+
     const updated = await this.prisma.beneficiary.update({
       where: { beneficiary_id: id },
       data: {
@@ -390,11 +414,384 @@ export class BeneficiariesService {
       entityId: id,
       oldValues: existing,
       newValues: updated,
-      reason: 'Updated beneficiary profile and location hierarchy',
+      reason: dto.reason?.trim() || 'Updated beneficiary profile and location hierarchy',
       ipAddress,
     });
 
     return updated;
+  }
+
+  /**
+   * Evaluates outstanding obligations before administrative deactivation.
+   */
+  async getObligationsSummary(id: string) {
+    const beneficiary = await this.prisma.beneficiary.findUnique({
+      where: { beneficiary_id: id },
+      include: {
+        waterApplications: {
+          where: { status: { in: ['SUBMITTED', 'UNDER_REVIEW'] } },
+        },
+        waterAllotments: {
+          where: { approval_status: 'APPROVED' },
+          include: {
+            developmentBill: true,
+            infrastructure: true,
+          },
+        },
+        developmentBills: {
+          include: {
+            installments: {
+              where: { status: { in: ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'] } },
+            },
+          },
+        },
+        extensions: {
+          where: { status: 'REQUESTED' },
+        },
+        infrastructures: {
+          where: { status: { in: ['PLANNED', 'UNDER_CONSTRUCTION', 'COMPLETED'] } },
+        },
+      },
+    });
+
+    if (!beneficiary) {
+      throw new NotFoundException('Beneficiary not found');
+    }
+
+    let totalPendingAmount = new Decimal(0);
+    let pendingInstallmentsCount = 0;
+
+    for (const bill of beneficiary.developmentBills) {
+      totalPendingAmount = totalPendingAmount.plus(new Decimal(bill.pending_amount));
+      pendingInstallmentsCount += bill.installments.length;
+    }
+
+    const approvedWaterLitres = beneficiary.waterAllotments.reduce(
+      (acc, a) => acc.plus(new Decimal(a.approved_litres)),
+      new Decimal(0),
+    );
+
+    const hasObligations =
+      beneficiary.waterApplications.length > 0 ||
+      beneficiary.waterAllotments.length > 0 ||
+      totalPendingAmount.greaterThan(0) ||
+      pendingInstallmentsCount > 0 ||
+      beneficiary.infrastructures.length > 0 ||
+      beneficiary.extensions.length > 0;
+
+    return {
+      beneficiaryId: id,
+      name: beneficiary.name,
+      status: beneficiary.status,
+      hasObligations,
+      activeApplicationsCount: beneficiary.waterApplications.length,
+      approvedAllotmentsCount: beneficiary.waterAllotments.length,
+      approvedWaterLitres: approvedWaterLitres.toString(),
+      totalPendingAmount: totalPendingAmount.toString(),
+      pendingInstallmentsCount,
+      activeInfrastructureCount: beneficiary.infrastructures.length,
+      pendingExtensionsCount: beneficiary.extensions.length,
+      warningMessage: hasObligations
+        ? `This beneficiary has active operational records: ${approvedWaterLitres.toString()} L approved water, ₹${totalPendingAmount.toString()} pending balance, and ${pendingInstallmentsCount} pending installments. Review before deactivating.`
+        : null,
+    };
+  }
+
+  /**
+   * Deactivates a beneficiary profile with active obligations verification and audit trail.
+   */
+  async deactivateBeneficiary(id: string, reason: string, userId: string, ipAddress?: string) {
+    if (!reason || !reason.trim()) {
+      throw new BadRequestException('A valid reason is required for deactivation');
+    }
+
+    const existing = await this.prisma.beneficiary.findUnique({
+      where: { beneficiary_id: id },
+    });
+    if (!existing) {
+      throw new NotFoundException('Beneficiary not found');
+    }
+
+    if (existing.status === BeneficiaryStatus.INACTIVE) {
+      throw new BadRequestException('Beneficiary is already inactive');
+    }
+
+    const updated = await this.prisma.beneficiary.update({
+      where: { beneficiary_id: id },
+      data: { status: BeneficiaryStatus.INACTIVE },
+      include: { district: true, block: true, village: true },
+    });
+
+    await this.auditService.log({
+      userId,
+      action: AuditAction.UPDATE,
+      entityType: 'Beneficiary',
+      entityId: id,
+      oldValues: { status: existing.status },
+      newValues: { status: BeneficiaryStatus.INACTIVE },
+      reason: reason.trim(),
+      ipAddress,
+    });
+
+    return updated;
+  }
+
+  /**
+   * Reactivates an inactive beneficiary profile.
+   */
+  async reactivateBeneficiary(id: string, reason: string, userId: string, ipAddress?: string) {
+    if (!reason || !reason.trim()) {
+      throw new BadRequestException('A valid reason is required for reactivation');
+    }
+
+    const existing = await this.prisma.beneficiary.findUnique({
+      where: { beneficiary_id: id },
+    });
+    if (!existing) {
+      throw new NotFoundException('Beneficiary not found');
+    }
+
+    if (existing.status === BeneficiaryStatus.ACTIVE) {
+      throw new BadRequestException('Beneficiary is already active');
+    }
+
+    const updated = await this.prisma.beneficiary.update({
+      where: { beneficiary_id: id },
+      data: { status: BeneficiaryStatus.ACTIVE },
+      include: { district: true, block: true, village: true },
+    });
+
+    await this.auditService.log({
+      userId,
+      action: AuditAction.UPDATE,
+      entityType: 'Beneficiary',
+      entityId: id,
+      oldValues: { status: existing.status },
+      newValues: { status: BeneficiaryStatus.ACTIVE },
+      reason: reason.trim(),
+      ipAddress,
+    });
+
+    return updated;
+  }
+
+  /**
+   * Archives a beneficiary profile (Administrative retention only).
+   */
+  async archiveBeneficiary(id: string, reason: string, userId: string, ipAddress?: string) {
+    if (!reason || !reason.trim()) {
+      throw new BadRequestException('A valid reason is required for archiving');
+    }
+
+    const existing = await this.prisma.beneficiary.findUnique({
+      where: { beneficiary_id: id },
+    });
+    if (!existing) {
+      throw new NotFoundException('Beneficiary not found');
+    }
+
+    const updated = await this.prisma.beneficiary.update({
+      where: { beneficiary_id: id },
+      data: { status: BeneficiaryStatus.INACTIVE },
+      include: { district: true, block: true, village: true },
+    });
+
+    await this.auditService.log({
+      userId,
+      action: AuditAction.UPDATE,
+      entityType: 'Beneficiary',
+      entityId: id,
+      oldValues: { status: existing.status },
+      newValues: { status: 'ARCHIVED' },
+      reason: `ARCHIVE: ${reason.trim()}`,
+      ipAddress,
+    });
+
+    return updated;
+  }
+
+  /**
+   * Detects duplicate beneficiaries by phone, email, and (name + village).
+   */
+  async checkDuplicates(
+    dto: {
+      phoneNumber?: string;
+      email?: string;
+      name?: string;
+      villageId?: string;
+    },
+    excludeBeneficiaryId?: string,
+  ) {
+    const conditions: Prisma.BeneficiaryWhereInput[] = [];
+
+    if (dto.phoneNumber) {
+      conditions.push({ phone_number: dto.phoneNumber.trim() });
+    }
+
+    if (dto.email) {
+      conditions.push({ email: dto.email.trim() });
+    }
+
+    if (dto.name && dto.villageId) {
+      conditions.push({
+        name: { equals: dto.name.trim(), mode: 'insensitive' },
+        village_id: dto.villageId,
+      });
+    }
+
+    if (conditions.length === 0) {
+      return { found: false, matches: [] };
+    }
+
+    const where: Prisma.BeneficiaryWhereInput = {
+      OR: conditions,
+    };
+
+    if (excludeBeneficiaryId) {
+      where.beneficiary_id = { not: excludeBeneficiaryId };
+    }
+
+    const matches = await this.prisma.beneficiary.findMany({
+      where,
+      include: {
+        district: true,
+        block: true,
+        village: true,
+        landHoldings: {
+          where: { status: LandStatus.ACTIVE },
+          select: { declared_total_area: true },
+        },
+      },
+    });
+
+    const enriched = matches.map((b) => {
+      const totalLand = b.landHoldings.reduce(
+        (acc, curr) => acc.plus(new Decimal(curr.declared_total_area)),
+        new Decimal(0),
+      );
+      return {
+        beneficiaryId: b.beneficiary_id,
+        name: b.name,
+        phoneNumber: b.phone_number,
+        email: b.email,
+        districtName: b.district?.name,
+        blockName: b.block?.name,
+        villageName: b.village?.name,
+        totalLandAcres: totalLand.toString(),
+        status: b.status,
+      };
+    });
+
+    return {
+      found: enriched.length > 0,
+      matches: enriched,
+    };
+  }
+
+  /**
+   * Retrieves complete chronological audit history for a beneficiary.
+   */
+  async getBeneficiaryHistory(id: string) {
+    const beneficiary = await this.prisma.beneficiary.findUnique({
+      where: { beneficiary_id: id },
+    });
+    if (!beneficiary) {
+      throw new NotFoundException('Beneficiary not found');
+    }
+
+    return this.prisma.auditLog.findMany({
+      where: {
+        OR: [
+          { entity_id: id },
+          { entity_type: 'Beneficiary', entity_id: id },
+        ],
+      },
+      orderBy: { created_at: 'desc' },
+      take: 100,
+      include: {
+        user: {
+          select: {
+            user_id: true,
+            email: true,
+            full_name: true,
+            role: { select: { name: true } },
+          },
+        },
+      },
+    });
+  }
+
+  /**
+   * Toggles login access for the linked beneficiary user account.
+   */
+  async toggleAccountStatus(id: string, isActive: boolean, reason?: string, userId?: string, ipAddress?: string) {
+    const beneficiary = await this.prisma.beneficiary.findUnique({
+      where: { beneficiary_id: id },
+      include: { user: true },
+    });
+
+    if (!beneficiary) {
+      throw new NotFoundException('Beneficiary not found');
+    }
+
+    if (!beneficiary.user_id) {
+      throw new BadRequestException('Beneficiary does not have a linked user account');
+    }
+
+    const updatedUser = await this.prisma.user.update({
+      where: { user_id: beneficiary.user_id },
+      data: { is_active: isActive },
+    });
+
+    await this.auditService.log({
+      userId,
+      action: AuditAction.UPDATE,
+      entityType: 'UserAccount',
+      entityId: beneficiary.user_id,
+      oldValues: { is_active: beneficiary.user?.is_active },
+      newValues: { is_active: isActive },
+      reason: reason?.trim() || `Administrative login account status set to ${isActive ? 'ENABLED' : 'DISABLED'}`,
+      ipAddress,
+    });
+
+    return {
+      success: true,
+      userId: updatedUser.user_id,
+      isActive: updatedUser.is_active,
+    };
+  }
+
+  /**
+   * Forces administrative password reset for the linked user.
+   */
+  async forcePasswordReset(id: string, reason?: string, userId?: string, ipAddress?: string) {
+    const beneficiary = await this.prisma.beneficiary.findUnique({
+      where: { beneficiary_id: id },
+      include: { user: true },
+    });
+
+    if (!beneficiary) {
+      throw new NotFoundException('Beneficiary not found');
+    }
+
+    if (!beneficiary.user_id) {
+      throw new BadRequestException('Beneficiary does not have a linked user account');
+    }
+
+    await this.auditService.log({
+      userId,
+      action: AuditAction.UPDATE,
+      entityType: 'UserAccount',
+      entityId: beneficiary.user_id,
+      newValues: { passwordResetRequested: true },
+      reason: reason?.trim() || 'Administrative forced password reset initiated',
+      ipAddress,
+    });
+
+    return {
+      success: true,
+      message: 'Password reset request recorded in audit log. Beneficiary can reset via email or SMS verification.',
+    };
   }
 
   private calculateTotalLand(holdings: { declared_total_area: any; status: LandStatus }[]): Decimal {

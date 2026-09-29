@@ -144,4 +144,70 @@ export class UpdateBeneficiaryDto {
   @IsOptional()
   @IsEnum(BeneficiaryStatus)
   status?: BeneficiaryStatus;
+
+  @ApiPropertyOptional({ example: 'Administrative data entry correction of address details' })
+  @IsOptional()
+  @IsString()
+  reason?: string;
+}
+
+export class DeactivateBeneficiaryDto {
+  @ApiProperty({ example: 'Beneficiary requested temporary pause in operational water distribution' })
+  @IsString()
+  @IsNotEmpty()
+  reason: string;
+}
+
+export class ReactivateBeneficiaryDto {
+  @ApiProperty({ example: 'Beneficiary fulfilled land verification compliance and resumed operations' })
+  @IsString()
+  @IsNotEmpty()
+  reason: string;
+}
+
+export class ArchiveBeneficiaryDto {
+  @ApiProperty({ example: 'Permanent archival following complete succession settlement' })
+  @IsString()
+  @IsNotEmpty()
+  reason: string;
+}
+
+export class CheckDuplicateBeneficiaryDto {
+  @ApiPropertyOptional({ example: '9876543210' })
+  @IsOptional()
+  @IsString()
+  phoneNumber?: string;
+
+  @ApiPropertyOptional({ example: 'farmer@water.gov' })
+  @IsOptional()
+  @IsString()
+  email?: string;
+
+  @ApiPropertyOptional({ example: 'K. Ramasamy Gounder' })
+  @IsOptional()
+  @IsString()
+  name?: string;
+
+  @ApiPropertyOptional({ example: 'UUID of Village' })
+  @IsOptional()
+  @IsUUID()
+  villageId?: string;
+}
+
+export class ToggleAccountStatusDto {
+  @ApiProperty({ example: false, description: 'True to enable login, false to disable' })
+  @IsNotEmpty()
+  isActive: boolean;
+
+  @ApiPropertyOptional({ example: 'Administrative lock requested during audit verification' })
+  @IsOptional()
+  @IsString()
+  reason?: string;
+}
+
+export class ForcePasswordResetDto {
+  @ApiPropertyOptional({ example: 'User lost device access and requested authorized administrative password reset' })
+  @IsOptional()
+  @IsString()
+  reason?: string;
 }

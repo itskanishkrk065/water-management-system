@@ -98,7 +98,7 @@ export default function Sidebar() {
 
   const navItems = [
     { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-    { label: 'Beneficiaries', href: '/beneficiaries', icon: Users },
+    { label: 'Beneficiaries', href: '/admin/beneficiaries', icon: Users },
     { label: 'Find & Filter', href: '/admin/find', icon: Search },
     { label: 'Water Applications', href: '/water/applications', icon: FileCheck2 },
     ...(isAdmin ? [{ label: 'Approvals Queue', href: '/water/approvals', icon: CheckCircle }] : []),

@@ -1,7 +1,28 @@
-import { Controller, Get, Post, Patch, Param, Body, Query, UseGuards, Req, Ip } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Param,
+  Body,
+  Query,
+  UseGuards,
+  Ip,
+  HttpCode,
+  HttpStatus,
+} from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { BeneficiariesService } from './beneficiaries.service';
-import { CreateBeneficiaryDto, UpdateBeneficiaryDto } from './dto/beneficiary.dto';
+import {
+  CreateBeneficiaryDto,
+  UpdateBeneficiaryDto,
+  DeactivateBeneficiaryDto,
+  ReactivateBeneficiaryDto,
+  ArchiveBeneficiaryDto,
+  CheckDuplicateBeneficiaryDto,
+  ToggleAccountStatusDto,
+  ForcePasswordResetDto,
+} from './dto/beneficiary.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -21,6 +42,13 @@ export class BeneficiariesController {
     return this.beneficiariesService.lookupByPhone(phone || '');
   }
 
+  @Post('check-duplicates')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Check potential duplicate beneficiaries by phone, email, or name + village' })
+  async checkDuplicates(@Body() dto: CheckDuplicateBeneficiaryDto, @Query('excludeId') excludeId?: string) {
+    return this.beneficiariesService.checkDuplicates(dto, excludeId);
+  }
+
   @Post()
   @Roles(RoleName.ADMIN, RoleName.FIELD_OFFICER)
   @ApiOperation({ summary: 'Create new beneficiary profile' })
@@ -37,6 +65,7 @@ export class BeneficiariesController {
   async findAll(
     @Query('search') search?: string,
     @Query('districtId') districtId?: string,
+    @Query('blockId') blockId?: string,
     @Query('panchayatId') panchayatId?: string,
     @Query('status') status?: BeneficiaryStatus,
     @Query('page') page?: string,
@@ -45,6 +74,7 @@ export class BeneficiariesController {
     return this.beneficiariesService.findAll({
       search,
       districtId,
+      blockId,
       panchayatId,
       status,
       page: page ? parseInt(page, 10) : 1,
@@ -53,14 +83,14 @@ export class BeneficiariesController {
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Get full beneficiary dossier across all 9 operational tabs' })
+  @ApiOperation({ summary: 'Get full beneficiary dossier across all operational tabs' })
   async findOne(@Param('id') id: string) {
     return this.beneficiariesService.findOne(id);
   }
 
   @Patch(':id')
   @Roles(RoleName.ADMIN, RoleName.FIELD_OFFICER)
-  @ApiOperation({ summary: 'Update beneficiary details' })
+  @ApiOperation({ summary: 'Update beneficiary details with administrative correction reason' })
   async update(
     @Param('id') id: string,
     @Body() dto: UpdateBeneficiaryDto,
@@ -68,5 +98,83 @@ export class BeneficiariesController {
     @Ip() ip: string,
   ) {
     return this.beneficiariesService.update(id, dto, user.user_id, ip);
+  }
+
+  @Get(':id/obligations')
+  @Roles(RoleName.ADMIN, RoleName.FIELD_OFFICER, RoleName.ACCOUNTS)
+  @ApiOperation({ summary: 'Check active obligations before deactivation' })
+  async getObligations(@Param('id') id: string) {
+    return this.beneficiariesService.getObligationsSummary(id);
+  }
+
+  @Post(':id/deactivate')
+  @HttpCode(HttpStatus.OK)
+  @Roles(RoleName.ADMIN)
+  @ApiOperation({ summary: 'Deactivate beneficiary with mandatory reason' })
+  async deactivate(
+    @Param('id') id: string,
+    @Body() dto: DeactivateBeneficiaryDto,
+    @CurrentUser() user: RequestUser,
+    @Ip() ip: string,
+  ) {
+    return this.beneficiariesService.deactivateBeneficiary(id, dto.reason, user.user_id, ip);
+  }
+
+  @Post(':id/reactivate')
+  @HttpCode(HttpStatus.OK)
+  @Roles(RoleName.ADMIN)
+  @ApiOperation({ summary: 'Reactivate beneficiary' })
+  async reactivate(
+    @Param('id') id: string,
+    @Body() dto: ReactivateBeneficiaryDto,
+    @CurrentUser() user: RequestUser,
+    @Ip() ip: string,
+  ) {
+    return this.beneficiariesService.reactivateBeneficiary(id, dto.reason, user.user_id, ip);
+  }
+
+  @Post(':id/archive')
+  @HttpCode(HttpStatus.OK)
+  @Roles(RoleName.ADMIN)
+  @ApiOperation({ summary: 'Archive beneficiary for historical preservation' })
+  async archive(
+    @Param('id') id: string,
+    @Body() dto: ArchiveBeneficiaryDto,
+    @CurrentUser() user: RequestUser,
+    @Ip() ip: string,
+  ) {
+    return this.beneficiariesService.archiveBeneficiary(id, dto.reason, user.user_id, ip);
+  }
+
+  @Get(':id/history')
+  @ApiOperation({ summary: 'Get complete chronological audit history for a beneficiary' })
+  async getHistory(@Param('id') id: string) {
+    return this.beneficiariesService.getBeneficiaryHistory(id);
+  }
+
+  @Post(':id/account/toggle-status')
+  @HttpCode(HttpStatus.OK)
+  @Roles(RoleName.ADMIN)
+  @ApiOperation({ summary: 'Toggle beneficiary portal login account active status' })
+  async toggleAccountStatus(
+    @Param('id') id: string,
+    @Body() dto: ToggleAccountStatusDto,
+    @CurrentUser() user: RequestUser,
+    @Ip() ip: string,
+  ) {
+    return this.beneficiariesService.toggleAccountStatus(id, dto.isActive, dto.reason, user.user_id, ip);
+  }
+
+  @Post(':id/account/force-password-reset')
+  @HttpCode(HttpStatus.OK)
+  @Roles(RoleName.ADMIN)
+  @ApiOperation({ summary: 'Initiate forced administrative password reset' })
+  async forcePasswordReset(
+    @Param('id') id: string,
+    @Body() dto: ForcePasswordResetDto,
+    @CurrentUser() user: RequestUser,
+    @Ip() ip: string,
+  ) {
+    return this.beneficiariesService.forcePasswordReset(id, dto.reason, user.user_id, ip);
   }
 }
