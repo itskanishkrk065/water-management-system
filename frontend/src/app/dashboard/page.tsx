@@ -8,7 +8,6 @@ import {
   formatLitres,
   formatAcres,
   formatDate,
-  getStatusBadgeClass,
 } from '@/lib/utils';
 import {
   Users,
@@ -17,23 +16,22 @@ import {
   Receipt,
   CheckCircle2,
   Clock,
-  Building2,
-  ArrowRight,
-  TrendingUp,
-  AlertTriangle,
   Filter,
   RefreshCw,
-  Search,
+  Plus,
+  FileSpreadsheet,
+  ArrowRight,
   ShieldCheck,
   ShieldAlert,
-  FileSpreadsheet,
-  FileCheck,
   ArrowUpRight,
-  ExternalLink,
-  Plus,
+  CheckCircle,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useAuth } from '@/lib/auth-context';
+import StatusBadge from '@/components/ui/StatusBadge';
+import KPICard from '@/components/ui/KPICard';
+import PageHeader from '@/components/ui/PageHeader';
+import DataTable, { ColumnDef } from '@/components/ui/DataTable';
 
 export default function DashboardPage() {
   const { user } = useAuth();
@@ -124,66 +122,142 @@ export default function DashboardPage() {
     selectedDistrict || selectedVillage || selectedProject || selectedStatus || dateFrom || dateTo,
   );
 
+  // Table Columns Definition
+  const pendingApprovalColumns: ColumnDef<any>[] = [
+    {
+      header: 'Beneficiary Farmer',
+      cell: (app) => (
+        <div>
+          <div className="font-semibold text-slate-900">{app.beneficiary?.name}</div>
+          <div className="text-[11px] font-mono text-slate-400">{app.beneficiary?.phone_number}</div>
+        </div>
+      ),
+    },
+    {
+      header: 'Location / Scheme',
+      cell: (app) => (
+        <div className="text-xs">
+          <div className="text-slate-700 font-medium">{app.beneficiary?.village?.name || 'Village'}</div>
+          <div className="text-[11px] text-slate-400">{app.project?.project_name || 'Scheme'}</div>
+        </div>
+      ),
+    },
+    {
+      header: 'Requested Volume',
+      align: 'right',
+      cell: (app) => (
+        <span className="font-semibold text-sky-700 font-mono">
+          {formatLitres(app.required_litres)}
+        </span>
+      ),
+    },
+    {
+      header: 'Action',
+      align: 'right',
+      cell: (app) => (
+        <Link
+          href="/water/approvals"
+          className="inline-flex items-center gap-1 px-3 py-1 bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 rounded-lg text-xs font-semibold transition"
+        >
+          Review <ArrowRight className="w-3 h-3" />
+        </Link>
+      ),
+    },
+  ];
+
+  const paymentColumns: ColumnDef<any>[] = [
+    {
+      header: 'Beneficiary',
+      cell: (p) => (
+        <div>
+          <div className="font-semibold text-slate-900">{p.beneficiary?.name}</div>
+          <div className="text-[11px] font-mono text-slate-400">{p.beneficiary?.phone_number}</div>
+        </div>
+      ),
+    },
+    {
+      header: 'Receipt / Ref',
+      cell: (p) => (
+        <span className="font-mono text-xs text-slate-600">
+          {p.receipt_number || p.payment_reference || 'REF-PAY'}
+        </span>
+      ),
+    },
+    {
+      header: 'Amount Paid',
+      align: 'right',
+      cell: (p) => (
+        <span className="font-bold text-emerald-700 font-mono">
+          {formatCurrency(p.amount)}
+        </span>
+      ),
+    },
+    {
+      header: 'Date',
+      align: 'right',
+      cell: (p) => (
+        <span className="text-xs text-slate-500 font-mono">
+          {formatDate(p.payment_date || p.created_at)}
+        </span>
+      ),
+    },
+  ];
+
   return (
     <div className="space-y-6">
-      {/* Header & Quick Action Buttons */}
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Executive Dashboard</h1>
-            <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-sky-50 text-sky-700 border border-sky-200">
-              Live Registry
-            </span>
-          </div>
-          <p className="text-sm text-slate-500 mt-1">
-            Authoritative operational metrics, water distribution accounting, and financial integrity reconciliation
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {user?.role === 'ADMIN' && (
+      {/* Top Page Header */}
+      <PageHeader
+        title="Executive Dashboard"
+        description="Authoritative operational metrics, quota allocation accounting, and data integrity reconciliation"
+        badge="Live Registry"
+        badgeVariant="info"
+        actions={
+          <>
+            {user?.role === 'ADMIN' && (
+              <Link
+                href="/admin/project-schemes"
+                className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl border border-slate-300 transition flex items-center gap-1.5"
+              >
+                <Layers className="w-3.5 h-3.5" /> Project Schemes
+              </Link>
+            )}
             <Link
-              href="/admin/project-schemes"
-              className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg border border-slate-300 transition flex items-center gap-1.5"
+              href="/beneficiaries/new"
+              className="px-3.5 py-2 bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold rounded-xl shadow-sm transition flex items-center gap-1.5"
             >
-              <Layers className="w-3.5 h-3.5" /> Project Schemes
+              <Plus className="w-3.5 h-3.5" /> Onboard Beneficiary
             </Link>
-          )}
-          <Link
-            href="/beneficiaries/new"
-            className="px-3.5 py-2 bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold rounded-lg shadow-sm transition flex items-center gap-1.5"
-          >
-            <Plus className="w-3.5 h-3.5" /> Onboard Beneficiary
-          </Link>
-          <Link
-            href="/water/applications/new"
-            className="px-3.5 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 text-xs font-semibold rounded-lg shadow-sm transition flex items-center gap-1.5"
-          >
-            <Plus className="w-3.5 h-3.5" /> Water Application
-          </Link>
-          {!isFieldOfficer && (
             <Link
-              href="/payments"
-              className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg shadow-sm transition flex items-center gap-1.5"
+              href="/water/applications/new"
+              className="px-3.5 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 text-xs font-semibold rounded-xl shadow-sm transition flex items-center gap-1.5"
             >
-              <Receipt className="w-3.5 h-3.5" /> Record Payment
+              <Plus className="w-3.5 h-3.5" /> Water Application
             </Link>
-          )}
-          <Link
-            href="/reports/find"
-            className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg shadow-sm transition flex items-center gap-1.5"
-          >
-            <FileSpreadsheet className="w-3.5 h-3.5" /> Canonical Reports
-          </Link>
-        </div>
-      </div>
+            {!isFieldOfficer && (
+              <Link
+                href="/payments"
+                className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-xl shadow-sm transition flex items-center gap-1.5"
+              >
+                <Receipt className="w-3.5 h-3.5" /> Record Payment
+              </Link>
+            )}
+            <Link
+              href="/reports/find"
+              className="px-3.5 py-2 bg-slate-800 hover:bg-slate-900 text-white text-xs font-semibold rounded-xl shadow-sm transition flex items-center gap-1.5"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5" /> Canonical Reports
+            </Link>
+          </>
+        }
+      />
 
-      {/* Dynamic Operational Filter Bar */}
-      <div className="bg-slate-50/80 p-4 rounded-xl border border-slate-200">
-        <div className="flex items-center justify-between mb-3">
+      {/* Operational Filter Ribbon */}
+      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+        <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 text-xs font-bold text-slate-700 uppercase tracking-wider">
             <Filter className="w-3.5 h-3.5 text-sky-600" /> Operational Scoping Filters
             {hasActiveFilters && (
-              <span className="px-2 py-0.5 rounded-full bg-sky-100 text-sky-700 text-[10px] font-semibold">
+              <span className="px-2 py-0.5 rounded-full bg-sky-50 text-sky-700 border border-sky-200 text-[10px] font-semibold">
                 Filters Active
               </span>
             )}
@@ -204,7 +278,7 @@ export default function DashboardPage() {
             <select
               value={selectedDistrict}
               onChange={(e) => setSelectedDistrict(e.target.value)}
-              className="w-full text-xs rounded-lg border-slate-300 bg-white py-1.5 px-2 focus:ring-sky-500 focus:border-sky-500"
+              className="w-full text-xs rounded-xl border-slate-300 bg-slate-50/50 py-2 px-2.5 focus:ring-sky-500 focus:border-sky-500"
             >
               <option value="">All Districts</option>
               {(Array.isArray(districts) ? districts : []).map((d: any) => (
@@ -220,7 +294,7 @@ export default function DashboardPage() {
             <select
               value={selectedVillage}
               onChange={(e) => setSelectedVillage(e.target.value)}
-              className="w-full text-xs rounded-lg border-slate-300 bg-white py-1.5 px-2 focus:ring-sky-500 focus:border-sky-500"
+              className="w-full text-xs rounded-xl border-slate-300 bg-slate-50/50 py-2 px-2.5 focus:ring-sky-500 focus:border-sky-500"
             >
               <option value="">All Villages</option>
               {(Array.isArray(villages) ? villages : []).map((v: any) => (
@@ -236,7 +310,7 @@ export default function DashboardPage() {
             <select
               value={selectedProject}
               onChange={(e) => setSelectedProject(e.target.value)}
-              className="w-full text-xs rounded-lg border-slate-300 bg-white py-1.5 px-2 focus:ring-sky-500 focus:border-sky-500"
+              className="w-full text-xs rounded-xl border-slate-300 bg-slate-50/50 py-2 px-2.5 focus:ring-sky-500 focus:border-sky-500"
             >
               <option value="">All Schemes</option>
               {(Array.isArray(projects) ? projects : []).map((p: any) => (
@@ -252,7 +326,7 @@ export default function DashboardPage() {
             <select
               value={selectedStatus}
               onChange={(e) => setSelectedStatus(e.target.value)}
-              className="w-full text-xs rounded-lg border-slate-300 bg-white py-1.5 px-2 focus:ring-sky-500 focus:border-sky-500"
+              className="w-full text-xs rounded-xl border-slate-300 bg-slate-50/50 py-2 px-2.5 focus:ring-sky-500 focus:border-sky-500"
             >
               <option value="">All Statuses</option>
               <option value="DRAFT">Draft</option>
@@ -270,7 +344,7 @@ export default function DashboardPage() {
               type="date"
               value={dateFrom}
               onChange={(e) => setDateFrom(e.target.value)}
-              className="w-full text-xs rounded-lg border-slate-300 bg-white py-1.5 px-2 focus:ring-sky-500 focus:border-sky-500"
+              className="w-full text-xs rounded-xl border-slate-300 bg-slate-50/50 py-2 px-2.5 focus:ring-sky-500 focus:border-sky-500"
             />
           </div>
 
@@ -280,178 +354,122 @@ export default function DashboardPage() {
               type="date"
               value={dateTo}
               onChange={(e) => setDateTo(e.target.value)}
-              className="w-full text-xs rounded-lg border-slate-300 bg-white py-1.5 px-2 focus:ring-sky-500 focus:border-sky-500"
+              className="w-full text-xs rounded-xl border-slate-300 bg-slate-50/50 py-2 px-2.5 focus:ring-sky-500 focus:border-sky-500"
             />
           </div>
         </div>
       </div>
 
       {/* Main KPI Stats Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-        {/* Beneficiaries Card */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Beneficiaries</span>
-              <div className="p-2.5 bg-sky-50 text-sky-600 rounded-xl border border-sky-100">
-                <Users className="w-5 h-5" />
-              </div>
-            </div>
-            <div className="mt-3 text-3xl font-extrabold text-slate-900">
-              {statsLoading ? '...' : (stats?.beneficiaries?.total ?? stats?.total_beneficiaries ?? 0)}
-            </div>
-            <div className="mt-1 text-xs text-slate-500">Farmers in project scope</div>
-          </div>
-          <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
-            <span className="text-emerald-600 font-semibold">
-              Active: {stats?.beneficiaries?.active ?? stats?.total_beneficiaries ?? 0}
-            </span>
-            <span className="text-slate-400">
-              Inactive: {stats?.beneficiaries?.inactive ?? 0}
-            </span>
-          </div>
-        </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-5">
+        <KPICard
+          title="Beneficiaries"
+          value={statsLoading ? '...' : (stats?.beneficiaries?.total ?? stats?.total_beneficiaries ?? 0)}
+          subtitle={`Active: ${stats?.beneficiaries?.active ?? stats?.total_beneficiaries ?? 0}`}
+          contextBadge={<StatusBadge status="ACTIVE" size="sm" showIcon={false} />}
+          icon={Users}
+          iconVariant="sky"
+        />
 
-        {/* Land Holdings Card */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Land Registered</span>
-              <div className="p-2.5 bg-emerald-50 text-emerald-600 rounded-xl border border-emerald-100">
-                <Layers className="w-5 h-5" />
-              </div>
-            </div>
-            <div className="mt-3 text-3xl font-extrabold text-slate-900">
-              {statsLoading ? '...' : formatAcres(stats?.land?.total_active_acres ?? stats?.total_land_acres)}
-            </div>
-            <div className="mt-1 text-xs text-slate-500">
-              {stats?.land?.active_holdings ?? 0} active SF parcels
-            </div>
-          </div>
-          <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
-            <span className="text-slate-600 font-medium">
-              Total Holdings: {stats?.land?.total_holdings ?? 0}
-            </span>
-            <span className="text-slate-400">
-              Gross: {formatAcres(stats?.land?.total_land_acres)}
-            </span>
-          </div>
-        </div>
+        <KPICard
+          title="Land Registered"
+          value={statsLoading ? '...' : formatAcres(stats?.land?.total_active_acres ?? stats?.total_land_acres)}
+          subtitle={`${stats?.land?.active_holdings ?? 0} active SF parcels`}
+          contextBadge={<span className="text-[11px] font-mono text-slate-500">Gross: {formatAcres(stats?.land?.total_land_acres)}</span>}
+          icon={Layers}
+          iconVariant="emerald"
+        />
 
-        {/* Water Allocation Card */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Water Allotted</span>
-              <div className="p-2.5 bg-blue-50 text-blue-600 rounded-xl border border-blue-100">
-                <Droplet className="w-5 h-5" />
-              </div>
-            </div>
-            <div className="mt-3 text-3xl font-extrabold text-slate-900">
-              {statsLoading ? '...' : formatLitres(stats?.water?.total_approved_litres ?? stats?.total_approved_litres)}
-            </div>
-            <div className="mt-1 text-xs text-slate-500">
-              Requested: {formatLitres(stats?.water?.total_required_litres)}
-            </div>
-          </div>
-          <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
-            <span className="text-blue-700 font-semibold">
-              Approved Apps: {stats?.water?.approved_applications ?? 0}
-            </span>
-            <span className="text-amber-600 font-medium">
-              Pending: {stats?.water?.submitted_applications ?? 0}
-            </span>
-          </div>
-        </div>
+        <KPICard
+          title="Water Allotted"
+          value={statsLoading ? '...' : formatLitres(stats?.water?.total_approved_litres ?? stats?.total_approved_litres)}
+          subtitle={`Approved Apps: ${stats?.water?.approved_applications ?? 0}`}
+          contextBadge={<span className="text-[11px] font-mono text-slate-500">Req: {formatLitres(stats?.water?.total_required_litres)}</span>}
+          icon={Droplet}
+          iconVariant="indigo"
+        />
 
-        {/* Financial / Billing Card */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Development Billing</span>
-              <div className="p-2.5 bg-amber-50 text-amber-600 rounded-xl border border-amber-100">
-                <Receipt className="w-5 h-5" />
-              </div>
-            </div>
-            {isFieldOfficer ? (
-              <div className="mt-3 py-2 text-xs font-medium text-slate-400 italic">
-                Restricted for Field Officers
-              </div>
-            ) : (
-              <>
-                <div className="mt-3 text-3xl font-extrabold text-slate-900">
-                  {statsLoading ? '...' : formatCurrency(stats?.financial?.total_development_billing ?? stats?.total_development_billing)}
-                </div>
-                <div className="mt-1 text-xs text-slate-500">Total capital infrastructure cost</div>
-              </>
-            )}
-          </div>
-          <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
-            {isFieldOfficer ? (
-              <span className="text-slate-400">Financial Role Required</span>
-            ) : (
-              <>
-                <span className="text-emerald-600 font-semibold">
-                  Paid: {formatCurrency(stats?.financial?.total_collected ?? stats?.total_collected)}
-                </span>
-                <span className="text-rose-600 font-semibold">
-                  Pending: {formatCurrency(stats?.financial?.total_pending ?? stats?.total_pending)}
-                </span>
-              </>
-            )}
-          </div>
-        </div>
+        <KPICard
+          title="Development Billing"
+          value={
+            isFieldOfficer
+              ? 'Restricted'
+              : statsLoading
+              ? '...'
+              : formatCurrency(stats?.financial?.total_development_billing ?? stats?.total_development_billing)
+          }
+          subtitle={
+            isFieldOfficer
+              ? 'Financial Role Required'
+              : `Collected: ${formatCurrency(stats?.financial?.total_collected ?? stats?.total_collected)}`
+          }
+          contextBadge={
+            !isFieldOfficer && (
+              <span className="text-[11px] font-mono text-rose-600 font-semibold">
+                Pending: {formatCurrency(stats?.financial?.total_pending ?? stats?.total_pending)}
+              </span>
+            )
+          }
+          icon={Receipt}
+          iconVariant="amber"
+        />
       </div>
 
-      {/* Financial Health & Data Quality Ribbon */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+      {/* Operational Health Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-5">
         {/* Collections Overview */}
-        <div className="bg-gradient-to-br from-emerald-500 to-teal-700 p-5 rounded-2xl text-white shadow-sm flex flex-col justify-between">
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-emerald-100">Collections Realized</span>
-              <TrendingUp className="w-5 h-5 text-emerald-200" />
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Collections Realized</span>
+              <div className="p-2 bg-emerald-50 text-emerald-600 rounded-xl border border-emerald-100">
+                <CheckCircle className="w-4 h-4" />
+              </div>
             </div>
             {isFieldOfficer ? (
-              <p className="mt-3 text-sm text-emerald-100 italic">Financials hidden under RBAC</p>
+              <p className="mt-3 text-sm text-slate-400 italic">Financial data restricted under RBAC</p>
             ) : (
               <>
-                <div className="mt-2 text-2xl font-black">
+                <div className="mt-2 text-2xl font-bold text-slate-900">
                   {formatCurrency(stats?.financial?.total_collected ?? stats?.total_collected)}
                 </div>
-                <p className="text-xs text-emerald-100 mt-1">Verified offline receipts deposited</p>
+                <p className="text-xs text-slate-500 mt-1">Verified offline receipts deposited</p>
               </>
             )}
           </div>
-          <div className="mt-4 pt-3 border-t border-emerald-400/40 text-xs flex justify-between items-center">
-            <span>Pending Collections:</span>
-            <strong>{isFieldOfficer ? '---' : formatCurrency(stats?.financial?.total_pending ?? stats?.total_pending)}</strong>
+          <div className="mt-4 pt-3 border-t border-slate-100 text-xs flex justify-between items-center text-slate-600">
+            <span>Pending Balance:</span>
+            <strong className="text-rose-600 font-mono">
+              {isFieldOfficer ? '---' : formatCurrency(stats?.financial?.total_pending ?? stats?.total_pending)}
+            </strong>
           </div>
         </div>
 
-        {/* Installments Due Overview */}
-        <div className="bg-gradient-to-br from-amber-500 to-orange-600 p-5 rounded-2xl text-white shadow-sm flex flex-col justify-between">
+        {/* Installment Schedule */}
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-amber-100">Installment Schedule</span>
-              <Clock className="w-5 h-5 text-amber-200" />
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Installment Ledger</span>
+              <div className="p-2 bg-amber-50 text-amber-600 rounded-xl border border-amber-100">
+                <Clock className="w-4 h-4" />
+              </div>
             </div>
             {isFieldOfficer ? (
-              <p className="mt-3 text-sm text-amber-100 italic">Financials hidden under RBAC</p>
+              <p className="mt-3 text-sm text-slate-400 italic">Financial data restricted under RBAC</p>
             ) : (
               <>
-                <div className="mt-2 text-2xl font-black">
+                <div className="mt-2 text-2xl font-bold text-slate-900">
                   {stats?.financial?.pending_installments_count ?? 0} Pending
                 </div>
-                <p className="text-xs text-amber-100 mt-1">
-                  Overdue installments: <strong className="text-white">{stats?.financial?.overdue_installments_count ?? 0}</strong>
+                <p className="text-xs text-slate-500 mt-1">
+                  Overdue installments: <strong className="text-rose-600 font-mono">{stats?.financial?.overdue_installments_count ?? 0}</strong>
                 </p>
               </>
             )}
           </div>
-          <div className="mt-4 pt-3 border-t border-amber-400/40 text-xs flex justify-between items-center">
-            <Link href="/payments" className="hover:underline flex items-center gap-1 font-semibold">
-              Open Payment Ledger <ArrowRight className="w-3 h-3" />
+          <div className="mt-4 pt-3 border-t border-slate-100 text-xs flex justify-between items-center">
+            <Link href="/billing/installments" className="text-sky-600 hover:text-sky-800 flex items-center gap-1 font-semibold">
+              View Schedule <ArrowRight className="w-3 h-3" />
             </Link>
           </div>
         </div>
@@ -462,26 +480,22 @@ export default function DashboardPage() {
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Data Integrity Health</span>
               {stats?.data_quality?.status === 'PASS' ? (
-                <ShieldCheck className="w-5 h-5 text-emerald-600" />
+                <div className="p-2 bg-emerald-50 text-emerald-600 rounded-xl border border-emerald-100">
+                  <ShieldCheck className="w-4 h-4" />
+                </div>
               ) : (
-                <ShieldAlert className="w-5 h-5 text-rose-600" />
+                <div className="p-2 bg-rose-50 text-rose-600 rounded-xl border border-rose-100">
+                  <ShieldAlert className="w-4 h-4" />
+                </div>
               )}
             </div>
             <div className="mt-2 flex items-center gap-2">
-              <span
-                className={`text-lg font-bold px-2.5 py-0.5 rounded-lg border ${
-                  stats?.data_quality?.status === 'PASS'
-                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                    : 'bg-rose-50 text-rose-700 border-rose-200'
-                }`}
-              >
-                {stats?.data_quality?.status || 'PASS'}
-              </span>
+              <StatusBadge status={stats?.data_quality?.status || 'PASS'} />
               <span className="text-xs text-slate-500">
                 {stats?.data_quality?.errorChecks ?? 0} errors • {stats?.data_quality?.warningChecks ?? 0} warnings
               </span>
             </div>
-            <p className="text-xs text-slate-500 mt-2">
+            <p className="text-xs text-slate-500 mt-2 leading-relaxed">
               All 1-to-1 holding invariants &amp; payment checksums authoritative
             </p>
           </div>
@@ -490,7 +504,7 @@ export default function DashboardPage() {
               href="/admin/integrity"
               className="text-sky-600 hover:text-sky-800 font-semibold flex items-center gap-1"
             >
-              Run Integrity Check <ArrowUpRight className="w-3.5 h-3.5" />
+              Run Diagnostic Audit <ArrowUpRight className="w-3.5 h-3.5" />
             </Link>
           </div>
         </div>
@@ -498,12 +512,11 @@ export default function DashboardPage() {
 
       {/* Action Queues Section */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Pending Approvals Table */}
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
-          <div className="p-5 border-b border-slate-200 flex items-center justify-between bg-slate-50/50">
+        <div className="space-y-3">
+          <div className="flex items-center justify-between px-1">
             <div>
-              <h2 className="text-base font-bold text-slate-900">Water Applications Awaiting Decision</h2>
-              <p className="text-xs text-slate-500">Submitted by field officers requiring administrator approval</p>
+              <h2 className="text-base font-bold text-slate-900 tracking-tight">Water Applications Awaiting Decision</h2>
+              <p className="text-xs text-slate-500">Submitted by field staff requiring approval</p>
             </div>
             <Link
               href="/water/approvals"
@@ -513,58 +526,19 @@ export default function DashboardPage() {
             </Link>
           </div>
 
-          <div className="overflow-x-auto flex-1">
-            <table className="w-full text-left text-sm">
-              <thead className="bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-500 uppercase">
-                <tr>
-                  <th className="px-4 py-3">Beneficiary</th>
-                  <th className="px-4 py-3">Location / Scheme</th>
-                  <th className="px-4 py-3">Requested</th>
-                  <th className="px-4 py-3 text-right">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {recentActivity?.recent_applications?.length > 0 ? (
-                  recentActivity.recent_applications.map((app: any) => (
-                    <tr key={app.application_id || app.id} className="hover:bg-slate-50/50 transition">
-                      <td className="px-4 py-3 font-medium text-slate-900">
-                        <div>{app.beneficiary?.name}</div>
-                        <div className="text-xs text-slate-400 font-normal">{app.beneficiary?.phone_number}</div>
-                      </td>
-                      <td className="px-4 py-3 text-xs text-slate-600">
-                        <div>{app.beneficiary?.village?.name || 'Village'}</div>
-                        <div className="text-[11px] text-slate-400">{app.project?.name || 'Scheme'}</div>
-                      </td>
-                      <td className="px-4 py-3 font-semibold text-sky-700">
-                        {formatLitres(app.required_litres)}
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <Link
-                          href={`/water/approvals`}
-                          className="px-2.5 py-1 bg-sky-50 text-sky-700 hover:bg-sky-100 border border-sky-200 rounded-lg text-xs font-semibold transition"
-                        >
-                          Review
-                        </Link>
-                      </td>
-                    </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td colSpan={4} className="px-4 py-8 text-center text-xs text-slate-400">
-                      No applications currently awaiting approval
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+          <DataTable
+            columns={pendingApprovalColumns}
+            data={recentActivity?.recent_applications || []}
+            isLoading={activityLoading}
+            emptyTitle="No applications awaiting decision"
+            emptyDescription="All submitted water applications have been processed and approved."
+          />
         </div>
 
-        {/* Recent Payments & Collections Stream */}
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
-          <div className="p-5 border-b border-slate-200 flex items-center justify-between bg-slate-50/50">
+        <div className="space-y-3">
+          <div className="flex items-center justify-between px-1">
             <div>
-              <h2 className="text-base font-bold text-slate-900">Recent Payment Ledger Activity</h2>
+              <h2 className="text-base font-bold text-slate-900 tracking-tight">Recent Payment Ledger Activity</h2>
               <p className="text-xs text-slate-500">Authoritative collection ledger transactions</p>
             </div>
             <Link
@@ -575,51 +549,17 @@ export default function DashboardPage() {
             </Link>
           </div>
 
-          <div className="overflow-x-auto flex-1">
-            <table className="w-full text-left text-sm">
-              <thead className="bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-500 uppercase">
-                <tr>
-                  <th className="px-4 py-3">Beneficiary</th>
-                  <th className="px-4 py-3">Receipt / Ref</th>
-                  <th className="px-4 py-3">Amount</th>
-                  <th className="px-4 py-3 text-right">Date</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {isFieldOfficer ? (
-                  <tr>
-                    <td colSpan={4} className="px-4 py-8 text-center text-xs text-slate-400 italic">
-                      Payment history is restricted for Field Officers
-                    </td>
-                  </tr>
-                ) : recentActivity?.recent_payments?.length > 0 ? (
-                  recentActivity.recent_payments.map((p: any) => (
-                    <tr key={p.payment_id || p.id} className="hover:bg-slate-50/50 transition">
-                      <td className="px-4 py-3 font-medium text-slate-900">
-                        <div>{p.beneficiary?.name}</div>
-                        <div className="text-xs text-slate-400 font-normal">{p.beneficiary?.phone_number}</div>
-                      </td>
-                      <td className="px-4 py-3 text-xs font-mono text-slate-600">
-                        {p.receipt_number || p.payment_reference || 'REF-PAY'}
-                      </td>
-                      <td className="px-4 py-3 font-semibold text-emerald-600">
-                        {formatCurrency(p.amount)}
-                      </td>
-                      <td className="px-4 py-3 text-right text-xs text-slate-500">
-                        {formatDate(p.payment_date || p.created_at)}
-                      </td>
-                    </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td colSpan={4} className="px-4 py-8 text-center text-xs text-slate-400">
-                      No recent payment transactions recorded
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+          <DataTable
+            columns={paymentColumns}
+            data={isFieldOfficer ? [] : recentActivity?.recent_payments || []}
+            isLoading={activityLoading}
+            emptyTitle={isFieldOfficer ? 'Payment Ledger Restricted' : 'No payment transactions'}
+            emptyDescription={
+              isFieldOfficer
+                ? 'Field Officer role cannot inspect financial payment records.'
+                : 'No recent payment collections recorded in the database.'
+            }
+          />
         </div>
       </div>
     </div>

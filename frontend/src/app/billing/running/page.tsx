@@ -3,9 +3,12 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api';
-import { formatCurrency, formatLitres, formatDate, getStatusBadgeClass } from '@/lib/utils';
-import { CalendarDays, Plus, AlertCircle, X, CheckCircle2 } from 'lucide-react';
+import { formatCurrency, formatLitres, formatDate } from '@/lib/utils';
+import { Plus, AlertCircle, X, CheckCircle2 } from 'lucide-react';
 import Link from 'next/link';
+import PageHeader from '@/components/ui/PageHeader';
+import DataTable, { ColumnDef } from '@/components/ui/DataTable';
+import StatusBadge from '@/components/ui/StatusBadge';
 
 export default function RunningBillsPage() {
   const queryClient = useQueryClient();
@@ -65,164 +68,181 @@ export default function RunningBillsPage() {
     generateMutation.mutate();
   };
 
+  const columns: ColumnDef<any>[] = [
+    {
+      header: 'Bill ID / Period',
+      cell: (rb) => (
+        <div className="font-mono text-xs">
+          <div className="font-bold text-slate-800">{rb.running_bill_id.slice(0, 8)}...</div>
+          <div className="text-sky-700 font-semibold">{rb.billing_period}</div>
+        </div>
+      ),
+    },
+    {
+      header: 'Farmer Beneficiary',
+      cell: (rb) => (
+        <div>
+          <div className="font-semibold text-slate-900">{rb.beneficiary?.name}</div>
+          <div className="text-slate-400 font-mono text-[11px]">{rb.beneficiary?.phone_number}</div>
+        </div>
+      ),
+    },
+    {
+      header: 'Allotted Litres',
+      align: 'right',
+      cell: (rb) => (
+        <span className="font-semibold text-sky-700 font-mono">
+          {formatLitres(rb.approved_litres_snapshot)}
+        </span>
+      ),
+    },
+    {
+      header: 'Tariff Rate',
+      align: 'right',
+      cell: (rb) => (
+        <span className="text-slate-600 font-mono">
+          ₹{Number(rb.running_cost_per_litre_snapshot).toFixed(2)} / L
+        </span>
+      ),
+    },
+    {
+      header: 'Amount Due',
+      align: 'right',
+      cell: (rb) => (
+        <span className="font-bold text-slate-900 font-mono">{formatCurrency(rb.amount_due)}</span>
+      ),
+    },
+    {
+      header: 'Due Date',
+      cell: (rb) => <span className="font-mono text-xs text-slate-600">{formatDate(rb.due_date)}</span>,
+    },
+    {
+      header: 'Status',
+      align: 'center',
+      cell: (rb) => <StatusBadge status={rb.status} size="sm" />,
+    },
+    {
+      header: 'Action',
+      align: 'right',
+      cell: (rb) => (
+        <Link
+          href={`/admin/beneficiaries/${rb.beneficiary_id}?tab=running`}
+          className="inline-flex items-center gap-1 px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg transition"
+        >
+          View
+        </Link>
+      ),
+    },
+  ];
+
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Recurring Running Charges</h1>
-          <p className="text-sm text-slate-500 mt-1">
-            Operation &amp; maintenance tariff billing (strictly enabled only after infrastructure commissioning)
-          </p>
-        </div>
-        <button
-          onClick={() => {
-            setError(null);
-            setShowGenerateModal(true);
-          }}
-          className="inline-flex items-center px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white text-sm font-semibold rounded-lg shadow-sm transition"
-        >
-          <Plus className="w-4 h-4 mr-2" />
-          Generate Running Bill
-        </button>
-      </div>
+      <PageHeader
+        title="Recurring Running Charges"
+        description="Operation & maintenance tariff billing (strictly enabled only after infrastructure commissioning)"
+        badge="Recurring Tariff"
+        actions={
+          <button
+            onClick={() => {
+              setError(null);
+              setShowGenerateModal(true);
+            }}
+            className="inline-flex items-center gap-1.5 px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold rounded-xl shadow-sm transition"
+          >
+            <Plus className="w-4 h-4" />
+            Generate Running Bill
+          </button>
+        }
+      />
 
-      {/* Critical System Gate Info Alert */}
-      <div className="p-4 bg-purple-50 border border-purple-200 rounded-xl text-xs text-purple-900 flex items-start space-x-3">
-        <AlertCircle className="w-5 h-5 text-purple-600 shrink-0 mt-0.5" />
+      {/* Engineering Gate Callout */}
+      <div className="p-4 bg-sky-50/70 border border-sky-200 rounded-2xl text-xs text-sky-900 flex items-start space-x-3">
+        <AlertCircle className="w-5 h-5 text-sky-600 shrink-0 mt-0.5" />
         <div>
-          <span className="font-bold">Critical Engineering Gate Rule:</span> Running charges are strictly gated by
-          the infrastructure lifecycle. The backend enforces that no running bill can be generated for an allotment
+          <span className="font-bold">Commissioning Gate Invariant:</span> Running charges are strictly gated by
+          the infrastructure lifecycle. The backend enforces that no recurring bill can be generated for an allotment
           unless its pipeline network has reached the <span className="font-bold uppercase">COMMISSIONED</span> status.
         </div>
       </div>
 
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-              <tr>
-                <th className="px-5 py-3.5">Billing Period</th>
-                <th className="px-5 py-3.5">Farmer Beneficiary</th>
-                <th className="px-5 py-3.5">Approved Litres</th>
-                <th className="px-5 py-3.5">Running Rate / L</th>
-                <th className="px-5 py-3.5">Amount Due</th>
-                <th className="px-5 py-3.5">Paid</th>
-                <th className="px-5 py-3.5">Pending</th>
-                <th className="px-5 py-3.5">Status</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 text-xs">
-              {isLoading ? (
-                <tr>
-                  <td colSpan={8} className="px-5 py-8 text-center text-slate-400">
-                    Loading running bills...
-                  </td>
-                </tr>
-              ) : data?.items?.length > 0 ? (
-                data.items.map((rb: any) => (
-                  <tr key={rb.running_bill_id} className="hover:bg-slate-50/50 transition">
-                    <td className="px-5 py-4 font-bold text-slate-900">{rb.billing_period}</td>
-                    <td className="px-5 py-4 font-medium text-slate-900">
-                      <div>{rb.beneficiary?.name}</div>
-                      <div className="text-slate-400 font-mono text-[11px]">{rb.beneficiary?.phone_number}</div>
-                    </td>
-                    <td className="px-5 py-4 font-semibold text-blue-700">
-                      {formatLitres(rb.approved_litres_snapshot)}
-                    </td>
-                    <td className="px-5 py-4 font-mono text-slate-600">
-                      ₹{Number(rb.running_cost_per_litre_snapshot).toFixed(2)}
-                    </td>
-                    <td className="px-5 py-4 font-bold text-slate-900">{formatCurrency(rb.amount_due)}</td>
-                    <td className="px-5 py-4 font-semibold text-emerald-700">{formatCurrency(rb.amount_paid)}</td>
-                    <td className="px-5 py-4 font-bold text-rose-600">{formatCurrency(rb.pending_amount)}</td>
-                    <td className="px-5 py-4">
-                      <span className={`px-2.5 py-1 text-[11px] font-semibold rounded-full border ${getStatusBadgeClass(rb.status)}`}>
-                        {rb.status}
-                      </span>
-                    </td>
-                  </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan={8} className="px-5 py-12 text-center text-slate-400">
-                    No running charge bills generated yet.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <DataTable
+        columns={columns}
+        data={data?.items || []}
+        isLoading={isLoading}
+        emptyTitle="No running charges bills found"
+        emptyDescription="Running charge records will appear once commissioned pipeline networks begin operation cycles."
+        page={page}
+        totalPages={data?.meta?.totalPages || 1}
+        totalRecords={data?.meta?.total}
+        onPageChange={(p) => setPage(p)}
+      />
 
-      {/* GENERATE MODAL */}
+      {/* Generate Modal */}
       {showGenerateModal && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-md w-full p-6 space-y-4">
+            <div className="flex items-center justify-between">
               <h3 className="text-lg font-bold text-slate-900">Generate Running Bill</h3>
-              <button onClick={() => setShowGenerateModal(false)} className="text-slate-400 hover:text-slate-600">
+              <button
+                onClick={() => setShowGenerateModal(false)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
+              >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             {error && (
-              <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-lg text-xs flex items-start space-x-2">
-                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                <span>{error}</span>
+              <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-xl font-medium">
+                {error}
               </div>
             )}
 
             <form onSubmit={handleGenerateSubmit} className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-slate-700 uppercase mb-1">
-                  Select Water Allotment *
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Commissioned Water Allotment
                 </label>
                 <select
-                  required
                   value={selectedAllotmentId}
                   onChange={(e) => setSelectedAllotmentId(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs bg-white"
+                  className="w-full text-xs rounded-xl border-slate-300 bg-slate-50/50 py-2 px-3 focus:ring-sky-500 focus:border-sky-500"
+                  required
                 >
-                  <option value="">Select an approved allotment</option>
-                  {allotments?.map((a: any) => (
+                  <option value="">Select an active allotment...</option>
+                  {(allotments || []).map((a: any) => (
                     <option key={a.allotment_id} value={a.allotment_id}>
-                      {a.beneficiary?.name} ({formatLitres(a.approved_litres)}) - Infra: {a.infrastructure?.status || 'None'}
+                      {a.beneficiary?.name} ({formatLitres(a.approved_litres)}) - Allotment #{a.allotment_id.slice(0, 8)}
                     </option>
                   ))}
                 </select>
-                <p className="text-[11px] text-slate-400 mt-1">
-                  Only allotments where infrastructure is COMMISSIONED will be approved.
-                </p>
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 uppercase mb-1">
-                  Billing Period *
-                </label>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Billing Period</label>
                 <input
                   type="text"
-                  required
-                  placeholder="e.g. 2026-Q1 or 2026-10"
                   value={billingPeriod}
                   onChange={(e) => setBillingPeriod(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs"
+                  placeholder="e.g. 2026-Q1 or 2026-05"
+                  className="w-full text-xs rounded-xl border-slate-300 bg-slate-50/50 py-2 px-3 focus:ring-sky-500 focus:border-sky-500 font-mono"
+                  required
                 />
               </div>
 
-              <div className="pt-4 border-t border-slate-200 flex justify-end space-x-2">
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => setShowGenerateModal(false)}
-                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold"
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={generateMutation.isPending}
-                  className="px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white rounded-lg text-xs font-semibold disabled:opacity-50"
+                  className="px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold rounded-xl shadow-sm transition disabled:opacity-50"
                 >
-                  {generateMutation.isPending ? 'Validating Commissioning...' : 'Generate Bill'}
+                  {generateMutation.isPending ? 'Generating...' : 'Generate Bill'}
                 </button>
               </div>
             </form>

@@ -37,6 +37,7 @@ import {
   Copy,
 } from 'lucide-react';
 import Link from 'next/link';
+import { PageHeader } from '@/components/ui/PageHeader';
 
 export default function AdminBeneficiariesManager() {
   const { user } = useAuth();
@@ -233,36 +234,34 @@ export default function AdminBeneficiariesManager() {
 
   return (
     <div className="space-y-6 pb-12">
-      {/* Header Banner */}
-      <div className="bg-gradient-to-r from-slate-900 via-sky-950 to-slate-900 text-white p-6 rounded-2xl shadow-lg border border-slate-800 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div>
-          <div className="flex items-center space-x-2 text-sky-400 text-xs font-semibold uppercase tracking-wider mb-1">
-            <Users className="w-4 h-4" />
-            <span>Administrative Governance</span>
+      <PageHeader
+        title="Beneficiary Management Registry"
+        description="Centralized administrative registry for farmer identities, verified land parcels, water quotas, financial ledgers, and account access."
+        breadcrumbs={[
+          { label: 'Operations', href: '/dashboard' },
+          { label: 'Beneficiaries', href: '/admin/beneficiaries' },
+          { label: 'Registry' },
+        ]}
+        actions={
+          <div className="flex items-center space-x-3">
+            <button
+              onClick={() => refetch()}
+              disabled={isFetching}
+              className="p-2 bg-white hover:bg-slate-50 text-slate-700 rounded-lg border border-slate-200 transition shadow-xs"
+              title="Refresh Data"
+            >
+              <RefreshCw className={`w-4 h-4 ${isFetching ? 'animate-spin text-sky-600' : ''}`} />
+            </button>
+            <Link
+              href="/beneficiaries/new"
+              className="inline-flex items-center px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold rounded-lg shadow-xs transition"
+            >
+              <Plus className="w-4 h-4 mr-1.5" />
+              New Beneficiary
+            </Link>
           </div>
-          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Beneficiary Management System</h1>
-          <p className="text-slate-300 text-sm mt-1 max-w-2xl">
-            Centralized administrative registry for farmer identities, verified land parcels, water quotas, financial ledgers, and account access.
-          </p>
-        </div>
-        <div className="flex items-center space-x-3">
-          <Link
-            href="/beneficiaries/new"
-            className="inline-flex items-center px-4 py-2.5 bg-sky-500 hover:bg-sky-400 text-white text-sm font-semibold rounded-xl shadow transition transform active:scale-95"
-          >
-            <Plus className="w-4 h-4 mr-1.5" />
-            + Beneficiary
-          </Link>
-          <button
-            onClick={() => refetch()}
-            disabled={isFetching}
-            className="p-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl border border-slate-700 transition"
-            title="Refresh Data"
-          >
-            <RefreshCw className={`w-4 h-4 ${isFetching ? 'animate-spin text-sky-400' : ''}`} />
-          </button>
-        </div>
-      </div>
+        }
+      />
 
       {/* Search and Cascading Filter Panel */}
       <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-5 space-y-4">

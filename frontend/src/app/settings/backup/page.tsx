@@ -25,6 +25,8 @@ import {
   CreditCard,
 } from 'lucide-react';
 
+import { PageHeader } from '@/components/ui/PageHeader';
+
 export default function DatabaseBackupSettingsPage() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -100,43 +102,39 @@ export default function DatabaseBackupSettingsPage() {
 
   return (
     <div className="space-y-6 max-w-6xl pb-16">
-      {/* Header Banner */}
-      <div className="bg-gradient-to-r from-slate-900 via-sky-950 to-slate-900 text-white p-6 rounded-2xl shadow-lg border border-slate-800 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div>
-          <div className="flex items-center space-x-2 text-sky-400 text-xs font-semibold uppercase tracking-wider mb-1">
-            <Database className="w-4 h-4" />
-            <span>Offline Local Storage & Resilience</span>
+      <PageHeader
+        title="Database & System Backup Archives"
+        description="Manage local SQLite data files, verify storage integrity, and generate compressed .wmbak disaster recovery archives."
+        breadcrumbs={[
+          { label: 'System & Audit', href: '/dashboard' },
+          { label: 'Backup & Restore' },
+        ]}
+        actions={
+          <div className="flex items-center space-x-2">
+            <button
+              onClick={() => {
+                refetchIntegrity();
+                refetchBackups();
+              }}
+              className="p-2 bg-white hover:bg-slate-50 text-slate-700 rounded-lg border border-slate-200 transition shadow-xs"
+              title="Refresh Database Status"
+            >
+              <RefreshCw className="w-4 h-4 text-slate-600" />
+            </button>
+            <button
+              onClick={() => {
+                setReason('');
+                setActionError(null);
+                setShowCreateModal(true);
+              }}
+              className="inline-flex items-center px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold rounded-lg shadow-xs transition"
+            >
+              <Download className="w-3.5 h-3.5 mr-1.5" />
+              Create Backup (.wmbak)
+            </button>
           </div>
-          <h1 className="text-2xl font-bold tracking-tight">Database & Offline System Backups</h1>
-          <p className="text-slate-300 text-sm mt-1 max-w-2xl">
-            Manage local SQLite data files, verify storage integrity, and generate compressed <code className="text-sky-300 font-mono">.wmbak</code> disaster recovery archives.
-          </p>
-        </div>
-
-        <div className="flex items-center space-x-3">
-          <button
-            onClick={() => {
-              setReason('');
-              setActionError(null);
-              setShowCreateModal(true);
-            }}
-            className="inline-flex items-center px-4 py-2.5 bg-sky-500 hover:bg-sky-400 text-white text-sm font-semibold rounded-xl shadow transition transform active:scale-95"
-          >
-            <Download className="w-4 h-4 mr-2" />
-            Create Backup (.wmbak)
-          </button>
-          <button
-            onClick={() => {
-              refetchIntegrity();
-              refetchBackups();
-            }}
-            className="p-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl border border-slate-700 transition"
-            title="Refresh Database Status"
-          >
-            <RefreshCw className="w-4 h-4" />
-          </button>
-        </div>
-      </div>
+        }
+      />
 
       {/* Database Health & Directory Layout Grid */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

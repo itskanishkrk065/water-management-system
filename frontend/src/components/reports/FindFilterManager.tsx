@@ -31,6 +31,7 @@ import {
   ChevronLeft,
   ChevronRight,
 } from 'lucide-react';
+import { PageHeader } from '@/components/ui/PageHeader';
 
 interface FilterState {
   projectId: string;
@@ -544,81 +545,73 @@ export function FindFilterManager() {
 
   return (
     <div className="space-y-6 pb-12">
-      {/* 1. Header Banner */}
-      <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 rounded-2xl p-6 sm:p-8 text-white shadow-xl border border-slate-800">
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
-          <div className="space-y-2">
-            <div className="inline-flex items-center space-x-2 px-3 py-1 bg-sky-500/10 border border-sky-400/30 rounded-full text-xs font-semibold text-sky-400">
-              <ShieldCheck className="w-3.5 h-3.5" />
-              <span>Authoritative Query Engine • Decimal-Safe Aggregations</span>
-            </div>
-            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white flex items-center gap-3">
-              <Search className="w-8 h-8 text-sky-400" />
-              <span>Advanced Find, Filter & Reports</span>
-            </h1>
-            <p className="text-sm text-slate-300 max-w-2xl leading-relaxed">
-              Query PostgreSQL across beneficiaries, cadastral land holdings, water allotments, 5-installment development
-              billing, and physical infrastructure. All metrics update synchronously over the exact filtered dataset.
-            </p>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-3">
+      <PageHeader
+        title="Advanced Find, Filter & Reports"
+        description="Authoritative querying across beneficiaries, cadastral land parcels, water quotas, 5-stage development billing, and infrastructure metrics."
+        breadcrumbs={[
+          { label: 'Master Data & Reports', href: '/dashboard' },
+          { label: 'Find & Filter' },
+        ]}
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={handleClearFilters}
-              className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-sm font-medium transition flex items-center gap-2 border border-slate-700 shadow-sm"
+              className="px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-700 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 border border-slate-200 shadow-xs"
             >
-              <RefreshCw className="w-4 h-4" />
+              <RefreshCw className="w-3.5 h-3.5" />
               <span>Clear</span>
             </button>
 
             <button
               onClick={handleApplyFilters}
-              className="px-5 py-2.5 bg-sky-500 hover:bg-sky-400 text-slate-950 font-semibold rounded-xl text-sm transition shadow-lg shadow-sky-500/20 flex items-center gap-2"
+              className="px-4 py-1.5 bg-sky-600 hover:bg-sky-700 text-white font-semibold rounded-lg text-xs transition shadow-xs flex items-center gap-1.5"
             >
-              <Filter className="w-4 h-4" />
+              <Filter className="w-3.5 h-3.5" />
               <span>Apply Filters</span>
             </button>
 
             <button
               onClick={handleExportExcel}
               disabled={isExportingExcel || isLoading}
-              className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-800 disabled:text-slate-500 text-white font-semibold rounded-xl text-sm transition shadow-lg shadow-emerald-600/30 flex items-center gap-2"
+              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-semibold rounded-lg text-xs transition shadow-xs flex items-center gap-1.5"
             >
               {isExportingExcel ? (
-                <RefreshCw className="w-4 h-4 animate-spin text-white" />
+                <RefreshCw className="w-3.5 h-3.5 animate-spin text-white" />
               ) : (
-                <Download className="w-4 h-4" />
+                <Download className="w-3.5 h-3.5" />
               )}
-              <span>{isExportingExcel ? 'Exporting...' : 'Export Excel'}</span>
+              <span>{isExportingExcel ? 'Exporting...' : 'Excel'}</span>
             </button>
 
             <button
               onClick={handleExportPdf}
               disabled={isExportingPdf || isLoading}
-              className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-500 text-white font-semibold rounded-xl text-sm transition shadow-lg shadow-indigo-600/30 flex items-center gap-2"
+              className="px-3 py-1.5 bg-slate-800 hover:bg-slate-900 disabled:opacity-50 text-white font-semibold rounded-lg text-xs transition shadow-xs flex items-center gap-1.5"
             >
               {isExportingPdf ? (
-                <RefreshCw className="w-4 h-4 animate-spin text-white" />
+                <RefreshCw className="w-3.5 h-3.5 animate-spin text-white" />
               ) : (
-                <Download className="w-4 h-4" />
+                <Download className="w-3.5 h-3.5" />
               )}
-              <span>{isExportingPdf ? 'Exporting...' : 'Export PDF'}</span>
+              <span>{isExportingPdf ? 'Exporting...' : 'PDF'}</span>
             </button>
 
             <button
               onClick={() => setShowSavePresetModal(true)}
-              className="px-3 py-2.5 bg-slate-800 hover:bg-slate-700 text-sky-400 border border-slate-700 rounded-xl text-xs font-semibold transition flex items-center gap-1.5"
+              className="px-2.5 py-1.5 bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 rounded-lg text-xs font-semibold transition flex items-center gap-1"
               title="Save current criteria as a reusable preset"
             >
-              <span>+ Save Preset</span>
+              <span>+ Preset</span>
             </button>
           </div>
-        </div>
+        }
+      />
 
-        {/* Presets Quick Selector Ribbon */}
-        <div className="mt-6 pt-4 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-3 text-xs">
+      {/* Presets Quick Selector Ribbon */}
+      <div className="bg-white rounded-xl border border-slate-200 p-3 shadow-xs space-y-3 text-xs">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-slate-400 font-semibold uppercase tracking-wider text-[11px]">
+            <span className="text-slate-500 font-semibold uppercase tracking-wider text-[11px]">
               Reporting Presets:
             </span>
             <button
@@ -628,7 +621,7 @@ export function FindFilterManager() {
                 setDraftFilters((p) => ({ ...p, applicationStatus: 'APPROVED' }));
                 setAppliedFilters((p) => ({ ...p, applicationStatus: 'APPROVED', page: 1 }));
               }}
-              className="px-3 py-1 rounded-full bg-slate-800 hover:bg-slate-700 text-sky-300 border border-slate-700 font-medium transition"
+              className="px-2.5 py-1 rounded-md bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 font-medium transition"
             >
               💧 Approved Water
             </button>
@@ -639,7 +632,7 @@ export function FindFilterManager() {
                 setDraftFilters((p) => ({ ...p, paymentStatus: 'UNPAID' }));
                 setAppliedFilters((p) => ({ ...p, paymentStatus: 'UNPAID', page: 1 }));
               }}
-              className="px-3 py-1 rounded-full bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 font-medium transition"
+              className="px-2.5 py-1 rounded-md bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 font-medium transition"
             >
               ⚠️ Pending Payments
             </button>
@@ -650,7 +643,7 @@ export function FindFilterManager() {
                 setDraftFilters((p) => ({ ...p, applicationStatus: 'SUBMITTED' }));
                 setAppliedFilters((p) => ({ ...p, applicationStatus: 'SUBMITTED', page: 1 }));
               }}
-              className="px-3 py-1 rounded-full bg-slate-800 hover:bg-slate-700 text-purple-300 border border-slate-700 font-medium transition"
+              className="px-2.5 py-1 rounded-md bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 font-medium transition"
             >
               📋 Review Queue
             </button>
@@ -661,7 +654,7 @@ export function FindFilterManager() {
                 setDraftFilters((p) => ({ ...p, beneficiaryStatus: 'ACTIVE' }));
                 setAppliedFilters((p) => ({ ...p, beneficiaryStatus: 'ACTIVE', page: 1 }));
               }}
-              className="px-3 py-1 rounded-full bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-slate-700 font-medium transition"
+              className="px-2.5 py-1 rounded-md bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 font-medium transition"
             >
               🌱 Active Beneficiaries
             </button>
@@ -669,14 +662,14 @@ export function FindFilterManager() {
 
           {presets.length > 0 && (
             <div className="flex items-center gap-2">
-              <span className="text-slate-400">Custom Presets ({presets.length}):</span>
+              <span className="text-slate-500 font-medium">Custom Presets ({presets.length}):</span>
               <select
                 onChange={(e) => {
                   const p = presets.find((item: any) => item.preset_id === e.target.value);
                   if (p) handleLoadPreset(p);
                 }}
                 defaultValue=""
-                className="bg-slate-800 text-slate-200 border border-slate-700 text-xs rounded-lg px-2.5 py-1 focus:ring-sky-500 focus:border-sky-500"
+                className="bg-slate-50 text-slate-800 border border-slate-200 text-xs rounded-lg px-2.5 py-1 focus:ring-sky-500 focus:border-sky-500"
               >
                 <option value="" disabled>
                   Load Saved Preset...
@@ -692,8 +685,8 @@ export function FindFilterManager() {
         </div>
 
         {exportError && (
-          <div className="mt-4 p-3 bg-red-950/80 border border-red-800 rounded-xl text-xs text-red-200 flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 shrink-0 text-red-400" />
+          <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg text-xs text-rose-700 flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 shrink-0 text-rose-600" />
             <span>{exportError}</span>
           </div>
         )}

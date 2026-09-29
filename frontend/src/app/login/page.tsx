@@ -33,16 +33,23 @@ export default function LoginPage() {
   return (
     <div className="min-h-[80vh] flex flex-col justify-center items-center py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full space-y-8 bg-white p-8 rounded-2xl shadow-xl border border-slate-100">
-        <div className="text-center">
-          <div className="mx-auto h-14 w-14 bg-sky-600 rounded-2xl flex items-center justify-center shadow-lg shadow-sky-600/30 text-white">
-            <Droplet className="h-8 w-8" />
+        <div className="text-center space-y-2">
+          <div className="mx-auto h-12 w-12 bg-sky-600 rounded-xl flex items-center justify-center shadow-md text-white">
+            <Droplet className="h-6 w-6 fill-white text-white" />
           </div>
-          <h2 className="mt-4 text-2xl font-bold text-slate-900 tracking-tight">
-            Water Management System
-          </h2>
-          <p className="mt-1 text-sm text-slate-500">
-            Sign in to access your administrative control console
-          </p>
+          <div>
+            <div className="flex items-center justify-center space-x-2">
+              <h2 className="text-xl font-extrabold text-slate-900 tracking-tight">
+                WaterGrid <span className="text-sky-600 font-bold">V1</span>
+              </h2>
+              <span className="px-2 py-0.5 text-[10px] font-bold tracking-wider uppercase bg-sky-50 text-sky-700 border border-sky-200 rounded">
+                Production-Grade
+              </span>
+            </div>
+            <p className="mt-1 text-xs text-slate-500">
+              Enterprise Water Resource & Infrastructure Management
+            </p>
+          </div>
         </div>
 
         {error && (

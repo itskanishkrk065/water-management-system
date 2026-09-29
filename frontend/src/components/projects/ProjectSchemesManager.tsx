@@ -22,6 +22,9 @@ import {
   HelpCircle,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
+import { PageHeader } from '@/components/ui/PageHeader';
+import { KPICard } from '@/components/ui/KPICard';
+import { StatusBadge } from '@/components/ui/StatusBadge';
 
 export interface ProjectScheme {
   project_id: string;
@@ -190,89 +193,59 @@ export default function ProjectSchemesManager() {
 
   return (
     <div className="space-y-6">
-      {/* Header Banner */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <div className="flex items-center space-x-3">
-            <div className="p-2.5 bg-sky-100 text-sky-700 rounded-xl">
-              <Briefcase className="w-6 h-6" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
-                Project Scheme Master Data
-              </h1>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Centralized management of agricultural irrigation and water allocation schemes.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {user?.role === 'ADMIN' && (
-          <button
-            onClick={() => {
-              resetForm();
-              setShowCreateModal(true);
-            }}
-            className="inline-flex items-center px-4 py-2.5 bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold rounded-xl shadow-sm transition"
-          >
-            <Plus className="w-4 h-4 mr-1.5" />
-            New Project Scheme
-          </button>
-        )}
-      </div>
+      <PageHeader
+        title="Project Scheme Master Data"
+        description="Centralized management of agricultural irrigation and water allocation schemes."
+        breadcrumbs={[
+          { label: 'Master Data', href: '/dashboard' },
+          { label: 'Project Schemes' },
+        ]}
+        actions={
+          user?.role === 'ADMIN' ? (
+            <button
+              onClick={() => {
+                resetForm();
+                setShowCreateModal(true);
+              }}
+              className="inline-flex items-center px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold rounded-lg shadow-xs transition"
+            >
+              <Plus className="w-4 h-4 mr-1.5" />
+              New Project Scheme
+            </button>
+          ) : undefined
+        }
+      />
 
       {/* KPI Stats Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm flex items-center space-x-3">
-          <div className="w-10 h-10 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center font-bold">
-            <Briefcase className="w-5 h-5" />
-          </div>
-          <div>
-            <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-              Total Schemes
-            </div>
-            <div className="text-xl font-extrabold text-slate-900 mt-0.5">{totalSchemes}</div>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm flex items-center space-x-3">
-          <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
-            <CheckCircle2 className="w-5 h-5" />
-          </div>
-          <div>
-            <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-              Active Schemes
-            </div>
-            <div className="text-xl font-extrabold text-emerald-700 mt-0.5">{activeSchemes}</div>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm flex items-center space-x-3">
-          <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center font-bold">
-            <XCircle className="w-5 h-5" />
-          </div>
-          <div>
-            <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-              Inactive Schemes
-            </div>
-            <div className="text-xl font-extrabold text-slate-700 mt-0.5">{inactiveSchemes}</div>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm flex items-center space-x-3">
-          <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold">
-            <Layers className="w-5 h-5" />
-          </div>
-          <div>
-            <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-              Linked Land Holdings
-            </div>
-            <div className="text-xl font-extrabold text-indigo-700 mt-0.5">
-              {totalHoldingsLinked}
-            </div>
-          </div>
-        </div>
+        <KPICard
+          title="Total Schemes"
+          value={totalSchemes}
+          icon={Briefcase}
+          variant="default"
+          subtitle="All registered schemes"
+        />
+        <KPICard
+          title="Active Schemes"
+          value={activeSchemes}
+          icon={CheckCircle2}
+          variant="emerald"
+          subtitle="Available for allocation"
+        />
+        <KPICard
+          title="Inactive Schemes"
+          value={inactiveSchemes}
+          icon={XCircle}
+          variant="amber"
+          subtitle="Historical / preserved"
+        />
+        <KPICard
+          title="Linked Land Holdings"
+          value={totalHoldingsLinked}
+          icon={Layers}
+          variant="sky"
+          subtitle="Agricultural parcels linked"
+        />
       </div>
 
       {/* Historical Data & Invariant Notice */}
@@ -369,15 +342,7 @@ export default function ProjectSchemesManager() {
                       </td>
 
                       <td className="py-4 px-4">
-                        {isActive ? (
-                          <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold text-[11px]">
-                            <CheckCircle2 className="w-3 h-3 mr-1" /> Active
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-slate-100 text-slate-600 border border-slate-200 font-semibold text-[11px]">
-                            <XCircle className="w-3 h-3 mr-1" /> Inactive
-                          </span>
-                        )}
+                        <StatusBadge status={scheme.status} />
                       </td>
 
                       <td className="py-4 px-4 text-slate-600">
