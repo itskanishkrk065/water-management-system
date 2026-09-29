@@ -24,6 +24,7 @@ import {
   Droplets,
   FileText,
   Database,
+  Briefcase,
 } from 'lucide-react';
 
 export default function Sidebar() {
@@ -123,6 +124,7 @@ export default function Sidebar() {
     { label: 'Extensions', href: '/extensions', icon: ArrowUpRight },
     ...(isAdmin
       ? [
+          { label: 'Project Schemes', href: '/admin/project-schemes', icon: Briefcase },
           { label: 'Rate Tariff (Versioned)', href: '/settings/rates', icon: Sliders },
           { label: 'Installment Templates', href: '/settings/installments', icon: Layers },
           { label: 'Locations Hierarchy', href: '/settings/locations', icon: MapPin },

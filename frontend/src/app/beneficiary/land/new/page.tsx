@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api';
 import {
   Map,
@@ -13,6 +13,7 @@ import {
   ArrowLeft,
   Save,
   ShieldAlert,
+  Briefcase,
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -26,6 +27,7 @@ export default function NewLandHoldingPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
 
+  const [projectId, setProjectId] = useState<string>('');
   const [declaredArea, setDeclaredArea] = useState<string>('3.5000');
   const [parcels, setParcels] = useState<ParcelRow[]>([
     { surveyNumber: '104/1A', subdivisionNumber: '1', areaAcres: '2.0000' },
@@ -33,6 +35,22 @@ export default function NewLandHoldingPage() {
   ]);
 
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // Fetch active project schemes
+  const { data: projects = [] } = useQuery({
+    queryKey: ['active-projects'],
+    queryFn: async () => {
+      const res = await apiClient.get('/projects/active');
+      return res.data;
+    },
+  });
+
+  // Auto-select first active project if not set
+  React.useEffect(() => {
+    if (!projectId && projects.length > 0) {
+      setProjectId(projects[0].project_id);
+    }
+  }, [projectId, projects]);
 
   // Checksum calculation
   const parsedDeclared = parseFloat(declaredArea) || 0;
@@ -94,7 +112,13 @@ export default function NewLandHoldingPage() {
       }
     }
 
+    if (!projectId) {
+      setErrorMsg('Project Scheme is required.');
+      return;
+    }
+
     const payload = {
+      projectId,
       declaredTotalArea: parsedDeclared,
       parcels: parcels.map((p) => ({
         surveyNumber: p.surveyNumber.trim(),
@@ -134,18 +158,42 @@ export default function NewLandHoldingPage() {
       )}
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        {/* Declared Extent Card */}
+        {/* Project Scheme & Declared Extent Card */}
         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
           <div className="flex items-center space-x-2 border-b border-slate-100 pb-3">
-            <Map className="w-5 h-5 text-amber-600" />
-            <h2 className="text-base font-bold text-slate-900">Declared Title Area</h2>
+            <Briefcase className="w-5 h-5 text-amber-600" />
+            <h2 className="text-base font-bold text-slate-900">Project Scheme &amp; Title Area</h2>
           </div>
 
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
-              Declared Total Extent (in Acres) *
-            </label>
-            <div className="max-w-xs">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+                Project Scheme *
+              </label>
+              <select
+                required
+                value={projectId}
+                onChange={(e) => setProjectId(e.target.value)}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white font-medium text-slate-900 focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition"
+              >
+                <option value="" disabled>
+                  {projects.length === 0 ? 'Loading schemes...' : 'Select Project Scheme'}
+                </option>
+                {projects.map((p: any) => (
+                  <option key={p.project_id} value={p.project_id}>
+                    {p.project_name} ({p.project_code})
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-slate-400 mt-1">
+                Designated irrigation or water distribution scheme.
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+                Declared Total Extent (in Acres) *
+              </label>
               <input
                 type="number"
                 step="0.0001"
@@ -156,10 +204,10 @@ export default function NewLandHoldingPage() {
                 placeholder="e.g. 3.5000"
                 className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono font-bold text-slate-900 focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition"
               />
+              <p className="text-xs text-slate-400 mt-1">
+                Total land area as recorded on revenue patta / deed.
+              </p>
             </div>
-            <p className="text-xs text-slate-400 mt-1">
-              Specify the legal total land area as recorded on your revenue patta / deed.
-            </p>
           </div>
         </div>
 

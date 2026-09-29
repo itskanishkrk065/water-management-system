@@ -170,12 +170,17 @@ function AdminBeneficiaryDetailContent() {
 
   const editVillages = Array.isArray(editVillageData) ? editVillageData : editVillageData?.items || [];
 
-  // Projects Query
+  // Projects Query for Scheme Selection
   const { data: projects } = useQuery({
-    queryKey: ['projects'],
+    queryKey: ['active-projects'],
     queryFn: async () => {
-      const res = await apiClient.get('/projects');
-      return res.data;
+      try {
+        const res = await apiClient.get('/projects/active');
+        return res.data;
+      } catch {
+        const res = await apiClient.get('/projects');
+        return res.data;
+      }
     },
   });
 
@@ -299,9 +304,9 @@ function AdminBeneficiaryDetailContent() {
     e.preventDefault();
     setLandFormError(null);
 
-    const targetProject = selectedProjectId || projects?.[0]?.project_id;
+    const targetProject = selectedProjectId;
     if (!targetProject) {
-      setLandFormError('Please select a project');
+      setLandFormError('Project Scheme is required. Please select an active scheme.');
       return;
     }
 
@@ -805,8 +810,13 @@ function AdminBeneficiaryDetailContent() {
                           <div className="font-bold text-slate-900 text-sm">
                             Holding #{idx + 1} — Declared: {formatAcres(lh.declared_total_area)}
                           </div>
-                          <div className="text-[11px] font-mono text-slate-400">
-                            Project ID: {lh.project_id} • Holding UUID: {lh.holding_id.slice(0, 8)}...
+                          <div className="text-[11px] text-slate-500 flex flex-wrap items-center gap-2 mt-0.5">
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-sky-50 text-sky-700 border border-sky-200 text-[11px] font-semibold">
+                              Scheme: {lh.project?.project_name || 'Kongu Basin Scheme'} ({lh.project?.project_code || 'KB-IRR-2026'})
+                            </span>
+                            <span className="font-mono text-slate-400">
+                              UUID: {(lh.land_id || lh.holding_id || '').slice(0, 8)}...
+                            </span>
                           </div>
                         </div>
                       </div>
@@ -1742,15 +1752,19 @@ function AdminBeneficiaryDetailContent() {
               )}
 
               <div>
-                <label className="block font-bold text-slate-700 mb-1">Project Scheme</label>
+                <label className="block font-bold text-slate-700 mb-1">
+                  Project Scheme * <span className="text-[11px] text-slate-400 font-normal">(Select active scheme)</span>
+                </label>
                 <select
-                  value={selectedProjectId || projects?.[0]?.project_id || ''}
+                  required
+                  value={selectedProjectId}
                   onChange={(e) => setSelectedProjectId(e.target.value)}
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl"
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 font-medium"
                 >
+                  <option value="">-- Select Project Scheme --</option>
                   {projects?.map((p: any) => (
                     <option key={p.project_id} value={p.project_id}>
-                      {p.name}
+                      {p.project_name} ({p.project_code}) {p.status === 'INACTIVE' ? ' - [Inactive]' : ''}
                     </option>
                   ))}
                 </select>

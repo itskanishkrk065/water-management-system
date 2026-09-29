@@ -40,6 +40,22 @@ export class LandService {
       throw new NotFoundException(`Beneficiary ${dto.beneficiaryId} not found`);
     }
 
+    // Verify Project Scheme exists and is ACTIVE
+    if (!dto.projectId) {
+      throw new BadRequestException('Project Scheme is required for registering a land holding.');
+    }
+    const project = await this.prisma.project.findUnique({
+      where: { project_id: dto.projectId },
+    });
+    if (!project) {
+      throw new NotFoundException(`Project Scheme with ID '${dto.projectId}' not found.`);
+    }
+    if (project.status !== 'ACTIVE') {
+      throw new BadRequestException(
+        `Project Scheme '${project.project_name}' (${project.project_code}) is inactive. Only active project schemes can be assigned to new land holdings.`,
+      );
+    }
+
     // Atomic transaction
     const result = await this.prisma.$transaction(async (tx) => {
       const holding = await tx.landHolding.create({
@@ -66,7 +82,15 @@ export class LandService {
         where: { land_id: holding.land_id },
         include: {
           parcels: { orderBy: { survey_number: 'asc' } },
-          project: true,
+          project: {
+            select: {
+              project_id: true,
+              project_code: true,
+              project_name: true,
+              status: true,
+              description: true,
+            },
+          },
         },
       });
     });
@@ -77,7 +101,7 @@ export class LandService {
       entityType: 'LandHolding',
       entityId: result.land_id,
       newValues: result,
-      reason: 'Registered land holding with verified subdivision parcels',
+      reason: `Registered land holding with verified subdivision parcels under scheme '${project.project_name}'`,
       ipAddress,
     });
 
@@ -90,7 +114,15 @@ export class LandService {
       orderBy: { created_at: 'desc' },
       include: {
         parcels: { orderBy: { survey_number: 'asc' } },
-        project: { select: { project_id: true, project_code: true, project_name: true } },
+        project: {
+          select: {
+            project_id: true,
+            project_code: true,
+            project_name: true,
+            status: true,
+            description: true,
+          },
+        },
       },
     });
   }

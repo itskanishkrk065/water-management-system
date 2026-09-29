@@ -392,12 +392,25 @@ export class BeneficiaryPortalService {
   async addMyLand(userId: string, dto: CreatePortalLandDto, ipAddress?: string) {
     const b = await this.getAuthenticatedBeneficiary(userId);
 
-    // Find active project
-    const project = await this.prisma.project.findFirst({
-      where: { status: 'ACTIVE' },
-    });
-    if (!project) {
-      throw new BadRequestException('No active irrigation scheme project found');
+    // Resolve and validate active project scheme
+    let project;
+    if (dto.projectId) {
+      project = await this.prisma.project.findUnique({
+        where: { project_id: dto.projectId },
+      });
+      if (!project) {
+        throw new BadRequestException('Selected project scheme does not exist');
+      }
+      if (project.status !== 'ACTIVE') {
+        throw new BadRequestException('Selected project scheme is inactive');
+      }
+    } else {
+      project = await this.prisma.project.findFirst({
+        where: { status: 'ACTIVE' },
+      });
+      if (!project) {
+        throw new BadRequestException('No active irrigation scheme project found');
+      }
     }
 
     // Strict parcel checksum validation

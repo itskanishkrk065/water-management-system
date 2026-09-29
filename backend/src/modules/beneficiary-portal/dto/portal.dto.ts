@@ -85,6 +85,11 @@ export class CreatePortalParcelDto {
 }
 
 export class CreatePortalLandDto {
+  @ApiPropertyOptional({ example: 'UUID of Project Scheme' })
+  @IsOptional()
+  @IsUUID()
+  projectId?: string;
+
   @ApiPropertyOptional({ example: 'PATTA-2026-99' })
   @IsOptional()
   @IsString()

@@ -28,13 +28,17 @@ import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser, RequestUser } from '../common/decorators/current-user.decorator';
 import { RoleName, BeneficiaryStatus } from '@prisma/client';
+import { LandService } from '../land/land.service';
 
 @ApiTags('Beneficiaries')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('beneficiaries')
 export class BeneficiariesController {
-  constructor(private readonly beneficiariesService: BeneficiariesService) {}
+  constructor(
+    private readonly beneficiariesService: BeneficiariesService,
+    private readonly landService: LandService,
+  ) {}
 
   @Get('lookup')
   @ApiOperation({ summary: 'Lookup beneficiary by phone number (first step of onboarding)' })
@@ -152,29 +156,33 @@ export class BeneficiariesController {
     return this.beneficiariesService.getBeneficiaryHistory(id);
   }
 
-  @Post(':id/account/toggle-status')
-  @HttpCode(HttpStatus.OK)
-  @Roles(RoleName.ADMIN)
-  @ApiOperation({ summary: 'Toggle beneficiary portal login account active status' })
-  async toggleAccountStatus(
+  @Post(':id/land')
+  @Roles(RoleName.ADMIN, RoleName.FIELD_OFFICER)
+  @ApiOperation({ summary: 'Register a new land holding under a project scheme for a beneficiary' })
+  async addLand(
     @Param('id') id: string,
-    @Body() dto: ToggleAccountStatusDto,
+    @Body() dto: any,
     @CurrentUser() user: RequestUser,
     @Ip() ip: string,
   ) {
-    return this.beneficiariesService.toggleAccountStatus(id, dto.isActive, dto.reason, user.user_id, ip);
+    return this.landService.createHoldingWithParcels(
+      {
+        beneficiaryId: id,
+        projectId: dto.projectId,
+        declaredTotalArea: dto.declaredTotalArea,
+        areaUnit: dto.areaUnit || 'ACRES',
+        status: dto.status,
+        parcels: dto.parcels,
+      },
+      user.user_id,
+      ip,
+    );
   }
 
-  @Post(':id/account/force-password-reset')
-  @HttpCode(HttpStatus.OK)
-  @Roles(RoleName.ADMIN)
-  @ApiOperation({ summary: 'Initiate forced administrative password reset' })
-  async forcePasswordReset(
-    @Param('id') id: string,
-    @Body() dto: ForcePasswordResetDto,
-    @CurrentUser() user: RequestUser,
-    @Ip() ip: string,
-  ) {
-    return this.beneficiariesService.forcePasswordReset(id, dto.reason, user.user_id, ip);
+  @Get(':id/land')
+  @ApiOperation({ summary: 'List all land holdings and parcels for a beneficiary' })
+  async getLand(@Param('id') id: string) {
+    return this.landService.findByBeneficiary(id);
   }
 }
+

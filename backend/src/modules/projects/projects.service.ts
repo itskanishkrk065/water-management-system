@@ -67,6 +67,22 @@ export class ProjectsService {
     return project;
   }
 
+  async findActive() {
+    return this.prisma.project.findMany({
+      where: { status: 'ACTIVE' },
+      orderBy: { project_name: 'asc' },
+      select: {
+        project_id: true,
+        project_code: true,
+        project_name: true,
+        description: true,
+        status: true,
+        start_date: true,
+        end_date: true,
+      },
+    });
+  }
+
   async update(id: string, dto: UpdateProjectDto) {
     const existing = await this.prisma.project.findUnique({
       where: { project_id: id },
@@ -84,6 +100,20 @@ export class ProjectsService {
         start_date: dto.startDate ? new Date(dto.startDate) : undefined,
         end_date: dto.endDate ? new Date(dto.endDate) : undefined,
       },
+    });
+  }
+
+  async toggleStatus(id: string) {
+    const existing = await this.prisma.project.findUnique({
+      where: { project_id: id },
+    });
+    if (!existing) {
+      throw new NotFoundException('Project scheme not found');
+    }
+    const newStatus = existing.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
+    return this.prisma.project.update({
+      where: { project_id: id },
+      data: { status: newStatus },
     });
   }
 }
