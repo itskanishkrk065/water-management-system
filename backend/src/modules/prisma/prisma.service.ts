@@ -50,6 +50,18 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
       await this.$connect();
       this.logger.log('[Prisma] Database connection OK');
 
+      // SQLite Runtime Performance Tuning
+      try {
+        await this.$queryRawUnsafe('PRAGMA journal_mode = WAL;');
+        await this.$queryRawUnsafe('PRAGMA synchronous = NORMAL;');
+        await this.$queryRawUnsafe('PRAGMA cache_size = -64000;'); // 64 MB cache
+        await this.$queryRawUnsafe('PRAGMA temp_store = MEMORY;');
+        await this.$queryRawUnsafe('PRAGMA busy_timeout = 5000;');
+        this.logger.log('[Prisma] SQLite Performance PRAGMAs configured (WAL, cache=64MB, temp_store=MEMORY)');
+      } catch (pragmaErr: any) {
+        // Non-fatal if using PostgreSQL dev mode
+      }
+
       // Controlled startup health check
       const userCount = await this.user.count().catch(() => null);
       this.logger.log(`[Prisma] Database Health Check OK - Users in DB: ${userCount ?? 'Table ready'}`);

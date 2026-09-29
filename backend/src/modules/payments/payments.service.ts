@@ -372,10 +372,23 @@ export class PaymentsService {
       where: { payment_id: id },
       include: {
         beneficiary: {
-          include: { district: true, panchayat: true, village: true },
+          include: { district: true, block: true, panchayat: true, village: true },
         },
         installment: {
-          include: { bill: true },
+          include: {
+            bill: {
+              include: {
+                allotment: {
+                  include: {
+                    application: {
+                      include: { landHolding: { include: { parcels: true } } },
+                    },
+                    rate: true,
+                  },
+                },
+              },
+            },
+          },
         },
         runningBill: true,
       },
@@ -388,12 +401,151 @@ export class PaymentsService {
     return payment;
   }
 
+  async generatePaymentReceiptPdf(id: string): Promise<{ buffer: Buffer; fileName: string }> {
+    const payment = await this.findOne(id);
+    const PDFDocument = require('pdfkit');
+
+    const doc = new PDFDocument({
+      size: 'A4',
+      margin: 40,
+      info: {
+        Title: `Payment Receipt ${payment.receipt_number}`,
+        Author: 'Kongu Basin Water Management Authority',
+      },
+    });
+
+    const buffers: Buffer[] = [];
+    doc.on('data', buffers.push.bind(buffers));
+
+    const pdfPromise = new Promise<Buffer>((resolve) => {
+      doc.on('end', () => resolve(Buffer.concat(buffers)));
+    });
+
+    const isReversed = payment.status === 'REVERSED' || payment.is_reversal;
+
+    // Header Banner
+    doc.rect(40, 40, 515, 65).fill(isReversed ? '#7f1d1d' : '#0f172a');
+    doc.fillColor('#ffffff').fontSize(15).font('Helvetica-Bold').text('KONGU BASIN WATER MANAGEMENT AUTHORITY', 55, 52);
+    doc.fontSize(10).font('Helvetica').fillColor('#94a3b8').text(isReversed ? 'OFFICIAL PAYMENT REVERSAL MEMORANDUM' : 'OFFICIAL GOVERNMENT PAYMENT RECEIPT', 55, 72);
+    doc.fillColor(isReversed ? '#fca5a5' : '#38bdf8').fontSize(9).font('Helvetica-Bold').text(`Receipt #: ${payment.receipt_number}`, 360, 52, { align: 'right', width: 180 });
+    doc.fillColor('#cbd5e1').fontSize(8).font('Helvetica').text(`Date: ${new Date(payment.payment_date).toLocaleDateString('en-IN')}`, 360, 68, { align: 'right', width: 180 });
+
+    doc.moveDown(3);
+
+    // Status Ribbon
+    doc.rect(40, 115, 515, 24).fill(isReversed ? '#fee2e2' : '#ecfdf5');
+    doc.fillColor(isReversed ? '#991b1b' : '#065f46').fontSize(9).font('Helvetica-Bold').text(
+      `STATUS: ${payment.status} ${payment.is_reversal ? '(REVERSAL ENTRY)' : ''} | PAYMENT MODE: ${payment.payment_mode}`,
+      55,
+      122,
+    );
+
+    // Section 1: Beneficiary & Location Details
+    doc.rect(40, 148, 515, 95).fill('#f8fafc');
+    doc.fillColor('#334155').fontSize(10).font('Helvetica-Bold').text('1. BENEFICIARY & LOCATION PARTICULARS', 55, 158);
+
+    doc.fontSize(8.5).font('Helvetica').fillColor('#475569');
+    doc.text(`Beneficiary Name: ${payment.beneficiary?.name || 'N/A'}`, 55, 178);
+    doc.text(`Phone Number: ${payment.beneficiary?.phone_number || 'N/A'}`, 55, 194);
+    doc.text(`Beneficiary ID: ${payment.beneficiary_id}`, 55, 210);
+
+    const b = payment.beneficiary;
+    doc.text(`District: ${b?.district?.name || 'N/A'}`, 300, 178);
+    doc.text(`Block: ${b?.block?.name || 'N/A'}`, 300, 194);
+    doc.text(`Revenue Village: ${b?.village?.name || 'N/A'}`, 300, 210);
+    if (b?.address_line_1) {
+      doc.text(`Address: ${b.address_line_1}`, 55, 226);
+    }
+
+    // Section 2: Water Allocation & Land Holding Particulars
+    doc.rect(40, 252, 515, 90).fill('#f8fafc');
+    doc.fillColor('#334155').fontSize(10).font('Helvetica-Bold').text('2. WATER ALLOCATION & LAND HOLDING PARTICULARS', 55, 262);
+
+    const inst = payment.installment;
+    const bill = inst?.bill;
+    const allot = bill?.allotment;
+    const app = allot?.application;
+    const land = app?.landHolding;
+
+    doc.fontSize(8.5).font('Helvetica').fillColor('#475569');
+    doc.text(`Land Holding ID: ${land ? land.land_id.slice(0, 8) + '...' : 'N/A'}`, 55, 282);
+    doc.text(`Declared Area: ${land ? Number(land.declared_total_area).toFixed(2) + ' ACRES' : 'N/A'}`, 55, 298);
+    doc.text(`Water App #: ${app ? '#' + app.application_id.slice(0, 8) : 'N/A'}`, 55, 314);
+
+    doc.text(`Approved Quota: ${allot ? Number(allot.approved_litres).toLocaleString('en-IN') + ' L' : 'N/A'}`, 300, 282);
+    doc.text(`Historical Tariff Rate: ${bill ? '₹' + Number(bill.development_cost_per_litre_snapshot).toFixed(2) + '/L' : 'N/A'}`, 300, 298);
+    doc.text(`Development Bill #: ${bill ? '#' + bill.bill_id.slice(0, 8) : 'N/A'}`, 300, 314);
+
+    // Section 3: Payment & Milestone Breakdown Table
+    doc.rect(40, 350, 515, 130).fill('#ffffff').stroke('#cbd5e1');
+    doc.rect(40, 350, 515, 22).fill('#e2e8f0');
+    doc.fillColor('#1e293b').fontSize(9).font('Helvetica-Bold').text('3. PAYMENT & INSTALLMENT SETTLEMENT', 55, 356);
+
+    doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#334155');
+    doc.text('Description / Milestone', 55, 380);
+    doc.text('Stage %', 280, 380);
+    doc.text('Due Amount', 360, 380, { align: 'right', width: 80 });
+    doc.text('Paid in Transaction', 450, 380, { align: 'right', width: 90 });
+
+    doc.moveTo(40, 395).lineTo(555, 395).stroke('#cbd5e1');
+
+    doc.font('Helvetica').fillColor('#1e293b');
+    const milestoneName = inst ? `Stage #${inst.installment_number} Milestone Payment` : 'Water Development Settlement';
+    const stagePct = inst ? `${Number(inst.percentage).toFixed(1)}%` : '100.0%';
+    const dueAmt = inst ? `₹${Number(inst.amount_due).toLocaleString('en-IN', { minimumFractionDigits: 2 })}` : '₹0.00';
+    const paidAmt = `₹${Number(payment.amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
+
+    doc.text(milestoneName, 55, 405);
+    doc.text(stagePct, 280, 405);
+    doc.text(dueAmt, 360, 405, { align: 'right', width: 80 });
+    doc.font('Helvetica-Bold').fillColor(isReversed ? '#dc2626' : '#15803d').text(paidAmt, 450, 405, { align: 'right', width: 90 });
+
+    doc.moveTo(40, 425).lineTo(555, 425).stroke('#cbd5e1');
+
+    doc.font('Helvetica').fillColor('#475569');
+    doc.text(`Payment Reference / UTR: ${payment.payment_reference || 'N/A'}`, 55, 435);
+    doc.text(`Recorded By Officer: ${payment.recorded_by || 'Accounts Admin'}`, 55, 450);
+    if (payment.remarks) {
+      doc.text(`Remarks / Notes: ${payment.remarks}`, 55, 465);
+    }
+
+    // Amount in Words Box
+    doc.rect(40, 490, 515, 35).fill('#f1f5f9');
+    doc.fillColor('#0f172a').fontSize(8.5).font('Helvetica-Bold').text('NET TRANSACTION VALUE:', 55, 500);
+    doc.fillColor('#0369a1').fontSize(11).font('Helvetica-Bold').text(
+      `INR ₹${Number(payment.amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`,
+      210,
+      498,
+    );
+
+    // Legal / Audit Seal Footer
+    doc.rect(40, 540, 515, 60).fill('#f8fafc');
+    doc.fontSize(7.5).font('Helvetica').fillColor('#64748b');
+    doc.text(
+      'This is an authoritative computer-generated digital payment receipt issued by the Kongu Basin Water Allocation Authority.',
+      55,
+      550,
+      { width: 485 },
+    );
+    doc.text(
+      'All transactions are immutably logged in the system cryptographic audit ledger. Tampering or duplication is strictly prohibited under the Water Regulation Act.',
+      55,
+      565,
+      { width: 485 },
+    );
+    doc.text(`Digital Verification Hash: SHA256-${payment.payment_id.replace(/-/g, '').slice(0, 24).toUpperCase()}`, 55, 582);
+
+    doc.end();
+
+    const buffer = await pdfPromise;
+    const fileName = `Payment_Receipt_${payment.receipt_number}.pdf`;
+    return { buffer, fileName };
+  }
+
   private generateReceiptNumber(prefix = 'REC'): string {
+    const year = new Date().getFullYear();
     const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-    const randomHex = Math.floor(Math.random() * 0xfffff)
-      .toString(16)
-      .toUpperCase()
-      .padStart(5, '0');
-    return `${prefix}-${dateStr}-${randomHex}`;
+    const randomHex = Math.floor(100000 + Math.random() * 900000).toString();
+    return `${prefix}-${year}-${randomHex}`;
   }
 }

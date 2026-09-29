@@ -321,23 +321,27 @@ model Beneficiary {
   @@index([district_id])
   @@index([block_id])
   @@index([village_id])
+  @@index([status, created_at])
+  @@index([name])
   @@map("beneficiaries")
 }
 
 model LandHolding {
-  land_id             String     @id @default(uuid()) @db.Uuid
-  beneficiary_id      String     @db.Uuid
-  project_id          String     @db.Uuid
-  declared_total_area Decimal    @db.Decimal(12, 4)
-  area_unit           String     @default("ACRES")
-  status              LandStatus @default(ACTIVE)
-  created_at          DateTime   @default(now())
-  updated_at          DateTime   @updatedAt
+  land_id             String             @id @default(uuid()) @db.Uuid
+  beneficiary_id      String             @db.Uuid
+  project_id          String             @db.Uuid
+  declared_total_area Decimal            @db.Decimal(12, 4)
+  area_unit           String             @default("ACRES")
+  status              LandStatus         @default(ACTIVE)
+  created_at          DateTime           @default(now())
+  updated_at          DateTime           @updatedAt
 
-  beneficiary Beneficiary  @relation(fields: [beneficiary_id], references: [beneficiary_id], onDelete: Restrict)
-  project     Project      @relation(fields: [project_id], references: [project_id], onDelete: Restrict)
-  parcels     LandParcel[]
+  beneficiary       Beneficiary        @relation(fields: [beneficiary_id], references: [beneficiary_id], onDelete: Restrict)
+  project           Project            @relation(fields: [project_id], references: [project_id], onDelete: Restrict)
+  parcels           LandParcel[]
+  waterApplications WaterApplication[]
 
+  @@index([beneficiary_id, status])
   @@index([beneficiary_id])
   @@index([project_id])
   @@map("land_holdings")
@@ -364,8 +368,8 @@ model RateConfiguration {
   rate_id                    String    @id @default(uuid()) @db.Uuid
   project_id                 String    @db.Uuid
   litres_per_acre            Decimal   @db.Decimal(14, 2)
-  development_cost_per_litre Decimal   @db.Decimal(18, 4)
-  running_cost_per_litre     Decimal   @db.Decimal(18, 4)
+  development_cost_per_litre Decimal   @db.Decimal(10, 4)
+  running_cost_per_litre     Decimal   @db.Decimal(10, 4)
   effective_from             DateTime
   effective_to               DateTime?
   is_active                  Boolean   @default(true)
@@ -404,6 +408,7 @@ model WaterApplication {
   application_id   String            @id @default(uuid()) @db.Uuid
   project_id       String            @db.Uuid
   beneficiary_id   String            @db.Uuid
+  land_id          String?           @db.Uuid
   required_litres  Decimal           @db.Decimal(14, 2)
   application_date DateTime          @default(now())
   status           ApplicationStatus @default(SUBMITTED)
@@ -414,10 +419,14 @@ model WaterApplication {
 
   project     Project         @relation(fields: [project_id], references: [project_id], onDelete: Restrict)
   beneficiary Beneficiary     @relation(fields: [beneficiary_id], references: [beneficiary_id], onDelete: Restrict)
+  landHolding LandHolding?    @relation(fields: [land_id], references: [land_id], onDelete: Restrict)
   allotment   WaterAllotment?
 
+  @@index([beneficiary_id, status])
+  @@index([land_id, status])
   @@index([beneficiary_id])
   @@index([project_id])
+  @@index([land_id])
   @@map("water_applications")
 }
 
@@ -437,8 +446,8 @@ model WaterAllotment {
   created_at                 DateTime       @default(now())
   updated_at                 DateTime       @updatedAt
 
-  application     WaterApplication @relation(fields: [application_id], references: [application_id], onDelete: Restrict)
-  beneficiary     Beneficiary      @relation(fields: [beneficiary_id], references: [beneficiary_id], onDelete: Restrict)
+  application     WaterApplication  @relation(fields: [application_id], references: [application_id], onDelete: Restrict)
+  beneficiary     Beneficiary       @relation(fields: [beneficiary_id], references: [beneficiary_id], onDelete: Restrict)
   rate            RateConfiguration @relation(fields: [rate_id], references: [rate_id], onDelete: Restrict)
   developmentBill DevelopmentBill?
   infrastructure  Infrastructure?
@@ -467,7 +476,9 @@ model DevelopmentBill {
   beneficiary  Beneficiary    @relation(fields: [beneficiary_id], references: [beneficiary_id], onDelete: Restrict)
   installments Installment[]
 
+  @@index([beneficiary_id, status])
   @@index([beneficiary_id])
+  @@index([created_at])
   @@map("development_bills")
 }
 
@@ -488,34 +499,37 @@ model Installment {
   payments Payment[]
 
   @@unique([bill_id, installment_number])
+  @@index([bill_id, status])
   @@index([bill_id])
   @@index([status])
   @@map("installments")
 }
 
 model Payment {
-  payment_id         String        @id @default(uuid()) @db.Uuid
-  beneficiary_id     String        @db.Uuid
-  installment_id     String?       @db.Uuid
-  running_bill_id    String?       @db.Uuid
-  extension_id       String?       @db.Uuid
-  amount             Decimal       @db.Decimal(18, 2)
-  payment_date       DateTime      @default(now())
-  payment_reference  String?
-  receipt_number     String        @unique
-  payment_mode       PaymentMode
-  status             PaymentStatus @default(COMPLETED)
-  is_reversal        Boolean       @default(false)
-  reversal_payment_id String?      @db.Uuid
-  remarks            String?
-  recorded_by        String
-  created_at         DateTime      @default(now())
+  payment_id          String        @id @default(uuid()) @db.Uuid
+  beneficiary_id      String        @db.Uuid
+  installment_id      String?       @db.Uuid
+  running_bill_id     String?       @db.Uuid
+  extension_id        String?       @db.Uuid
+  amount              Decimal       @db.Decimal(18, 2)
+  payment_date        DateTime      @default(now())
+  payment_reference   String?
+  receipt_number      String        @unique
+  payment_mode        PaymentMode
+  status              PaymentStatus @default(COMPLETED)
+  is_reversal         Boolean       @default(false)
+  reversal_payment_id String?       @db.Uuid
+  remarks             String?
+  recorded_by         String
+  created_at          DateTime      @default(now())
 
   beneficiary Beneficiary  @relation(fields: [beneficiary_id], references: [beneficiary_id], onDelete: Restrict)
   installment Installment? @relation(fields: [installment_id], references: [installment_id], onDelete: Restrict)
   runningBill RunningBill? @relation(fields: [running_bill_id], references: [running_bill_id], onDelete: Restrict)
   extension   Extension?   @relation(fields: [extension_id], references: [extension_id], onDelete: Restrict)
 
+  @@index([beneficiary_id, payment_date])
+  @@index([installment_id, is_reversal])
   @@index([beneficiary_id])
   @@index([installment_id])
   @@index([running_bill_id])
@@ -612,8 +626,10 @@ model AuditLog {
 
   user User? @relation(fields: [user_id], references: [user_id], onDelete: SetNull)
 
+  @@index([entity_type, entity_id, created_at])
   @@index([entity_type, entity_id])
   @@index([user_id])
+  @@index([created_at])
   @@index([action])
   @@map("audit_logs")
 }
@@ -645,3 +661,24 @@ model BeneficiaryDocument {
   @@index([beneficiary_id, category])
   @@map("beneficiary_documents")
 }
+
+model ReportPreset {
+  preset_id    String   @id @default(uuid()) @db.Uuid
+  name         String   @unique
+  description  String?
+  category     String   @default("GENERAL")
+  filters_json String
+  columns_json String?
+  sort_by      String?
+  sort_order   String   @default("asc")
+  is_system    Boolean  @default(false)
+  is_active    Boolean  @default(true)
+  created_by   String?
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+
+  @@index([category])
+  @@index([is_active])
+  @@map("report_presets")
+}
+

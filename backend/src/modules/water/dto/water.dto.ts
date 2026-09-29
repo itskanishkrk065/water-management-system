@@ -2,15 +2,20 @@ import { IsNotEmpty, IsNumber, IsOptional, IsString, IsUUID, Min } from 'class-v
 import { ApiProperty } from '@nestjs/swagger';
 
 export class CreateWaterApplicationDto {
-  @ApiProperty({ example: 'UUID of Project' })
+  @ApiProperty({ example: 'UUID of Project', required: false })
+  @IsOptional()
   @IsUUID()
-  @IsNotEmpty()
-  projectId: string;
+  projectId?: string;
 
   @ApiProperty({ example: 'UUID of Beneficiary' })
   @IsUUID()
   @IsNotEmpty()
   beneficiaryId: string;
+
+  @ApiProperty({ example: 'UUID of LandHolding', required: false })
+  @IsOptional()
+  @IsUUID()
+  landId?: string;
 
   @ApiProperty({ example: 60000, description: 'Beneficiary stated required water in litres' })
   @IsNumber()

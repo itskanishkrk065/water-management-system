@@ -487,6 +487,12 @@ function getStartupHtml(statusText = 'Starting Services...', error = null) {
 </html>`;
 }
 
+// Chromium GPU Acceleration & Rendering Switches for Windows/macOS Desktop
+app.commandLine.appendSwitch('enable-gpu-rasterization');
+app.commandLine.appendSwitch('enable-zero-copy');
+app.commandLine.appendSwitch('ignore-gpu-blocklist');
+app.commandLine.appendSwitch('disable-http-cache', 'false');
+
 // 9. Create Native Main Desktop Window
 async function createMainWindow() {
   mainWindow = new BrowserWindow({
@@ -503,6 +509,8 @@ async function createMainWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
+      backgroundThrottling: false,
+      spellcheck: false,
     },
   });
 

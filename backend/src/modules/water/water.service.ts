@@ -24,41 +24,62 @@ export class WaterService {
   /**
    * Preview calculated allotment and snapshot rates before application submission or approval.
    */
-  async previewAllotment(beneficiaryId: string, projectId: string) {
-    const [beneficiary, rate] = await Promise.all([
-      this.prisma.beneficiary.findUnique({
-        where: { beneficiary_id: beneficiaryId },
-        include: {
-          landHoldings: {
-            where: { status: LandStatus.ACTIVE },
-            include: { parcels: true },
-          },
+  async previewAllotment(beneficiaryId: string, projectId?: string, landId?: string) {
+    const beneficiary = await this.prisma.beneficiary.findUnique({
+      where: { beneficiary_id: beneficiaryId },
+      include: {
+        landHoldings: {
+          where: { status: LandStatus.ACTIVE },
+          include: { parcels: true },
         },
-      }),
-      this.prisma.rateConfiguration.findFirst({
-        where: { project_id: projectId, is_active: true },
-        orderBy: { effective_from: 'desc' },
-      }),
-    ]);
+      },
+    });
 
     if (!beneficiary) {
       throw new NotFoundException(`Beneficiary ${beneficiaryId} not found`);
     }
-    if (!rate) {
-      throw new NotFoundException(`No active rate configuration found for project ${projectId}`);
+
+    let targetHolding: any = null;
+    if (landId) {
+      targetHolding = beneficiary.landHoldings.find((h) => h.land_id === landId);
+      if (!targetHolding) {
+        throw new NotFoundException(`Active land holding ${landId} not found for this beneficiary`);
+      }
+    } else if (beneficiary.landHoldings.length === 1) {
+      targetHolding = beneficiary.landHoldings[0];
     }
 
-    const totalLandAcres = beneficiary.landHoldings.reduce(
-      (acc, h) => acc.plus(new Decimal(h.declared_total_area)),
-      new Decimal(0),
-    );
+    const effProjectId = projectId || targetHolding?.project_id || beneficiary.landHoldings[0]?.project_id;
+    if (!effProjectId) {
+      throw new BadRequestException('No active project scheme found for preview');
+    }
+
+    const rate = await this.prisma.rateConfiguration.findFirst({
+      where: { project_id: effProjectId, is_active: true },
+      orderBy: { effective_from: 'desc' },
+    });
+
+    if (!rate) {
+      throw new NotFoundException(`No active rate configuration found for project ${effProjectId}`);
+    }
+
+    let totalLandAcres: Decimal;
+    if (targetHolding) {
+      totalLandAcres = new Decimal(targetHolding.declared_total_area);
+    } else {
+      totalLandAcres = beneficiary.landHoldings.reduce(
+        (acc, h) => acc.plus(new Decimal(h.declared_total_area)),
+        new Decimal(0),
+      );
+    }
 
     const calculatedAllottedLitres = DecimalUtil.mul(totalLandAcres, rate.litres_per_acre);
 
     return {
       beneficiary_id: beneficiaryId,
       beneficiary_name: beneficiary.name,
-      project_id: projectId,
+      project_id: effProjectId,
+      land_id: targetHolding?.land_id || null,
       total_land_acres: totalLandAcres.toFixed(4),
       rate_id: rate.rate_id,
       litres_per_acre: rate.litres_per_acre.toString(),
@@ -68,13 +89,26 @@ export class WaterService {
     };
   }
 
+  private readonly holdingLocks = new Set<string>();
+
+  private async acquireLock(key: string): Promise<() => void> {
+    while (this.holdingLocks.has(key)) {
+      await new Promise((resolve) => setTimeout(resolve, 15));
+    }
+    this.holdingLocks.add(key);
+    return () => {
+      this.holdingLocks.delete(key);
+    };
+  }
+
   /**
-   * Beneficiary submits a water requirement application.
+   * Beneficiary submits a water requirement application for an eligible Land Holding.
+   * CORE BUSINESS RULE #1: ONE WATER APPLICATION PER LAND HOLDING (CONCURRENCY SAFE)
    */
   async createApplication(dto: CreateWaterApplicationDto, createdBy: string, userId?: string, ipAddress?: string) {
     const beneficiary = await this.prisma.beneficiary.findUnique({
       where: { beneficiary_id: dto.beneficiaryId },
-      include: { landHoldings: { where: { status: LandStatus.ACTIVE } } },
+      include: { landHoldings: { where: { status: LandStatus.ACTIVE }, include: { parcels: true } } },
     });
     if (!beneficiary) {
       throw new NotFoundException(`Beneficiary ${dto.beneficiaryId} not found`);
@@ -84,31 +118,74 @@ export class WaterService {
       throw new BadRequestException('Beneficiary must have at least one active land holding before submitting a water application.');
     }
 
-    const application = await this.prisma.waterApplication.create({
-      data: {
-        project_id: dto.projectId,
-        beneficiary_id: dto.beneficiaryId,
-        required_litres: new Decimal(dto.requiredLitres),
-        status: ApplicationStatus.SUBMITTED,
-        created_by: createdBy,
-      },
-      include: {
-        beneficiary: true,
-        project: true,
-      },
-    });
+    let targetLand: any = null;
+    if (dto.landId) {
+      targetLand = beneficiary.landHoldings.find((h) => h.land_id === dto.landId);
+      if (!targetLand) {
+        throw new BadRequestException(`Specified land holding ${dto.landId} is not valid or active for this beneficiary.`);
+      }
+    } else if (beneficiary.landHoldings.length === 1) {
+      targetLand = beneficiary.landHoldings[0];
+    } else {
+      throw new BadRequestException('Beneficiary has multiple land holdings. Please select a specific land holding for this water application.');
+    }
 
-    await this.auditService.log({
-      userId,
-      action: AuditAction.SUBMIT,
-      entityType: 'WaterApplication',
-      entityId: application.application_id,
-      newValues: application,
-      reason: dto.remarks || 'Submitted water requirement application',
-      ipAddress,
-    });
+    const releaseLock = await this.acquireLock(targetLand.land_id);
 
-    return application;
+    try {
+      // Execute atomically in a transaction with holding-level lock
+      const application = await this.prisma.$transaction(async (tx) => {
+        // CORE BUSINESS RULE #1: UNIQUE WATER APPLICATION PER LAND HOLDING
+        const existingActiveApp = await tx.waterApplication.findFirst({
+          where: {
+            land_id: targetLand.land_id,
+            status: { in: [ApplicationStatus.SUBMITTED, ApplicationStatus.UNDER_REVIEW, ApplicationStatus.APPROVED, 'DRAFT'] },
+          },
+        });
+
+        if (existingActiveApp) {
+          throw new BadRequestException(
+            `Land holding (${targetLand.parcels?.map((p: any) => p.survey_number).join(', ') || targetLand.land_id}) already has an active water application (#${existingActiveApp.application_id.slice(0, 8)} with status ${existingActiveApp.status}). Duplicate water applications for the same land holding are strictly prohibited.`,
+          );
+        }
+
+        const effProjectId = dto.projectId || targetLand.project_id;
+
+        return tx.waterApplication.create({
+          data: {
+            project_id: effProjectId,
+            beneficiary_id: dto.beneficiaryId,
+            land_id: targetLand.land_id,
+            required_litres: new Decimal(dto.requiredLitres),
+            status: ApplicationStatus.SUBMITTED,
+            created_by: createdBy,
+          },
+          include: {
+            beneficiary: true,
+            project: true,
+            landHolding: true,
+          },
+        });
+      });
+
+      await this.auditService.log({
+        userId,
+        action: AuditAction.SUBMIT,
+        entityType: 'WaterApplication',
+        entityId: application.application_id,
+        newValues: {
+          ...application,
+          land_id: targetLand.land_id,
+          declared_total_area: targetLand.declared_total_area,
+        },
+        reason: dto.remarks || `Submitted water requirement application for Land Holding ${targetLand.land_id}`,
+        ipAddress,
+      });
+
+      return application;
+    } finally {
+      releaseLock();
+    }
   }
 
   async findAllApplications(query: {
@@ -135,19 +212,31 @@ export class WaterService {
         take: limit,
         include: {
           beneficiary: {
-            include: {
-              district: true,
-              panchayat: true,
-              village: true,
-              landHoldings: { where: { status: LandStatus.ACTIVE } },
+            select: {
+              beneficiary_id: true,
+              name: true,
+              phone_number: true,
+              village: { select: { name: true } },
             },
           },
-          project: true,
-          allotment: {
-            include: {
-              developmentBill: {
-                include: { installments: true },
+          project: {
+            select: { project_id: true, project_code: true, project_name: true },
+          },
+          landHolding: {
+            select: {
+              land_id: true,
+              declared_total_area: true,
+              area_unit: true,
+              parcels: {
+                select: { survey_number: true, subdivision_number: true },
               },
+            },
+          },
+          allotment: {
+            select: {
+              allotment_id: true,
+              approved_litres: true,
+              approval_status: true,
             },
           },
         },
@@ -224,6 +313,7 @@ export class WaterService {
     const application = await this.prisma.waterApplication.findUnique({
       where: { application_id: dto.applicationId },
       include: {
+        landHolding: true,
         beneficiary: {
           include: {
             landHoldings: {
@@ -275,14 +365,16 @@ export class WaterService {
       };
     }
 
-    // Compute total land
-    const totalLandAcres = application.beneficiary.landHoldings.reduce(
-      (acc, h) => acc.plus(new Decimal(h.declared_total_area)),
-      new Decimal(0),
-    );
+    // Compute total land for this specific application / land holding
+    const totalLandAcres = application.landHolding
+      ? new Decimal(application.landHolding.declared_total_area)
+      : application.beneficiary.landHoldings.reduce(
+          (acc, h) => acc.plus(new Decimal(h.declared_total_area)),
+          new Decimal(0),
+        );
 
     if (totalLandAcres.isZero()) {
-      throw new BadRequestException('Beneficiary has zero active land holdings. Cannot approve allotment.');
+      throw new BadRequestException('Land holding area is zero. Cannot approve allotment.');
     }
 
     // Formula: Calculated Allotted Litres = Total Land * Litres Per Acre
@@ -460,14 +552,41 @@ export class WaterService {
         take: limit,
         include: {
           beneficiary: {
-            include: { district: true, panchayat: true, village: true },
+            select: {
+              beneficiary_id: true,
+              name: true,
+              phone_number: true,
+              village: { select: { name: true } },
+            },
           },
-          application: true,
-          rate: true,
+          application: {
+            select: {
+              application_id: true,
+              required_litres: true,
+              project: { select: { project_name: true, project_code: true } },
+            },
+          },
+          rate: {
+            select: {
+              rate_id: true,
+              development_cost_per_litre: true,
+            },
+          },
           developmentBill: {
-            include: { installments: { orderBy: { installment_number: 'asc' } } },
+            select: {
+              bill_id: true,
+              total_amount: true,
+              amount_paid: true,
+              pending_amount: true,
+              status: true,
+            },
           },
-          infrastructure: true,
+          infrastructure: {
+            select: {
+              infrastructure_id: true,
+              status: true,
+            },
+          },
         },
       }),
       this.prisma.waterAllotment.count({ where }),

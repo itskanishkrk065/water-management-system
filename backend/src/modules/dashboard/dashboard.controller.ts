@@ -1,7 +1,9 @@
-import { Controller, Get, UseGuards } from '@nestjs/common';
+import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { DashboardService } from './dashboard.service';
+import { DashboardFilterDto } from './dto/dashboard-filter.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { CurrentUser, RequestUser } from '../common/decorators/current-user.decorator';
 
 @ApiTags('Dashboard')
 @ApiBearerAuth()
@@ -11,9 +13,18 @@ export class DashboardController {
   constructor(private readonly dashboardService: DashboardService) {}
 
   @Get('stats')
-  @ApiOperation({ summary: 'Get high-level summary KPIs and metrics' })
-  async getStats() {
-    return this.dashboardService.getStats();
+  @ApiOperation({ summary: 'Get high-level summary KPIs and metrics with optional filters' })
+  async getStats(
+    @Query() filterDto: DashboardFilterDto,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.dashboardService.getStats(filterDto, user);
+  }
+
+  @Get('recent-activity')
+  @ApiOperation({ summary: 'Get recent operational activity and pending installments' })
+  async getRecentActivity(@CurrentUser() user: RequestUser) {
+    return this.dashboardService.getRecentActivity(user);
   }
 
   @Get('pending-approvals')
@@ -28,3 +39,4 @@ export class DashboardController {
     return this.dashboardService.getInfrastructureQueue();
   }
 }
+

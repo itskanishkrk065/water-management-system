@@ -14,6 +14,7 @@ function NewWaterApplicationContent() {
 
   const [phoneSearch, setPhoneSearch] = useState('');
   const [beneficiary, setBeneficiary] = useState<any>(null);
+  const [selectedLandId, setSelectedLandId] = useState('');
   const [selectedProjectId, setSelectedProjectId] = useState('');
   const [requiredLitres, setRequiredLitres] = useState('');
   const [remarks, setRemarks] = useState('');
@@ -41,19 +42,32 @@ function NewWaterApplicationContent() {
       apiClient.get(`/beneficiaries/${prefillBeneficiaryId}`).then((res) => {
         setBeneficiary(res.data);
         setPhoneSearch(res.data.phone_number);
+        const activeHoldings = res.data.landHoldings?.filter((l: any) => l.status === 'ACTIVE') || [];
+        const available = activeHoldings.find((l: any) => {
+          return !res.data.waterApplications?.some(
+            (a: any) => a.land_id === l.land_id && !['REJECTED', 'CANCELLED', 'VOIDED'].includes(a.status)
+          );
+        });
+        if (available) {
+          setSelectedLandId(available.land_id);
+          if (available.project_id) setSelectedProjectId(available.project_id);
+        } else if (activeHoldings[0]) {
+          setSelectedLandId(activeHoldings[0].land_id);
+        }
       });
     }
   }, [prefillBeneficiaryId]);
 
   // Preview Allotment Query
   const { data: preview } = useQuery({
-    queryKey: ['previewAllotment', beneficiary?.beneficiary_id, selectedProjectId],
+    queryKey: ['previewAllotment', beneficiary?.beneficiary_id, selectedProjectId, selectedLandId],
     queryFn: async () => {
       if (!beneficiary?.beneficiary_id || !selectedProjectId) return null;
       const res = await apiClient.get('/water/preview-allotment', {
         params: {
           beneficiaryId: beneficiary.beneficiary_id,
           projectId: selectedProjectId,
+          landId: selectedLandId || undefined,
         },
       });
       return res.data;
@@ -71,6 +85,18 @@ function NewWaterApplicationContent() {
       });
       if (res.data.found) {
         setBeneficiary(res.data.beneficiary);
+        const activeHoldings = res.data.beneficiary.landHoldings?.filter((l: any) => l.status === 'ACTIVE') || [];
+        const available = activeHoldings.find((l: any) => {
+          return !res.data.beneficiary.waterApplications?.some(
+            (a: any) => a.land_id === l.land_id && !['REJECTED', 'CANCELLED', 'VOIDED'].includes(a.status)
+          );
+        });
+        if (available) {
+          setSelectedLandId(available.land_id);
+          if (available.project_id) setSelectedProjectId(available.project_id);
+        } else if (activeHoldings[0]) {
+          setSelectedLandId(activeHoldings[0].land_id);
+        }
       } else {
         setError('Beneficiary phone not found in registry. Please onboard the beneficiary first.');
         setBeneficiary(null);
@@ -87,6 +113,10 @@ function NewWaterApplicationContent() {
       setError('Please select a verified beneficiary');
       return;
     }
+    if (!selectedLandId) {
+      setError('Please select an eligible land holding');
+      return;
+    }
     const litres = parseFloat(requiredLitres);
     if (isNaN(litres) || litres <= 0) {
       setError('Please enter a valid required water volume in litres');
@@ -95,8 +125,9 @@ function NewWaterApplicationContent() {
 
     setSubmitting(true);
     try {
-      const res = await apiClient.post('/water/applications', {
+      await apiClient.post('/water/applications', {
         beneficiaryId: beneficiary.beneficiary_id,
+        landId: selectedLandId,
         projectId: selectedProjectId,
         requiredLitres: litres,
         remarks: remarks || undefined,
@@ -170,6 +201,77 @@ function NewWaterApplicationContent() {
       {/* Step 2: Project & Requirement Form with Live Preview (Section 28) */}
       {beneficiary && (
         <form onSubmit={handleSubmit} className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm space-y-6">
+          {/* Land Holding Selector */}
+          <div className="space-y-2">
+            <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+              Select Land Holding * (One Water Application per Holding)
+            </label>
+            <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+              {beneficiary.landHoldings?.map((lh: any, idx: number) => {
+                const existingActiveApp = beneficiary.waterApplications?.find(
+                  (a: any) => a.land_id === lh.land_id && !['REJECTED', 'CANCELLED', 'VOIDED'].includes(a.status),
+                );
+                const isSelected = selectedLandId === lh.land_id;
+                const isDisabled = !!existingActiveApp || lh.status !== 'ACTIVE';
+
+                return (
+                  <div
+                    key={lh.land_id}
+                    onClick={() => {
+                      if (!isDisabled) {
+                        setSelectedLandId(lh.land_id);
+                        if (lh.project_id) setSelectedProjectId(lh.project_id);
+                      }
+                    }}
+                    className={`p-3 rounded-xl border text-xs transition cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-2 ${
+                      isDisabled
+                        ? 'bg-slate-50 border-slate-200 opacity-60 cursor-not-allowed'
+                        : isSelected
+                        ? 'bg-sky-50 border-sky-500 ring-2 ring-sky-500/20 shadow-sm'
+                        : 'bg-white border-slate-200 hover:border-slate-300'
+                    }`}
+                  >
+                    <div className="flex items-start space-x-2.5">
+                      <input
+                        type="radio"
+                        name="selectedHolding"
+                        checked={isSelected}
+                        disabled={isDisabled}
+                        onChange={() => {
+                          if (!isDisabled) {
+                            setSelectedLandId(lh.land_id);
+                            if (lh.project_id) setSelectedProjectId(lh.project_id);
+                          }
+                        }}
+                        className="mt-0.5 text-sky-600 focus:ring-sky-500"
+                      />
+                      <div>
+                        <div className="font-bold text-slate-900">
+                          Holding #{idx + 1} ({formatAcres(lh.declared_total_area)})
+                        </div>
+                        <div className="text-[11px] text-slate-500 font-mono">
+                          Parcels: {lh.parcels?.map((p: any) => `SF ${p.survey_number}/${p.subdivision_number}`).join(', ') || 'No parcels'}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div>
+                      {existingActiveApp ? (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300">
+                          App #{existingActiveApp.application_id.slice(0, 8)} ({existingActiveApp.status})
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                          Eligible
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
           <div>
             <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
               Water Project Scope *

@@ -128,6 +128,7 @@ export default function Sidebar() {
           { label: 'Rate Tariff (Versioned)', href: '/settings/rates', icon: Sliders },
           { label: 'Installment Templates', href: '/settings/installments', icon: Layers },
           { label: 'Locations Hierarchy', href: '/settings/locations', icon: MapPin },
+          { label: 'Data Integrity Audit', href: '/admin/integrity', icon: FileCheck2 },
           { label: 'Database & Backup', href: '/settings/backup', icon: Database },
         ]
       : []),

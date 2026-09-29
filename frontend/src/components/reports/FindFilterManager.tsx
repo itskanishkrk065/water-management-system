@@ -33,6 +33,7 @@ import {
 } from 'lucide-react';
 
 interface FilterState {
+  projectId: string;
   districtId: string;
   blockId: string;
   panchayatId: string;
@@ -68,6 +69,7 @@ interface FilterState {
 }
 
 const initialFilters: FilterState = {
+  projectId: '',
   districtId: '',
   blockId: '',
   panchayatId: '',
@@ -157,14 +159,23 @@ export function FindFilterManager() {
       dateTo: params.get('dateTo') || '',
       page: parseInt(params.get('page') || '1', 10),
       limit: parseInt(params.get('limit') || '50', 10),
+      projectId: params.get('projectId') || '',
     };
   });
 
   const [appliedFilters, setAppliedFilters] = useState<FilterState>(draftFilters);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const [isExportingExcel, setIsExportingExcel] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
 
-  // 2. Fetch Filter Metadata
+  // Preset modal states
+  const [showSavePresetModal, setShowSavePresetModal] = useState(false);
+  const [showPresetsListModal, setShowPresetsListModal] = useState(false);
+  const [presetName, setPresetName] = useState('');
+  const [presetDesc, setPresetDesc] = useState('');
+  const [presetSaving, setPresetSaving] = useState(false);
+
+  // 2. Fetch Filter Metadata & Presets & Projects
   const { data: filterMeta } = useQuery({
     queryKey: ['reports-find-metadata'],
     queryFn: async () => {
@@ -172,6 +183,22 @@ export function FindFilterManager() {
       return res.data;
     },
     staleTime: 1000 * 60 * 30,
+  });
+
+  const { data: presets = [], refetch: refetchPresets } = useQuery<any[]>({
+    queryKey: ['reports-find-presets'],
+    queryFn: async () => {
+      const res = await apiClient.get('/reports/find/presets');
+      return Array.isArray(res.data) ? res.data : [];
+    },
+  });
+
+  const { data: projectsData = [] } = useQuery<any[]>({
+    queryKey: ['projects-active-list'],
+    queryFn: async () => {
+      const res = await apiClient.get('/projects/active');
+      return Array.isArray(res.data) ? res.data : [];
+    },
   });
 
   // 3. Location Dropdowns with Cascading
@@ -210,6 +237,7 @@ export function FindFilterManager() {
       limit: appliedFilters.limit,
     };
 
+    if (appliedFilters.projectId) payload.projectId = appliedFilters.projectId;
     if (appliedFilters.districtId) payload.districtId = appliedFilters.districtId;
     if (appliedFilters.blockId) payload.blockId = appliedFilters.blockId;
     if (appliedFilters.panchayatId) payload.panchayatId = appliedFilters.panchayatId;
@@ -322,7 +350,6 @@ export function FindFilterManager() {
       const link = document.createElement('a');
       link.href = downloadUrl;
 
-      // Extract filename from header or fallback
       const contentDisposition = response.headers['content-disposition'];
       let filename = `water-management-report-${new Date().toISOString().slice(0, 10)}.pdf`;
       if (contentDisposition) {
@@ -343,6 +370,91 @@ export function FindFilterManager() {
       setIsExportingPdf(false);
     }
   };
+
+  // 8. Server-Side Authoritative Excel Export (.xlsx)
+  const handleExportExcel = async () => {
+    try {
+      setIsExportingExcel(true);
+      setExportError(null);
+
+      const response = await apiClient.post('/reports/find/export/excel', filterPayload, {
+        responseType: 'blob',
+      });
+
+      const blob = new Blob([response.data], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+
+      const contentDisposition = response.headers['content-disposition'];
+      let filename = `water-registry-export-${new Date().toISOString().slice(0, 10)}.xlsx`;
+      if (contentDisposition) {
+        const filenameMatch = contentDisposition.match(/filename="?([^"]+)"?/);
+        if (filenameMatch && filenameMatch[1]) {
+          filename = filenameMatch[1];
+        }
+      }
+
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(downloadUrl);
+    } catch (err: any) {
+      setExportError(err.response?.data?.message || 'Failed to generate and download Excel export.');
+    } finally {
+      setIsExportingExcel(false);
+    }
+  };
+
+  // 9. Reporting Presets Actions
+  const handleLoadPreset = (preset: any) => {
+    const rawFilters = typeof preset.filters_json === 'string' ? JSON.parse(preset.filters_json) : (preset.filters_json || {});
+    const updated: FilterState = {
+      ...initialFilters,
+      ...rawFilters,
+      page: 1,
+      limit: appliedFilters.limit,
+    };
+    setDraftFilters(updated);
+    setAppliedFilters(updated);
+    syncUrlParams(updated);
+    setShowPresetsListModal(false);
+  };
+
+  const handleSaveCurrentPreset = async () => {
+    if (!presetName.trim()) return;
+    setPresetSaving(true);
+    try {
+      await apiClient.post('/reports/find/presets', {
+        name: presetName.trim(),
+        description: presetDesc.trim() || undefined,
+        report_type: 'FIND_FILTER',
+        filters: filterPayload,
+      });
+      refetchPresets();
+      setShowSavePresetModal(false);
+      setPresetName('');
+      setPresetDesc('');
+    } catch (err: any) {
+      alert(err.response?.data?.message || 'Failed to save preset');
+    } finally {
+      setPresetSaving(false);
+    }
+  };
+
+  const handleDeletePreset = async (presetId: string) => {
+    if (!confirm('Are you sure you want to deactivate this reporting preset?')) return;
+    try {
+      await apiClient.delete(`/reports/find/presets/${presetId}`);
+      refetchPresets();
+    } catch (err: any) {
+      alert(err.response?.data?.message || 'Failed to delete preset');
+    }
+  };
+
 
   // Active filters list for chips
   const activeChips = useMemo(() => {
@@ -456,7 +568,7 @@ export function FindFilterManager() {
               className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-sm font-medium transition flex items-center gap-2 border border-slate-700 shadow-sm"
             >
               <RefreshCw className="w-4 h-4" />
-              <span>Clear Filters</span>
+              <span>Clear</span>
             </button>
 
             <button
@@ -468,18 +580,115 @@ export function FindFilterManager() {
             </button>
 
             <button
+              onClick={handleExportExcel}
+              disabled={isExportingExcel || isLoading}
+              className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-800 disabled:text-slate-500 text-white font-semibold rounded-xl text-sm transition shadow-lg shadow-emerald-600/30 flex items-center gap-2"
+            >
+              {isExportingExcel ? (
+                <RefreshCw className="w-4 h-4 animate-spin text-white" />
+              ) : (
+                <Download className="w-4 h-4" />
+              )}
+              <span>{isExportingExcel ? 'Exporting...' : 'Export Excel'}</span>
+            </button>
+
+            <button
               onClick={handleExportPdf}
               disabled={isExportingPdf || isLoading}
-              className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-500 text-white font-semibold rounded-xl text-sm transition shadow-lg shadow-indigo-600/30 flex items-center gap-2"
+              className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-500 text-white font-semibold rounded-xl text-sm transition shadow-lg shadow-indigo-600/30 flex items-center gap-2"
             >
               {isExportingPdf ? (
                 <RefreshCw className="w-4 h-4 animate-spin text-white" />
               ) : (
                 <Download className="w-4 h-4" />
               )}
-              <span>{isExportingPdf ? 'Exporting PDF...' : 'Export Filtered PDF'}</span>
+              <span>{isExportingPdf ? 'Exporting...' : 'Export PDF'}</span>
+            </button>
+
+            <button
+              onClick={() => setShowSavePresetModal(true)}
+              className="px-3 py-2.5 bg-slate-800 hover:bg-slate-700 text-sky-400 border border-slate-700 rounded-xl text-xs font-semibold transition flex items-center gap-1.5"
+              title="Save current criteria as a reusable preset"
+            >
+              <span>+ Save Preset</span>
             </button>
           </div>
+        </div>
+
+        {/* Presets Quick Selector Ribbon */}
+        <div className="mt-6 pt-4 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-slate-400 font-semibold uppercase tracking-wider text-[11px]">
+              Reporting Presets:
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                handleClearFilters();
+                setDraftFilters((p) => ({ ...p, applicationStatus: 'APPROVED' }));
+                setAppliedFilters((p) => ({ ...p, applicationStatus: 'APPROVED', page: 1 }));
+              }}
+              className="px-3 py-1 rounded-full bg-slate-800 hover:bg-slate-700 text-sky-300 border border-slate-700 font-medium transition"
+            >
+              💧 Approved Water
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                handleClearFilters();
+                setDraftFilters((p) => ({ ...p, paymentStatus: 'UNPAID' }));
+                setAppliedFilters((p) => ({ ...p, paymentStatus: 'UNPAID', page: 1 }));
+              }}
+              className="px-3 py-1 rounded-full bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 font-medium transition"
+            >
+              ⚠️ Pending Payments
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                handleClearFilters();
+                setDraftFilters((p) => ({ ...p, applicationStatus: 'SUBMITTED' }));
+                setAppliedFilters((p) => ({ ...p, applicationStatus: 'SUBMITTED', page: 1 }));
+              }}
+              className="px-3 py-1 rounded-full bg-slate-800 hover:bg-slate-700 text-purple-300 border border-slate-700 font-medium transition"
+            >
+              📋 Review Queue
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                handleClearFilters();
+                setDraftFilters((p) => ({ ...p, beneficiaryStatus: 'ACTIVE' }));
+                setAppliedFilters((p) => ({ ...p, beneficiaryStatus: 'ACTIVE', page: 1 }));
+              }}
+              className="px-3 py-1 rounded-full bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-slate-700 font-medium transition"
+            >
+              🌱 Active Beneficiaries
+            </button>
+          </div>
+
+          {presets.length > 0 && (
+            <div className="flex items-center gap-2">
+              <span className="text-slate-400">Custom Presets ({presets.length}):</span>
+              <select
+                onChange={(e) => {
+                  const p = presets.find((item: any) => item.preset_id === e.target.value);
+                  if (p) handleLoadPreset(p);
+                }}
+                defaultValue=""
+                className="bg-slate-800 text-slate-200 border border-slate-700 text-xs rounded-lg px-2.5 py-1 focus:ring-sky-500 focus:border-sky-500"
+              >
+                <option value="" disabled>
+                  Load Saved Preset...
+                </option>
+                {presets.map((preset: any) => (
+                  <option key={preset.preset_id} value={preset.preset_id}>
+                    {preset.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
 
         {exportError && (
@@ -531,7 +740,7 @@ export function FindFilterManager() {
           </div>
         </div>
 
-        {/* Section: Location */}
+        {/* Section: Location & Project */}
         <div className="p-5">
           <button
             type="button"
@@ -540,13 +749,29 @@ export function FindFilterManager() {
           >
             <span className="flex items-center gap-2">
               <MapPin className="w-4 h-4 text-indigo-600" />
-              <span>1. Location Hierarchy (District → Block → Village)</span>
+              <span>1. Location Hierarchy & Project Scheme</span>
             </span>
             {openSections.location ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
           </button>
 
           {openSections.location && (
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-2">
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Project Scheme</label>
+                <select
+                  value={draftFilters.projectId}
+                  onChange={(e) => setDraftFilters((prev) => ({ ...prev, projectId: e.target.value }))}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 bg-white"
+                >
+                  <option value="">All Project Schemes</option>
+                  {projectsData.map((p: any) => (
+                    <option key={p.project_id} value={p.project_id}>
+                      {p.project_name} ({p.project_code})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1">District</label>
                 <select
@@ -1356,6 +1581,73 @@ export function FindFilterManager() {
           </div>
         )}
       </div>
+
+      {/* Save Preset Modal */}
+      {showSavePresetModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-xl border border-slate-200 w-full max-w-md p-6 space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-bold text-slate-900">Save Filter as Preset</h3>
+              <button
+                onClick={() => setShowSavePresetModal(false)}
+                className="p-1 hover:bg-slate-100 rounded-md text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <p className="text-xs text-slate-500">
+              Save the current combination of location, financial, status, and water filters to quickly run reports in the future.
+            </p>
+
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Preset Name *
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Village-wise Water Allocation"
+                  value={presetName}
+                  onChange={(e) => setPresetName(e.target.value)}
+                  className="w-full text-sm rounded-lg border-slate-300 px-3 py-2 focus:ring-sky-500 focus:border-sky-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Description (Optional)
+                </label>
+                <textarea
+                  rows={2}
+                  placeholder="Summary of what this preset filters..."
+                  value={presetDesc}
+                  onChange={(e) => setPresetDesc(e.target.value)}
+                  className="w-full text-sm rounded-lg border-slate-300 px-3 py-2 focus:ring-sky-500 focus:border-sky-500"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setShowSavePresetModal(false)}
+                className="px-4 py-2 bg-slate-100 text-slate-700 text-xs font-semibold rounded-lg hover:bg-slate-200 transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={!presetName.trim() || presetSaving}
+                onClick={handleSaveCurrentPreset}
+                className="px-4 py-2 bg-sky-600 text-white text-xs font-semibold rounded-lg hover:bg-sky-700 disabled:opacity-50 transition"
+              >
+                {presetSaving ? 'Saving...' : 'Save Preset'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+

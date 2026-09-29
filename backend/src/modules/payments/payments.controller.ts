@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Param, Body, Query, UseGuards, Ip } from '@nestjs/common';
+import { Controller, Get, Post, Param, Body, Query, UseGuards, Ip, Res } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { PaymentsService } from './payments.service';
 import { RecordPaymentDto, ReversePaymentDto } from './dto/payment.dto';
@@ -60,5 +60,15 @@ export class PaymentsController {
   @ApiOperation({ summary: 'Get payment transaction details and receipt' })
   async findOne(@Param('id') id: string) {
     return this.paymentsService.findOne(id);
+  }
+
+  @Get(':id/receipt/pdf')
+  @ApiOperation({ summary: 'Download authoritative official PDF payment receipt' })
+  async getReceiptPdf(@Param('id') id: string, @Res() res: any) {
+    const { buffer, fileName } = await this.paymentsService.generatePaymentReceiptPdf(id);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    res.setHeader('Content-Length', buffer.length);
+    res.end(buffer);
   }
 }

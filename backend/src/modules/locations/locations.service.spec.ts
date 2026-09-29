@@ -90,7 +90,7 @@ describe('LocationsService', () => {
         expect.objectContaining({
           where: expect.objectContaining({
             block_id: 'b1',
-            name: { contains: 'anga', mode: 'insensitive' },
+            name: { contains: 'anga' },
           }),
         }),
       );

@@ -19,6 +19,8 @@ import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { BeneficiaryPortalModule } from './modules/beneficiary-portal/beneficiary-portal.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { BackupModule } from './modules/backup/backup.module';
+import { IntegrityModule } from './modules/integrity/integrity.module';
+import { SearchModule } from './modules/search/search.module';
 
 @Module({
   imports: [
@@ -42,6 +44,8 @@ import { BackupModule } from './modules/backup/backup.module';
     BeneficiaryPortalModule,
     ReportsModule,
     BackupModule,
+    IntegrityModule,
+    SearchModule,
   ],
 })
 export class AppModule {}

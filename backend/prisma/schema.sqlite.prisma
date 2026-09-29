@@ -206,6 +206,8 @@ model Beneficiary {
   @@index([district_id])
   @@index([block_id])
   @@index([village_id])
+  @@index([status, created_at])
+  @@index([name])
   @@map("beneficiaries")
 }
 
@@ -219,10 +221,12 @@ model LandHolding {
   created_at          DateTime @default(now())
   updated_at          DateTime @updatedAt
 
-  beneficiary Beneficiary  @relation(fields: [beneficiary_id], references: [beneficiary_id], onDelete: Restrict)
-  project     Project      @relation(fields: [project_id], references: [project_id], onDelete: Restrict)
-  parcels     LandParcel[]
+  beneficiary       Beneficiary        @relation(fields: [beneficiary_id], references: [beneficiary_id], onDelete: Restrict)
+  project           Project            @relation(fields: [project_id], references: [project_id], onDelete: Restrict)
+  parcels           LandParcel[]
+  waterApplications WaterApplication[]
 
+  @@index([beneficiary_id, status])
   @@index([beneficiary_id])
   @@index([project_id])
   @@map("land_holdings")
@@ -289,6 +293,7 @@ model WaterApplication {
   application_id   String   @id @default(uuid())
   project_id       String
   beneficiary_id   String
+  land_id          String?
   required_litres  Decimal
   application_date DateTime @default(now())
   status           String   @default("SUBMITTED")
@@ -299,10 +304,14 @@ model WaterApplication {
 
   project     Project         @relation(fields: [project_id], references: [project_id], onDelete: Restrict)
   beneficiary Beneficiary     @relation(fields: [beneficiary_id], references: [beneficiary_id], onDelete: Restrict)
+  landHolding LandHolding?    @relation(fields: [land_id], references: [land_id], onDelete: Restrict)
   allotment   WaterAllotment?
 
+  @@index([beneficiary_id, status])
+  @@index([land_id, status])
   @@index([beneficiary_id])
   @@index([project_id])
+  @@index([land_id])
   @@map("water_applications")
 }
 
@@ -352,7 +361,9 @@ model DevelopmentBill {
   beneficiary  Beneficiary    @relation(fields: [beneficiary_id], references: [beneficiary_id], onDelete: Restrict)
   installments Installment[]
 
+  @@index([beneficiary_id, status])
   @@index([beneficiary_id])
+  @@index([created_at])
   @@map("development_bills")
 }
 
@@ -373,6 +384,7 @@ model Installment {
   payments Payment[]
 
   @@unique([bill_id, installment_number])
+  @@index([bill_id, status])
   @@index([bill_id])
   @@index([status])
   @@map("installments")
@@ -401,6 +413,8 @@ model Payment {
   runningBill RunningBill? @relation(fields: [running_bill_id], references: [running_bill_id], onDelete: Restrict)
   extension   Extension?   @relation(fields: [extension_id], references: [extension_id], onDelete: Restrict)
 
+  @@index([beneficiary_id, payment_date])
+  @@index([installment_id, is_reversal])
   @@index([beneficiary_id])
   @@index([installment_id])
   @@index([running_bill_id])
@@ -497,8 +511,10 @@ model AuditLog {
 
   user User? @relation(fields: [user_id], references: [user_id], onDelete: SetNull)
 
+  @@index([entity_type, entity_id, created_at])
   @@index([entity_type, entity_id])
   @@index([user_id])
+  @@index([created_at])
   @@index([action])
   @@map("audit_logs")
 }
@@ -520,3 +536,24 @@ model BeneficiaryDocument {
   @@index([beneficiary_id, category])
   @@map("beneficiary_documents")
 }
+
+model ReportPreset {
+  preset_id    String   @id @default(uuid())
+  name         String   @unique
+  description  String?
+  category     String   @default("GENERAL")
+  filters_json String
+  columns_json String?
+  sort_by      String?
+  sort_order   String   @default("asc")
+  is_system    Boolean  @default(false)
+  is_active    Boolean  @default(true)
+  created_by   String?
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+
+  @@index([category])
+  @@index([is_active])
+  @@map("report_presets")
+}
+

@@ -4,10 +4,17 @@ import * as xlsx from 'xlsx';
 import * as path from 'path';
 import * as fs from 'fs';
 
-const prisma = new PrismaClient();
+const dbUrl = 'file:' + path.resolve(__dirname, 'template.db');
+const prisma = new PrismaClient({
+  datasources: {
+    db: {
+      url: dbUrl,
+    },
+  },
+});
 
 async function main() {
-  console.log('🌱 Starting Universal SQLite Seeding for Offline Desktop App...');
+  console.log(`🌱 Starting Universal SQLite Seeding for Offline Desktop App (${dbUrl})...`);
 
   // 1. Seed Roles
   const roles = [
@@ -29,12 +36,12 @@ async function main() {
   }
   console.log('✓ Roles initialized');
 
-  // 2. Seed Default Administrator
+  // 2. Seed Default Staff Accounts
   const adminEmail = 'admin@water.gov.in';
   const passwordHash = await bcrypt.hash('Admin@123', 10);
   const adminUser = await prisma.user.upsert({
     where: { email: adminEmail },
-    update: { is_active: true },
+    update: { is_active: true, password_hash: passwordHash, role_id: roleMap['ADMIN'] },
     create: {
       email: adminEmail,
       password_hash: passwordHash,
@@ -43,7 +50,27 @@ async function main() {
       is_active: true,
     },
   });
-  console.log(`✓ Admin user initialized (${adminUser.email})`);
+
+  const staffUsers = [
+    { email: 'field@water.gov.in', name: 'Field Officer', role: 'FIELD_OFFICER' },
+    { email: 'accounts@water.gov.in', name: 'Accounts Officer', role: 'ACCOUNTS' },
+    { email: 'viewer@water.gov.in', name: 'Auditor Viewer', role: 'VIEWER' },
+  ];
+
+  for (const s of staffUsers) {
+    await prisma.user.upsert({
+      where: { email: s.email },
+      update: { is_active: true, password_hash: passwordHash, role_id: roleMap[s.role] },
+      create: {
+        email: s.email,
+        password_hash: passwordHash,
+        full_name: s.name,
+        role_id: roleMap[s.role],
+        is_active: true,
+      },
+    });
+  }
+  console.log(`✓ Staff users initialized (${adminUser.email}, field, accounts, viewer)`);
 
   // 3. Seed Default Project
   const project = await prisma.project.upsert({

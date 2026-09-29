@@ -36,7 +36,12 @@ export enum ReportingDateType {
 }
 
 export class FindFilterDto {
-  // 1. Location Filters
+  // 1. Location & Project Filters
+  @ApiPropertyOptional({ example: 'UUID of Project Scheme' })
+  @IsOptional()
+  @IsString()
+  projectId?: string;
+
   @ApiPropertyOptional({ example: 'UUID of District' })
   @IsOptional()
   @IsString()
@@ -371,3 +376,69 @@ export class FindFilterDto {
   @IsString()
   sortOrder?: 'asc' | 'desc' = 'desc';
 }
+
+export class CreatePresetDto {
+  @IsString()
+  name: string;
+
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @IsOptional()
+  @IsString()
+  report_type?: string;
+
+  @IsOptional()
+  filters?: any;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  columns?: string[];
+
+  @IsOptional()
+  @IsString()
+  sort_by?: string;
+
+  @IsOptional()
+  @IsString()
+  sort_order?: string;
+
+  @IsOptional()
+  is_system?: boolean;
+}
+
+export class UpdatePresetDto {
+  @IsOptional()
+  @IsString()
+  name?: string;
+
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @IsOptional()
+  @IsString()
+  report_type?: string;
+
+  @IsOptional()
+  filters?: any;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  columns?: string[];
+
+  @IsOptional()
+  @IsString()
+  sort_by?: string;
+
+  @IsOptional()
+  @IsString()
+  sort_order?: string;
+
+  @IsOptional()
+  is_active?: boolean;
+}
+

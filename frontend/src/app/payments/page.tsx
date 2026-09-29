@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
 import { formatCurrency, formatDate, getStatusBadgeClass } from '@/lib/utils';
-import { CreditCard, Plus, RotateCcw, AlertCircle, X, Search } from 'lucide-react';
+import { CreditCard, Plus, RotateCcw, AlertCircle, X, Search, FileText } from 'lucide-react';
 import Link from 'next/link';
 
 export default function PaymentsMasterPage() {
@@ -62,6 +62,25 @@ export default function PaymentsMasterPage() {
     });
   };
 
+  const handleDownloadReceipt = async (paymentId: string, receiptNumber: string) => {
+    try {
+      const res = await apiClient.get(`/payments/${paymentId}/receipt/pdf`, {
+        responseType: 'blob',
+      });
+      const blob = new Blob([res.data], { type: 'application/pdf' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `Payment_Receipt_${receiptNumber}.pdf`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Failed to download payment receipt PDF:', err);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -78,7 +97,7 @@ export default function PaymentsMasterPage() {
         <Search className="w-5 h-5 text-slate-400 shrink-0" />
         <input
           type="text"
-          placeholder="Search by receipt number (e.g. REC-20260921-)..."
+          placeholder="Search by receipt number (e.g. REC-2026-)..."
           value={receiptSearch}
           onChange={(e) => {
             setReceiptSearch(e.target.value);
@@ -138,20 +157,30 @@ export default function PaymentsMasterPage() {
                     </td>
                     <td className="px-5 py-4 text-slate-500 truncate max-w-[120px]">{p.recorded_by}</td>
                     <td className="px-5 py-4 text-right">
-                      {p.status === 'COMPLETED' && !p.is_reversal && (user?.role === 'ACCOUNTS' || user?.role === 'ADMIN') && (
+                      <div className="flex items-center justify-end gap-1.5">
                         <button
-                          onClick={() => {
-                            setReversalTargetPayment(p);
-                            setReversalReason('');
-                            setReversalError(null);
-                            setShowReverseModal(true);
-                          }}
-                          className="px-2.5 py-1 bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-600 rounded text-xs font-semibold inline-flex items-center space-x-1"
+                          onClick={() => handleDownloadReceipt(p.payment_id, p.receipt_number)}
+                          className="px-2.5 py-1 bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 rounded text-xs font-semibold inline-flex items-center space-x-1"
+                          title="Download Official PDF Receipt"
                         >
-                          <RotateCcw className="w-3 h-3" />
-                          <span>Reverse</span>
+                          <FileText className="w-3 h-3" />
+                          <span>Receipt</span>
                         </button>
-                      )}
+                        {p.status === 'COMPLETED' && !p.is_reversal && (user?.role === 'ACCOUNTS' || user?.role === 'ADMIN') && (
+                          <button
+                            onClick={() => {
+                              setReversalTargetPayment(p);
+                              setReversalReason('');
+                              setReversalError(null);
+                              setShowReverseModal(true);
+                            }}
+                            className="px-2.5 py-1 bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-600 rounded text-xs font-semibold inline-flex items-center space-x-1"
+                          >
+                            <RotateCcw className="w-3 h-3" />
+                            <span>Reverse</span>
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))

@@ -87,7 +87,7 @@ describe('FindFilterService', () => {
 
       expect(where.AND).toEqual(
         expect.arrayContaining([
-          { name: { contains: 'Ravi', mode: 'insensitive' } },
+          { name: { contains: 'Ravi' } },
           { phone_number: { contains: '98765' } },
         ]),
       );

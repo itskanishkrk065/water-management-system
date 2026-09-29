@@ -19,9 +19,10 @@ export class WaterController {
   @ApiOperation({ summary: 'Preview calculated allotment and applicable rates before submission or approval' })
   async previewAllotment(
     @Query('beneficiaryId') beneficiaryId: string,
-    @Query('projectId') projectId: string,
+    @Query('projectId') projectId?: string,
+    @Query('landId') landId?: string,
   ) {
-    return this.waterService.previewAllotment(beneficiaryId, projectId);
+    return this.waterService.previewAllotment(beneficiaryId, projectId, landId);
   }
 
   @Post('applications')

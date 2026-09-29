@@ -109,30 +109,109 @@ function AdminBeneficiaryDetailContent() {
 
   // Water Application Modal State
   const [showAddWaterAppModal, setShowAddWaterAppModal] = useState(false);
+  const [waterAppLandId, setWaterAppLandId] = useState('');
   const [waterAppProjectId, setWaterAppProjectId] = useState('');
   const [waterAppRequiredLitres, setWaterAppRequiredLitres] = useState('');
   const [waterAppRemarks, setWaterAppRemarks] = useState('');
   const [waterAppError, setWaterAppError] = useState<string | null>(null);
   const [isSubmittingWaterApp, setIsSubmittingWaterApp] = useState(false);
 
-  // Beneficiary Dossier Query
+  // 1. Lightweight Beneficiary Overview Query (Initial fast load)
   const { data: b, isLoading, refetch } = useQuery({
-    queryKey: ['admin-beneficiary-detail', id],
+    queryKey: ['admin-beneficiary-overview', id],
     queryFn: async () => {
-      const res = await apiClient.get(`/beneficiaries/${id}`);
-      return res.data;
+      try {
+        const res = await apiClient.get(`/beneficiaries/${id}/overview`);
+        return res.data;
+      } catch {
+        const res = await apiClient.get(`/beneficiaries/${id}`);
+        return res.data;
+      }
     },
     enabled: !!id,
+    staleTime: 30 * 1000,
   });
 
-  // History Query
-  const { data: historyLogs } = useQuery({
+  // 2. Lazy Tab Queries (Loaded on-demand upon tab click & cached)
+  const { data: landData, isLoading: isLandLoading } = useQuery({
+    queryKey: ['beneficiary-land', id],
+    queryFn: async () => {
+      const res = await apiClient.get(`/beneficiaries/${id}/land`);
+      return res.data;
+    },
+    enabled: !!id && (activeTab === 'land' || showAddWaterAppModal),
+    staleTime: 60 * 1000,
+  });
+
+  const { data: waterData, isLoading: isWaterLoading } = useQuery({
+    queryKey: ['beneficiary-water', id],
+    queryFn: async () => {
+      const res = await apiClient.get(`/beneficiaries/${id}/water`);
+      return res.data;
+    },
+    enabled: !!id && activeTab === 'water',
+    staleTime: 60 * 1000,
+  });
+
+  const { data: billingData, isLoading: isBillingLoading } = useQuery({
+    queryKey: ['beneficiary-billing', id],
+    queryFn: async () => {
+      const res = await apiClient.get(`/beneficiaries/${id}/billing`);
+      return res.data;
+    },
+    enabled: !!id && activeTab === 'billing',
+    staleTime: 60 * 1000,
+  });
+
+  const { data: paymentsData, isLoading: isPaymentsLoading } = useQuery({
+    queryKey: ['beneficiary-payments', id],
+    queryFn: async () => {
+      const res = await apiClient.get(`/beneficiaries/${id}/payments`);
+      return res.data;
+    },
+    enabled: !!id && (activeTab === 'billing' || activeTab === 'payments'),
+    staleTime: 60 * 1000,
+  });
+
+  const { data: infraData, isLoading: isInfraLoading } = useQuery({
+    queryKey: ['beneficiary-infra', id],
+    queryFn: async () => {
+      const res = await apiClient.get(`/beneficiaries/${id}/infrastructure`);
+      return res.data;
+    },
+    enabled: !!id && activeTab === 'infrastructure',
+    staleTime: 60 * 1000,
+  });
+
+  const { data: extensionsData, isLoading: isExtensionsLoading } = useQuery({
+    queryKey: ['beneficiary-extensions', id],
+    queryFn: async () => {
+      const res = await apiClient.get(`/beneficiaries/${id}/extensions`);
+      return res.data;
+    },
+    enabled: !!id && activeTab === 'extensions',
+    staleTime: 60 * 1000,
+  });
+
+  const { data: documentsData, isLoading: isDocumentsLoading } = useQuery({
+    queryKey: ['beneficiary-documents', id],
+    queryFn: async () => {
+      const res = await apiClient.get(`/beneficiaries/${id}/documents`);
+      return res.data;
+    },
+    enabled: !!id && activeTab === 'documents',
+    staleTime: 60 * 1000,
+  });
+
+  // 3. History Query (Lazy)
+  const { data: historyLogs, isLoading: isHistoryLoading } = useQuery({
     queryKey: ['beneficiary-history', id],
     queryFn: async () => {
       const res = await apiClient.get(`/beneficiaries/${id}/history`);
       return res.data;
     },
     enabled: !!id && activeTab === 'history',
+    staleTime: 60 * 1000,
   });
 
   // Active Obligations Query
@@ -194,7 +273,7 @@ function AdminBeneficiaryDetailContent() {
 
   // Live Section 28 Preview Query for Water Application Modal
   const { data: waterAppPreview } = useQuery({
-    queryKey: ['previewAllotment', id, waterAppProjectId],
+    queryKey: ['previewAllotment', id, waterAppProjectId, waterAppLandId],
     queryFn: async () => {
       if (!id || !waterAppProjectId) return null;
       try {
@@ -202,6 +281,7 @@ function AdminBeneficiaryDetailContent() {
           params: {
             beneficiaryId: id,
             projectId: waterAppProjectId,
+            landId: waterAppLandId || undefined,
           },
         });
         return res.data;
@@ -414,10 +494,54 @@ function AdminBeneficiaryDetailContent() {
     }
   };
 
+  // Open Add Water Application Modal helper
+  const openAddWaterAppModal = (preselectedLandId?: string) => {
+    setWaterAppError(null);
+    setWaterAppRemarks('');
+    setWaterAppRequiredLitres('');
+
+    // Determine eligible holdings (active holdings without active application)
+    const activeHoldings = b?.landHoldings?.filter((l: any) => l.status === 'ACTIVE') || [];
+    const availableHoldings = activeHoldings.filter((l: any) => {
+      const hasActiveApp = b?.waterApplications?.some(
+        (app: any) => app.land_id === l.land_id && !['REJECTED', 'CANCELLED', 'VOIDED'].includes(app.status),
+      );
+      return !hasActiveApp;
+    });
+
+    const targetLandId = preselectedLandId || (availableHoldings.length > 0 ? availableHoldings[0].land_id : (activeHoldings[0]?.land_id || ''));
+    setWaterAppLandId(targetLandId);
+
+    const targetHolding = activeHoldings.find((l: any) => l.land_id === targetLandId);
+    if (targetHolding?.project_id) {
+      setWaterAppProjectId(targetHolding.project_id);
+    } else if (projects?.length > 0 && !waterAppProjectId) {
+      setWaterAppProjectId(projects[0].project_id);
+    }
+
+    setShowAddWaterAppModal(true);
+  };
+
   // Add Water Application Submit Handler
   const handleAddWaterAppSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setWaterAppError(null);
+
+    if (!waterAppLandId) {
+      setWaterAppError('Please select a valid land holding for this water application.');
+      return;
+    }
+
+    // Check if selected holding already has an active water application
+    const existingActiveApp = b?.waterApplications?.find(
+      (app: any) => app.land_id === waterAppLandId && !['REJECTED', 'CANCELLED', 'VOIDED'].includes(app.status),
+    );
+    if (existingActiveApp) {
+      setWaterAppError(
+        `Land Holding #${waterAppLandId.slice(0, 8)} already has an active water application (#${existingActiveApp.application_id.slice(0, 8)} - ${existingActiveApp.status}). Duplicate applications per land holding are prohibited.`,
+      );
+      return;
+    }
 
     if (!waterAppProjectId) {
       setWaterAppError('Please select a project scheme');
@@ -434,6 +558,7 @@ function AdminBeneficiaryDetailContent() {
     try {
       await apiClient.post('/water/applications', {
         beneficiaryId: id,
+        landId: waterAppLandId,
         projectId: waterAppProjectId,
         requiredLitres: litres,
         remarks: waterAppRemarks.trim() || undefined,
@@ -445,6 +570,7 @@ function AdminBeneficiaryDetailContent() {
       setShowAddWaterAppModal(false);
       setWaterAppRequiredLitres('');
       setWaterAppRemarks('');
+      setWaterAppLandId('');
       setWaterAppError(null);
     } catch (err: any) {
       setWaterAppError(err.response?.data?.message || 'Failed to submit water application');
@@ -488,35 +614,62 @@ function AdminBeneficiaryDetailContent() {
     );
   }
 
+  // Tab-specific datasets (Lazy queried on demand or fallback to overview)
+  const landHoldings = landData || b?.landHoldings || [];
+  const waterApplications = waterData?.waterApplications || b?.waterApplications || [];
+  const waterAllotments = waterData?.waterAllotments || b?.waterAllotments || [];
+  const developmentBills = billingData?.developmentBills || b?.developmentBills || [];
+  const runningBills = billingData?.runningBills || b?.runningBills || [];
+  const paymentsList = paymentsData?.items || b?.payments || [];
+  const infrastructuresList = infraData || b?.infrastructures || [];
+  const extensionsList = extensionsData || b?.extensions || [];
+  const documentsList = documentsData || b?.documents || [];
+
   // Calculated KPI aggregates
-  const totalLandAcres = b.landHoldings
-    ?.filter((l: any) => l.status === 'ACTIVE')
-    .reduce((acc: number, curr: any) => acc + parseFloat(curr.declared_total_area || '0'), 0) || 0;
+  const totalLandAcres = b?.metrics?.totalLandAcres
+    ? parseFloat(b.metrics.totalLandAcres)
+    : (landHoldings
+        ?.filter((l: any) => l.status === 'ACTIVE')
+        .reduce((acc: number, curr: any) => acc + (parseFloat(curr.declared_total_area) || 0), 0) || 0);
 
-  const totalRequiredWater = b.waterApplications?.reduce(
-    (acc: number, curr: any) => acc + (curr.required_litres || 0),
-    0,
-  ) || 0;
+  const totalRequiredWater = waterApplications
+    ?.filter((a: any) => !['REJECTED', 'CANCELLED', 'VOIDED'].includes(a.status))
+    .reduce(
+      (acc: number, curr: any) => acc + (parseFloat(curr.required_litres) || 0),
+      0,
+    ) || 0;
 
-  const totalApprovedWater = b.waterAllotments?.reduce(
-    (acc: number, curr: any) => acc + (curr.approved_litres || 0),
-    0,
-  ) || 0;
+  const totalApprovedWater = b?.metrics?.approvedLitresTotal
+    ? parseFloat(b.metrics.approvedLitresTotal)
+    : (waterAllotments
+        ?.filter((a: any) => a.approval_status === 'APPROVED')
+        .reduce(
+          (acc: number, curr: any) => acc + (parseFloat(curr.approved_litres) || 0),
+          0,
+        ) || 0);
 
-  const totalDevCost = b.developmentBills?.reduce(
-    (acc: number, curr: any) => acc + parseFloat(curr.development_cost || '0'),
-    0,
-  ) || 0;
+  const totalDevCost = b?.metrics?.billsTotalAmount
+    ? parseFloat(b.metrics.billsTotalAmount)
+    : (developmentBills?.reduce(
+        (acc: number, curr: any) => acc + (parseFloat(curr.total_amount) || parseFloat(curr.development_cost) || 0),
+        0,
+      ) || 0);
 
-  const totalPaid = b.developmentBills?.reduce(
-    (acc: number, curr: any) => acc + parseFloat(curr.amount_paid || '0'),
-    0,
-  ) || 0;
+  const totalPaid = b?.metrics?.totalPaid
+    ? parseFloat(b.metrics.totalPaid)
+    : (paymentsList
+        ?.filter((p: any) => !p.is_reversal && ['VERIFIED', 'POSTED', 'PAID', 'COMPLETED'].includes(p.status))
+        .reduce(
+          (acc: number, curr: any) => acc + (parseFloat(curr.amount) || 0),
+          0,
+        ) || (developmentBills?.reduce(
+          (acc: number, curr: any) => acc + (parseFloat(curr.amount_paid) || 0),
+          0,
+        ) || 0));
 
-  const totalPending = b.developmentBills?.reduce(
-    (acc: number, curr: any) => acc + parseFloat(curr.pending_amount || '0'),
-    0,
-  ) || 0;
+  const totalPending = b?.metrics?.pendingBalance
+    ? parseFloat(b.metrics.pendingBalance)
+    : Math.max(0, totalDevCost - totalPaid);
 
   const isBeneficiaryActive = b.status === 'ACTIVE';
 
@@ -718,13 +871,13 @@ function AdminBeneficiaryDetailContent() {
       <div className="flex border-b border-slate-200 space-x-1 overflow-x-auto text-xs font-semibold scrollbar-none">
         {[
           { id: 'overview', label: 'Overview', icon: User },
-          { id: 'land', label: `Land (${b.landHoldings?.length || 0})`, icon: Layers },
-          { id: 'water', label: `Water (${b.waterApplications?.length || 0})`, icon: Droplet },
-          { id: 'billing', label: `Billing (${b.developmentBills?.length || 0})`, icon: Receipt },
+          { id: 'land', label: `Land (${landHoldings?.length || b?.metrics?.activeHoldingsCount || 0})`, icon: Layers },
+          { id: 'water', label: `Water (${waterApplications?.length || b?.metrics?.waterApplicationsCount || 0})`, icon: Droplet },
+          { id: 'billing', label: `Billing (${developmentBills?.length || 0})`, icon: Receipt },
           { id: 'payments', label: `Payments & Installments`, icon: CreditCard },
-          { id: 'infrastructure', label: `Infrastructure (${b.infrastructures?.length || 0})`, icon: Building2 },
-          { id: 'extensions', label: `Extensions (${b.extensions?.length || 0})`, icon: ArrowUpRight },
-          { id: 'documents', label: `Documents (${b.documents?.length || 0})`, icon: FileText },
+          { id: 'infrastructure', label: `Infrastructure (${infrastructuresList?.length || b?.metrics?.infrastructureCount || 0})`, icon: Building2 },
+          { id: 'extensions', label: `Extensions (${extensionsList?.length || 0})`, icon: ArrowUpRight },
+          { id: 'documents', label: `Documents (${documentsList?.length || 0})`, icon: FileText },
           { id: 'account', label: `Account Security`, icon: KeyRound },
           { id: 'history', label: `Audit Trail`, icon: History },
         ].map((tab) => {
@@ -940,6 +1093,51 @@ function AdminBeneficiaryDetailContent() {
                       </div>
                     </div>
 
+                    {/* Water Application Status for this Land Holding */}
+                    {(() => {
+                      const holdingApp = b.waterApplications?.find(
+                        (a: any) => a.land_id === lh.land_id && !['REJECTED', 'CANCELLED', 'VOIDED'].includes(a.status),
+                      );
+                      if (holdingApp) {
+                        return (
+                          <div className="p-3 bg-sky-50 border border-sky-200 rounded-xl text-sky-900 text-xs flex items-center justify-between">
+                            <div className="flex items-center space-x-2">
+                              <Droplet className="w-4 h-4 text-sky-600 shrink-0" />
+                              <span>
+                                <strong>Water Application Active:</strong> #{holdingApp.application_id.slice(0, 8)} ({holdingApp.status}) • Quota: {formatLitres(holdingApp.required_litres)}
+                              </span>
+                            </div>
+                            <button
+                              onClick={() => setActiveTab('water')}
+                              className="px-3 py-1 bg-sky-600 hover:bg-sky-700 text-white rounded-lg font-bold text-[11px] transition shrink-0 ml-2"
+                            >
+                              View Application &rarr;
+                            </button>
+                          </div>
+                        );
+                      } else if (lh.status === 'ACTIVE') {
+                        return (
+                          <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-700 text-xs flex items-center justify-between">
+                            <div className="flex items-center space-x-2">
+                              <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                              <span>
+                                <strong>Eligible for Water Quota:</strong> No active water application linked to this land holding.
+                              </span>
+                            </div>
+                            {(isAdmin || user?.role === 'FIELD_OFFICER') && (
+                              <button
+                                onClick={() => openAddWaterAppModal(lh.land_id)}
+                                className="px-3 py-1 bg-sky-600 hover:bg-sky-700 text-white rounded-lg font-bold text-[11px] transition shrink-0 ml-2"
+                              >
+                                + Apply for Water Quota
+                              </button>
+                            )}
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()}
+
                     {/* Historical Protection Notice */}
                     {b.waterAllotments?.length > 0 && (
                       <div className="p-3 bg-sky-50 border border-sky-200 rounded-xl text-sky-800 text-xs flex items-center space-x-2">
@@ -977,15 +1175,7 @@ function AdminBeneficiaryDetailContent() {
             </div>
             {(isAdmin || user?.role === 'FIELD_OFFICER') && (
               <button
-                onClick={() => {
-                  setWaterAppError(null);
-                  setWaterAppRemarks('');
-                  setWaterAppRequiredLitres('');
-                  if (projects?.length > 0 && !waterAppProjectId) {
-                    setWaterAppProjectId(projects[0].project_id);
-                  }
-                  setShowAddWaterAppModal(true);
-                }}
+                onClick={() => openAddWaterAppModal()}
                 className="inline-flex items-center px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-xs font-bold shadow-sm transition self-start sm:self-auto"
               >
                 <Plus className="w-4 h-4 mr-1.5" />
@@ -1008,6 +1198,11 @@ function AdminBeneficiaryDetailContent() {
                         {app.project && (
                           <span className="px-2 py-0.5 rounded-md bg-slate-100 border border-slate-200 text-slate-700 font-mono text-[11px]">
                             {app.project.project_code || app.project.project_name}
+                          </span>
+                        )}
+                        {app.land_id && (
+                          <span className="px-2 py-0.5 rounded-md bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] font-semibold">
+                            Holding #{app.land_id.slice(0, 8)} {app.landHolding?.declared_total_area ? `(${formatAcres(app.landHolding.declared_total_area)})` : ''}
                           </span>
                         )}
                       </div>
@@ -1036,7 +1231,7 @@ function AdminBeneficiaryDetailContent() {
                     <div>
                       <span className="text-slate-500">Rate at Application:</span>
                       <div className="font-bold text-slate-900 text-sm mt-0.5">
-                        ₹{app.rate_snapshot?.rate_per_litre || 0.05}/L
+                        ₹{Number(app.rate_snapshot?.rate_per_litre || 0.05).toFixed(2)}/L
                       </div>
                     </div>
                     <div>
@@ -1065,15 +1260,7 @@ function AdminBeneficiaryDetailContent() {
                 </div>
                 {(isAdmin || user?.role === 'FIELD_OFFICER') && (
                   <button
-                    onClick={() => {
-                      setWaterAppError(null);
-                      setWaterAppRemarks('');
-                      setWaterAppRequiredLitres('');
-                      if (projects?.length > 0 && !waterAppProjectId) {
-                        setWaterAppProjectId(projects[0].project_id);
-                      }
-                      setShowAddWaterAppModal(true);
-                    }}
+                    onClick={() => openAddWaterAppModal()}
                     className="inline-flex items-center px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-xs font-bold shadow-sm transition"
                   >
                     <Plus className="w-4 h-4 mr-1.5" />
@@ -1108,7 +1295,7 @@ function AdminBeneficiaryDetailContent() {
                   <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                     <div>
                       <div className="font-bold text-slate-900 text-sm">
-                        Bill #{bill.bill_number}
+                        Bill #{bill.bill_number || bill.bill_id.slice(0, 8)}
                       </div>
                       <div className="text-xs text-slate-500">
                         Generated: {formatDate(bill.created_at)}
@@ -1123,25 +1310,25 @@ function AdminBeneficiaryDetailContent() {
                     <div>
                       <span className="text-slate-500">Approved Volume:</span>
                       <div className="font-bold text-slate-900 text-sm mt-0.5">
-                        {formatLitres(bill.approved_litres)}
+                        {formatLitres(bill.approved_litres_snapshot ?? bill.approved_litres ?? 0)}
                       </div>
                     </div>
                     <div>
                       <span className="text-slate-500">Historical Rate:</span>
                       <div className="font-bold text-slate-900 text-sm mt-0.5">
-                        ₹{bill.rate_applied_per_litre}/L
+                        ₹{Number(bill.development_cost_per_litre_snapshot ?? bill.rate_applied_per_litre ?? 0).toFixed(2)}/L
                       </div>
                     </div>
                     <div>
                       <span className="text-slate-500">Total Development Cost:</span>
                       <div className="font-bold text-slate-900 text-sm mt-0.5">
-                        {formatCurrency(bill.development_cost)}
+                        {formatCurrency(bill.total_amount ?? bill.development_cost ?? 0)}
                       </div>
                     </div>
                     <div>
                       <span className="text-slate-500">Outstanding Balance:</span>
                       <div className="font-bold text-amber-700 text-sm mt-0.5">
-                        {formatCurrency(bill.pending_amount)}
+                        {formatCurrency(bill.pending_amount ?? (parseFloat(bill.total_amount || bill.development_cost || '0') - parseFloat(bill.amount_paid || '0')))}
                       </div>
                     </div>
                   </div>
@@ -1189,45 +1376,66 @@ function AdminBeneficiaryDetailContent() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {b.developmentBills[0].installments.map((inst: any) => (
-                      <tr key={inst.installment_id} className="hover:bg-slate-50">
-                        <td className="px-4 py-3.5 font-bold text-slate-900">
-                          #{inst.installment_number}
-                        </td>
-                        <td className="px-4 py-3.5 font-medium text-slate-800">
-                          {inst.milestone_name}
-                        </td>
-                        <td className="px-4 py-3.5 text-right font-mono">
-                          {inst.percentage}%
-                        </td>
-                        <td className="px-4 py-3.5 text-right font-bold text-slate-900">
-                          {formatCurrency(inst.amount)}
-                        </td>
-                        <td className="px-4 py-3.5 text-right font-semibold text-emerald-700">
-                          {formatCurrency(inst.amount_paid || 0)}
-                        </td>
-                        <td className="px-4 py-3.5 text-center">
-                          <span className={`px-2 py-0.5 text-[11px] font-bold rounded-full border ${getStatusBadgeClass(inst.status)}`}>
-                            {inst.status}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3.5 text-right">
-                          {inst.status !== 'PAID' && isAccounts && (
-                            <button
-                              onClick={() => {
-                                setSelectedInstallmentId(inst.installment_id);
-                                setPaymentAmount(String(parseFloat(inst.amount) - parseFloat(inst.amount_paid || '0')));
-                                setPaymentError(null);
-                                setShowPaymentModal(true);
-                              }}
-                              className="px-2.5 py-1 bg-sky-600 hover:bg-sky-700 text-white rounded-lg text-xs font-semibold"
-                            >
-                              Pay Milestone
-                            </button>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
+                    {b.developmentBills[0].installments.map((inst: any) => {
+                      const getMilestoneLabel = (num: number) => {
+                        switch (num) {
+                          case 1:
+                            return 'Stage 1: Application Approval & Allocation';
+                          case 2:
+                            return 'Stage 2: Infrastructure Pipeline Commencement';
+                          case 3:
+                            return 'Stage 3: Intermediate Pipeline Laying & Distribution';
+                          case 4:
+                            return 'Stage 4: Outlet Connection & Pressure Testing';
+                          case 5:
+                            return 'Stage 5: Final Commissioning & Supply Activation';
+                          default:
+                            return `Milestone Stage #${num}`;
+                        }
+                      };
+
+                      return (
+                        <tr key={inst.installment_id} className="hover:bg-slate-50">
+                          <td className="px-4 py-3.5 font-bold text-slate-900">
+                            #{inst.installment_number}
+                          </td>
+                          <td className="px-4 py-3.5 font-medium text-slate-800">
+                            {inst.milestone_name || getMilestoneLabel(inst.installment_number)}
+                          </td>
+                          <td className="px-4 py-3.5 text-right font-mono">
+                            {inst.percentage}%
+                          </td>
+                          <td className="px-4 py-3.5 text-right font-bold text-slate-900">
+                            {formatCurrency(inst.amount_due ?? inst.amount ?? 0)}
+                          </td>
+                          <td className="px-4 py-3.5 text-right font-semibold text-emerald-700">
+                            {formatCurrency(inst.amount_paid || 0)}
+                          </td>
+                          <td className="px-4 py-3.5 text-center">
+                            <span className={`px-2 py-0.5 text-[11px] font-bold rounded-full border ${getStatusBadgeClass(inst.status)}`}>
+                              {inst.status}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3.5 text-right">
+                            {inst.status !== 'PAID' && isAccounts && (
+                              <button
+                                onClick={() => {
+                                  setSelectedInstallmentId(inst.installment_id);
+                                  const due = parseFloat(inst.amount_due || inst.amount || '0');
+                                  const paid = parseFloat(inst.amount_paid || '0');
+                                  setPaymentAmount(String(Math.max(0, due - paid)));
+                                  setPaymentError(null);
+                                  setShowPaymentModal(true);
+                                }}
+                                className="px-2.5 py-1 bg-sky-600 hover:bg-sky-700 text-white rounded-lg text-xs font-semibold"
+                              >
+                                Pay Milestone
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -2047,6 +2255,87 @@ function AdminBeneficiaryDetailContent() {
                   <div className="text-emerald-700 font-extrabold text-sm">
                     {formatAcres(b.total_land_acres || totalLandAcres)}
                   </div>
+                </div>
+              </div>
+
+              {/* Land Holding Selector (Core Rule: One Application per Land Holding) */}
+              <div className="space-y-2">
+                <label className="block font-bold text-slate-700">
+                  Select Land Holding * <span className="text-[11px] text-slate-500 font-normal">(Each holding is eligible for strictly one active water quota)</span>
+                </label>
+                <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                  {b.landHoldings?.map((lh: any, idx: number) => {
+                    const existingActiveApp = b.waterApplications?.find(
+                      (a: any) => a.land_id === lh.land_id && !['REJECTED', 'CANCELLED', 'VOIDED'].includes(a.status),
+                    );
+                    const isSelected = waterAppLandId === lh.land_id;
+                    const isDisabled = !!existingActiveApp || lh.status !== 'ACTIVE';
+
+                    return (
+                      <div
+                        key={lh.land_id}
+                        onClick={() => {
+                          if (!isDisabled) {
+                            setWaterAppLandId(lh.land_id);
+                            if (lh.project_id) {
+                              setWaterAppProjectId(lh.project_id);
+                            }
+                          }
+                        }}
+                        className={`p-3 rounded-xl border transition cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-2 ${
+                          isDisabled
+                            ? 'bg-slate-50 border-slate-200 opacity-70 cursor-not-allowed'
+                            : isSelected
+                            ? 'bg-sky-50 border-sky-500 ring-2 ring-sky-500/20 shadow-sm'
+                            : 'bg-white border-slate-200 hover:border-slate-300'
+                        }`}
+                      >
+                        <div className="flex items-start space-x-2.5">
+                          <input
+                            type="radio"
+                            name="selectedLandHolding"
+                            checked={isSelected}
+                            disabled={isDisabled}
+                            onChange={() => {
+                              if (!isDisabled) {
+                                setWaterAppLandId(lh.land_id);
+                                if (lh.project_id) {
+                                  setWaterAppProjectId(lh.project_id);
+                                }
+                              }
+                            }}
+                            className="mt-0.5 text-sky-600 focus:ring-sky-500"
+                          />
+                          <div>
+                            <div className="font-bold text-slate-900 text-xs">
+                              Holding #{idx + 1} ({formatAcres(lh.declared_total_area)})
+                            </div>
+                            <div className="text-[11px] text-slate-500 font-mono">
+                              Parcels: {lh.parcels?.map((p: any) => `SF ${p.survey_number}/${p.subdivision_number}`).join(', ') || 'No parcels'}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div>
+                          {existingActiveApp ? (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300">
+                              <AlertTriangle className="w-3 h-3 mr-1" />
+                              App #{existingActiveApp.application_id.slice(0, 8)} ({existingActiveApp.status})
+                            </span>
+                          ) : lh.status !== 'ACTIVE' ? (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
+                              Inactive Holding
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                              <CheckCircle2 className="w-3 h-3 mr-1" />
+                              Available for Application
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 

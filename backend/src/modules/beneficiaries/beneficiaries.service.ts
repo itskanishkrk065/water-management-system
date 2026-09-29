@@ -99,7 +99,10 @@ export class BeneficiariesService {
         },
         waterApplications: {
           orderBy: { created_at: 'desc' },
-          include: { allotment: true },
+          include: {
+            landHolding: { include: { parcels: true } },
+            allotment: true,
+          },
         },
       },
     });
@@ -250,6 +253,178 @@ export class BeneficiariesService {
     };
   }
 
+  async getBeneficiaryOverview(id: string) {
+    const beneficiary = await this.prisma.beneficiary.findUnique({
+      where: { beneficiary_id: id },
+      include: {
+        district: true,
+        block: true,
+        panchayat: true,
+        village: true,
+        user: { select: { user_id: true, email: true, full_name: true, is_active: true } },
+        landHoldings: {
+          where: { status: LandStatus.ACTIVE },
+          select: { land_id: true, declared_total_area: true, status: true },
+        },
+      },
+    });
+
+    if (!beneficiary) {
+      throw new NotFoundException('Beneficiary not found');
+    }
+
+    const totalLand = this.calculateTotalLand(beneficiary.landHoldings as any);
+
+    // Parallel aggregate overview stats
+    const [allotmentAgg, billAgg, paymentAgg, appsCount, infraCount] = await Promise.all([
+      this.prisma.waterAllotment.aggregate({
+        where: { beneficiary_id: id },
+        _sum: { approved_litres: true },
+      }),
+      this.prisma.developmentBill.aggregate({
+        where: { beneficiary_id: id },
+        _sum: { total_amount: true, pending_amount: true },
+      }),
+      this.prisma.payment.aggregate({
+        where: { beneficiary_id: id, status: 'COMPLETED', is_reversal: false },
+        _sum: { amount: true },
+      }),
+      this.prisma.waterApplication.count({ where: { beneficiary_id: id } }),
+      this.prisma.infrastructure.count({ where: { beneficiary_id: id } }),
+    ]);
+
+    return {
+      ...beneficiary,
+      total_land_acres: totalLand.toString(),
+      metrics: {
+        totalLandAcres: totalLand.toString(),
+        activeHoldingsCount: beneficiary.landHoldings.length,
+        waterApplicationsCount: appsCount,
+        approvedLitresTotal: allotmentAgg._sum.approved_litres?.toString() || '0',
+        billsTotalAmount: billAgg._sum.total_amount?.toString() || '0',
+        pendingBalance: billAgg._sum.pending_amount?.toString() || '0',
+        totalPaid: paymentAgg._sum.amount?.toString() || '0',
+        infrastructureCount: infraCount,
+      },
+    };
+  }
+
+  async getBeneficiaryWater(id: string) {
+    const [applications, allotments] = await Promise.all([
+      this.prisma.waterApplication.findMany({
+        where: { beneficiary_id: id },
+        orderBy: { created_at: 'desc' },
+        include: {
+          landHolding: { include: { parcels: true } },
+          project: { select: { project_id: true, project_code: true, project_name: true } },
+          allotment: true,
+        },
+      }),
+      this.prisma.waterAllotment.findMany({
+        where: { beneficiary_id: id },
+        orderBy: { created_at: 'desc' },
+        include: {
+          rate: true,
+          developmentBill: {
+            include: {
+              installments: { orderBy: { installment_number: 'asc' } },
+            },
+          },
+          infrastructure: true,
+        },
+      }),
+    ]);
+    return { waterApplications: applications, waterAllotments: allotments };
+  }
+
+  async getBeneficiaryBilling(id: string) {
+    const [developmentBills, runningBills] = await Promise.all([
+      this.prisma.developmentBill.findMany({
+        where: { beneficiary_id: id },
+        orderBy: { created_at: 'desc' },
+        include: {
+          allotment: {
+            include: { rate: true },
+          },
+          installments: {
+            orderBy: { installment_number: 'asc' },
+            include: {
+              payments: {
+                where: { is_reversal: false },
+                orderBy: { payment_date: 'desc' },
+              },
+            },
+          },
+        },
+      }),
+      this.prisma.runningBill.findMany({
+        where: { beneficiary_id: id },
+        orderBy: { created_at: 'desc' },
+        include: {
+          rate: true,
+        },
+      }),
+    ]);
+    return { developmentBills, runningBills };
+  }
+
+  async getBeneficiaryPayments(id: string, query?: { page?: number; limit?: number }) {
+    const page = Math.max(1, query?.page || 1);
+    const limit = Math.max(1, Math.min(100, query?.limit || 20));
+    const skip = (page - 1) * limit;
+
+    const [items, total] = await Promise.all([
+      this.prisma.payment.findMany({
+        where: { beneficiary_id: id },
+        orderBy: { payment_date: 'desc' },
+        skip,
+        take: limit,
+        include: {
+          installment: true,
+        },
+      }),
+      this.prisma.payment.count({ where: { beneficiary_id: id } }),
+    ]);
+
+    return {
+      items,
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  }
+
+  async getBeneficiaryInfrastructure(id: string) {
+    return this.prisma.infrastructure.findMany({
+      where: { beneficiary_id: id },
+      orderBy: [{ updated_at: 'desc' }, { created_at: 'desc' }],
+      include: {
+        allotment: true,
+      },
+    });
+  }
+
+  async getBeneficiaryExtensions(id: string) {
+    return this.prisma.extension.findMany({
+      where: { beneficiary_id: id },
+      orderBy: { created_at: 'desc' },
+      include: {
+        originalAllotment: true,
+        rate: true,
+      },
+    });
+  }
+
+  async getBeneficiaryDocuments(id: string) {
+    return this.prisma.beneficiaryDocument.findMany({
+      where: { beneficiary_id: id },
+      orderBy: { created_at: 'desc' },
+    });
+  }
+
   async findOne(id: string) {
     const beneficiary = await this.prisma.beneficiary.findUnique({
       where: { beneficiary_id: id },
@@ -258,6 +433,7 @@ export class BeneficiariesService {
         block: true,
         panchayat: true,
         village: true,
+        user: { select: { user_id: true, email: true, full_name: true, is_active: true } },
         landHoldings: {
           orderBy: { created_at: 'asc' },
           include: {
@@ -268,7 +444,10 @@ export class BeneficiariesService {
         waterApplications: {
           orderBy: { created_at: 'desc' },
           include: {
-            project: true,
+            landHolding: {
+              include: { parcels: true },
+            },
+            project: { select: { project_id: true, project_code: true, project_name: true } },
             allotment: true,
           },
         },
@@ -304,6 +483,9 @@ export class BeneficiariesService {
         extensions: {
           orderBy: { created_at: 'desc' },
         },
+        documents: {
+          orderBy: { created_at: 'desc' },
+        },
       },
     });
 
@@ -313,27 +495,9 @@ export class BeneficiariesService {
 
     const totalLand = this.calculateTotalLand(beneficiary.landHoldings as any);
 
-    // Fetch related audit logs for History
-    const auditLogs = await this.prisma.auditLog.findMany({
-      where: {
-        OR: [
-          { entity_type: 'Beneficiary', entity_id: id },
-          {
-            entity_type: { in: ['LandHolding', 'WaterApplication', 'WaterAllotment', 'Payment', 'Infrastructure', 'Extension'] },
-          },
-        ],
-      },
-      orderBy: { created_at: 'desc' },
-      take: 50,
-      include: {
-        user: { select: { email: true, full_name: true, role: { select: { name: true } } } },
-      },
-    });
-
     return {
       ...beneficiary,
       total_land_acres: totalLand.toString(),
-      history: auditLogs,
     };
   }
 
@@ -689,25 +853,43 @@ export class BeneficiariesService {
   }
 
   /**
-   * Retrieves complete chronological audit history for a beneficiary.
+   * Retrieves complete chronological audit history for a beneficiary and all associated assets.
    */
   async getBeneficiaryHistory(id: string) {
     const beneficiary = await this.prisma.beneficiary.findUnique({
       where: { beneficiary_id: id },
+      include: {
+        landHoldings: { select: { land_id: true } },
+        waterApplications: { select: { application_id: true } },
+        waterAllotments: { select: { allotment_id: true } },
+        developmentBills: { select: { bill_id: true } },
+        payments: { select: { payment_id: true } },
+        infrastructures: { select: { infrastructure_id: true } },
+        extensions: { select: { extension_id: true } },
+      },
     });
     if (!beneficiary) {
       throw new NotFoundException('Beneficiary not found');
     }
 
+    const relatedEntityIds = [
+      id,
+      ...(beneficiary.user_id ? [beneficiary.user_id] : []),
+      ...beneficiary.landHoldings.map((h) => h.land_id),
+      ...beneficiary.waterApplications.map((w) => w.application_id),
+      ...beneficiary.waterAllotments.map((a) => a.allotment_id),
+      ...beneficiary.developmentBills.map((b) => b.bill_id),
+      ...beneficiary.payments.map((p) => p.payment_id),
+      ...beneficiary.infrastructures.map((i) => i.infrastructure_id),
+      ...beneficiary.extensions.map((e) => e.extension_id),
+    ];
+
     return this.prisma.auditLog.findMany({
       where: {
-        OR: [
-          { entity_id: id },
-          { entity_type: 'Beneficiary', entity_id: id },
-        ],
+        entity_id: { in: relatedEntityIds },
       },
       orderBy: { created_at: 'desc' },
-      take: 100,
+      take: 200,
       include: {
         user: {
           select: {

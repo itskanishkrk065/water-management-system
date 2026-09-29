@@ -10,6 +10,20 @@ const nextConfig = {
       },
     ];
   },
+  async redirects() {
+    return [
+      {
+        source: '/integrity',
+        destination: '/admin/integrity',
+        permanent: true,
+      },
+      {
+        source: '/project-schemes',
+        destination: '/admin/project-schemes',
+        permanent: true,
+      },
+    ];
+  },
 };
 
 export default nextConfig;

@@ -32,3 +32,9 @@ yarn-error.log*
 # Docker volumes
 postgres_data/
 redis_data/
+
+# Temporary DB restores & archives
+*.pre-restore-*
+*.wmbak
+*.tsbuildinfo
+backend/prisma/prisma/

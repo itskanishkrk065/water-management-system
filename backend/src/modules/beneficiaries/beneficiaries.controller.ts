@@ -92,6 +92,55 @@ export class BeneficiariesController {
     return this.beneficiariesService.findOne(id);
   }
 
+  @Get(':id/overview')
+  @ApiOperation({ summary: 'Get lightweight beneficiary overview profile and high-level KPIs' })
+  async getOverview(@Param('id') id: string) {
+    return this.beneficiariesService.getBeneficiaryOverview(id);
+  }
+
+  @Get(':id/water')
+  @ApiOperation({ summary: 'Get lazy-loaded water applications and allotments for a beneficiary' })
+  async getWater(@Param('id') id: string) {
+    return this.beneficiariesService.getBeneficiaryWater(id);
+  }
+
+  @Get(':id/billing')
+  @ApiOperation({ summary: 'Get lazy-loaded development and running bills for a beneficiary' })
+  async getBilling(@Param('id') id: string) {
+    return this.beneficiariesService.getBeneficiaryBilling(id);
+  }
+
+  @Get(':id/payments')
+  @ApiOperation({ summary: 'Get lazy-loaded payment ledger for a beneficiary with pagination' })
+  async getPayments(
+    @Param('id') id: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.beneficiariesService.getBeneficiaryPayments(id, {
+      page: page ? parseInt(page, 10) : 1,
+      limit: limit ? parseInt(limit, 10) : 20,
+    });
+  }
+
+  @Get(':id/infrastructure')
+  @ApiOperation({ summary: 'Get lazy-loaded infrastructure records for a beneficiary' })
+  async getInfrastructure(@Param('id') id: string) {
+    return this.beneficiariesService.getBeneficiaryInfrastructure(id);
+  }
+
+  @Get(':id/extensions')
+  @ApiOperation({ summary: 'Get lazy-loaded water capacity extensions for a beneficiary' })
+  async getExtensions(@Param('id') id: string) {
+    return this.beneficiariesService.getBeneficiaryExtensions(id);
+  }
+
+  @Get(':id/documents')
+  @ApiOperation({ summary: 'Get lazy-loaded document vault for a beneficiary' })
+  async getDocuments(@Param('id') id: string) {
+    return this.beneficiariesService.getBeneficiaryDocuments(id);
+  }
+
   @Patch(':id')
   @Roles(RoleName.ADMIN, RoleName.FIELD_OFFICER)
   @ApiOperation({ summary: 'Update beneficiary details with administrative correction reason' })
