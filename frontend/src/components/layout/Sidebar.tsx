@@ -23,6 +23,7 @@ import {
   Map,
   Droplets,
   FileText,
+  Database,
 } from 'lucide-react';
 
 export default function Sidebar() {
@@ -125,6 +126,7 @@ export default function Sidebar() {
           { label: 'Rate Tariff (Versioned)', href: '/settings/rates', icon: Sliders },
           { label: 'Installment Templates', href: '/settings/installments', icon: Layers },
           { label: 'Locations Hierarchy', href: '/settings/locations', icon: MapPin },
+          { label: 'Database & Backup', href: '/settings/backup', icon: Database },
         ]
       : []),
     { label: 'Audit Trail', href: '/audit', icon: History },

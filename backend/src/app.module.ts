@@ -18,6 +18,7 @@ import { ExtensionsModule } from './modules/extensions/extensions.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { BeneficiaryPortalModule } from './modules/beneficiary-portal/beneficiary-portal.module';
 import { ReportsModule } from './modules/reports/reports.module';
+import { BackupModule } from './modules/backup/backup.module';
 
 @Module({
   imports: [
@@ -40,6 +41,7 @@ import { ReportsModule } from './modules/reports/reports.module';
     DashboardModule,
     BeneficiaryPortalModule,
     ReportsModule,
+    BackupModule,
   ],
 })
 export class AppModule {}

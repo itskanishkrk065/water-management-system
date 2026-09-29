@@ -1,0 +1,521 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Role {
+  role_id     String   @id @default(uuid())
+  name        String   @unique
+  description String?
+  created_at  DateTime @default(now())
+
+  users User[]
+
+  @@map("roles")
+}
+
+model User {
+  user_id       String   @id @default(uuid())
+  email         String   @unique
+  password_hash String
+  full_name     String
+  role_id       String
+  is_active     Boolean  @default(true)
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  role          Role           @relation(fields: [role_id], references: [role_id])
+  refreshTokens RefreshToken[]
+  auditLogs     AuditLog[]
+  beneficiary   Beneficiary?
+
+  @@map("users")
+}
+
+model RefreshToken {
+  token_id   String   @id @default(uuid())
+  user_id    String
+  token_hash String   @unique
+  expires_at DateTime
+  revoked    Boolean  @default(false)
+  created_at DateTime @default(now())
+
+  user User @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@map("refresh_tokens")
+}
+
+model Project {
+  project_id   String   @id @default(uuid())
+  project_code String   @unique
+  project_name String
+  description  String?
+  status       String   @default("ACTIVE")
+  start_date   DateTime?
+  end_date     DateTime?
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+
+  landHoldings         LandHolding[]
+  waterApplications    WaterApplication[]
+  rateConfigurations   RateConfiguration[]
+  installmentTemplates InstallmentTemplate[]
+
+  @@map("projects")
+}
+
+model District {
+  district_id       String   @id @default(uuid())
+  lgd_district_code Int?     @unique
+  name              String
+  is_active         Boolean  @default(true)
+  created_at        DateTime @default(now())
+  updated_at        DateTime @updatedAt @default(now())
+
+  blocks        Block[]
+  panchayats    Panchayat[]
+  beneficiaries Beneficiary[]
+
+  @@index([lgd_district_code])
+  @@index([name])
+  @@map("districts")
+}
+
+model Block {
+  block_id       String   @id @default(uuid())
+  district_id    String
+  lgd_block_code Int      @unique
+  name           String
+  is_active      Boolean  @default(true)
+  created_at     DateTime @default(now())
+  updated_at     DateTime @updatedAt @default(now())
+
+  district      District      @relation(fields: [district_id], references: [district_id], onDelete: Restrict)
+  villages      Village[]
+  beneficiaries Beneficiary[]
+
+  @@index([district_id])
+  @@index([lgd_block_code])
+  @@index([district_id, lgd_block_code])
+  @@map("blocks")
+}
+
+model Panchayat {
+  panchayat_id String   @id @default(uuid())
+  district_id  String
+  name         String
+  created_at   DateTime @default(now())
+
+  district      District      @relation(fields: [district_id], references: [district_id], onDelete: Restrict)
+  villages      Village[]
+  beneficiaries Beneficiary[]
+
+  @@unique([district_id, name])
+  @@map("panchayats")
+}
+
+model Village {
+  village_id       String   @id @default(uuid())
+  block_id         String?
+  panchayat_id     String?
+  lgd_village_code Int?     @unique
+  name             String
+  is_active        Boolean  @default(true)
+  created_at       DateTime @default(now())
+  updated_at       DateTime @updatedAt @default(now())
+
+  block         Block?        @relation(fields: [block_id], references: [block_id], onDelete: Restrict)
+  panchayat     Panchayat?    @relation(fields: [panchayat_id], references: [panchayat_id], onDelete: Restrict)
+  beneficiaries Beneficiary[]
+
+  @@index([block_id])
+  @@index([panchayat_id])
+  @@index([lgd_village_code])
+  @@index([name])
+  @@map("villages")
+}
+
+model LocationImport {
+  import_id         String   @id @default(uuid())
+  file_name         String
+  file_hash         String
+  uploaded_by       String
+  uploaded_at       DateTime @default(now())
+  total_rows        Int
+  valid_rows        Int
+  invalid_rows      Int
+  districts_created Int      @default(0)
+  districts_updated Int      @default(0)
+  blocks_created    Int      @default(0)
+  blocks_updated    Int      @default(0)
+  villages_created  Int      @default(0)
+  villages_updated  Int      @default(0)
+  status            String   @default("UPLOADED")
+  error_summary     String?
+  preview_data      String?
+  created_at        DateTime @default(now())
+  updated_at        DateTime @updatedAt @default(now())
+
+  @@index([uploaded_at])
+  @@index([status])
+  @@map("location_imports")
+}
+
+model Beneficiary {
+  beneficiary_id       String   @id @default(uuid())
+  user_id              String?  @unique
+  name                 String
+  email                String?
+  phone_number         String   @unique
+  address_line_1       String?
+  address_line_2       String?
+  address_line_3       String?
+  district_id          String?
+  block_id             String?
+  panchayat_id         String?
+  village_id           String?
+  pincode              String?
+  location_direction   String?
+  location_description String?
+  status               String   @default("ACTIVE")
+  created_at           DateTime @default(now())
+  updated_at           DateTime @updatedAt
+
+  user              User?                  @relation(fields: [user_id], references: [user_id])
+  district          District?              @relation(fields: [district_id], references: [district_id], onDelete: Restrict)
+  block             Block?                 @relation(fields: [block_id], references: [block_id], onDelete: Restrict)
+  panchayat         Panchayat?             @relation(fields: [panchayat_id], references: [panchayat_id], onDelete: Restrict)
+  village           Village?               @relation(fields: [village_id], references: [village_id], onDelete: Restrict)
+  landHoldings      LandHolding[]
+  waterApplications WaterApplication[]
+  waterAllotments   WaterAllotment[]
+  developmentBills  DevelopmentBill[]
+  infrastructures   Infrastructure[]
+  runningBills      RunningBill[]
+  extensions        Extension[]
+  payments          Payment[]
+  documents         BeneficiaryDocument[]
+
+  @@index([phone_number])
+  @@index([district_id])
+  @@index([block_id])
+  @@index([village_id])
+  @@map("beneficiaries")
+}
+
+model LandHolding {
+  land_id             String   @id @default(uuid())
+  beneficiary_id      String
+  project_id          String
+  declared_total_area Decimal
+  area_unit           String   @default("ACRES")
+  status              String   @default("ACTIVE")
+  created_at          DateTime @default(now())
+  updated_at          DateTime @updatedAt
+
+  beneficiary Beneficiary  @relation(fields: [beneficiary_id], references: [beneficiary_id], onDelete: Restrict)
+  project     Project      @relation(fields: [project_id], references: [project_id], onDelete: Restrict)
+  parcels     LandParcel[]
+
+  @@index([beneficiary_id])
+  @@index([project_id])
+  @@map("land_holdings")
+}
+
+model LandParcel {
+  parcel_id          String   @id @default(uuid())
+  land_id            String
+  survey_number      String
+  subdivision_number String
+  area               Decimal
+  area_unit          String   @default("ACRES")
+  created_at         DateTime @default(now())
+  updated_at         DateTime @updatedAt
+
+  landHolding LandHolding @relation(fields: [land_id], references: [land_id], onDelete: Cascade)
+
+  @@unique([land_id, survey_number, subdivision_number])
+  @@index([land_id])
+  @@map("land_parcels")
+}
+
+model RateConfiguration {
+  rate_id                    String    @id @default(uuid())
+  project_id                 String
+  litres_per_acre            Decimal
+  development_cost_per_litre Decimal
+  running_cost_per_litre     Decimal
+  effective_from             DateTime
+  effective_to               DateTime?
+  is_active                  Boolean   @default(true)
+  created_by                 String
+  created_at                 DateTime  @default(now())
+
+  project         Project          @relation(fields: [project_id], references: [project_id], onDelete: Restrict)
+  waterAllotments WaterAllotment[]
+  runningBills    RunningBill[]
+  extensions      Extension[]
+
+  @@index([project_id, effective_from])
+  @@map("rate_configurations")
+}
+
+model InstallmentTemplate {
+  template_id String   @id @default(uuid())
+  project_id  String
+  name        String
+  inst_1_pct  Decimal  @default(2.50)
+  inst_2_pct  Decimal  @default(20.00)
+  inst_3_pct  Decimal  @default(25.00)
+  inst_4_pct  Decimal  @default(25.00)
+  inst_5_pct  Decimal  @default(27.50)
+  is_active   Boolean  @default(true)
+  created_by  String
+  created_at  DateTime @default(now())
+
+  project Project @relation(fields: [project_id], references: [project_id], onDelete: Restrict)
+
+  @@index([project_id])
+  @@map("installment_templates")
+}
+
+model WaterApplication {
+  application_id   String   @id @default(uuid())
+  project_id       String
+  beneficiary_id   String
+  required_litres  Decimal
+  application_date DateTime @default(now())
+  status           String   @default("SUBMITTED")
+  submitted_at     DateTime @default(now())
+  created_by       String
+  created_at       DateTime @default(now())
+  updated_at       DateTime @updatedAt
+
+  project     Project         @relation(fields: [project_id], references: [project_id], onDelete: Restrict)
+  beneficiary Beneficiary     @relation(fields: [beneficiary_id], references: [beneficiary_id], onDelete: Restrict)
+  allotment   WaterAllotment?
+
+  @@index([beneficiary_id])
+  @@index([project_id])
+  @@map("water_applications")
+}
+
+model WaterAllotment {
+  allotment_id               String   @id @default(uuid())
+  application_id             String   @unique
+  beneficiary_id             String
+  rate_id                    String
+  total_land_acres_snapshot  Decimal
+  litres_per_acre_snapshot   Decimal
+  calculated_allotted_litres Decimal
+  approved_litres            Decimal
+  approval_status            String   @default("APPROVED")
+  approved_by                String
+  approved_at                DateTime @default(now())
+  approval_remarks           String?
+  created_at                 DateTime @default(now())
+  updated_at                 DateTime @updatedAt
+
+  application     WaterApplication  @relation(fields: [application_id], references: [application_id], onDelete: Restrict)
+  beneficiary     Beneficiary       @relation(fields: [beneficiary_id], references: [beneficiary_id], onDelete: Restrict)
+  rate            RateConfiguration @relation(fields: [rate_id], references: [rate_id], onDelete: Restrict)
+  developmentBill DevelopmentBill?
+  infrastructure  Infrastructure?
+  runningBills    RunningBill[]
+  extensions      Extension[]
+
+  @@index([beneficiary_id])
+  @@index([rate_id])
+  @@map("water_allotments")
+}
+
+model DevelopmentBill {
+  bill_id                             String   @id @default(uuid())
+  allotment_id                        String   @unique
+  beneficiary_id                      String
+  approved_litres_snapshot            Decimal
+  development_cost_per_litre_snapshot Decimal
+  total_amount                        Decimal
+  amount_paid                         Decimal  @default(0)
+  pending_amount                      Decimal
+  status                              String   @default("PENDING")
+  created_at                          DateTime @default(now())
+  updated_at                          DateTime @updatedAt
+
+  allotment    WaterAllotment @relation(fields: [allotment_id], references: [allotment_id], onDelete: Restrict)
+  beneficiary  Beneficiary    @relation(fields: [beneficiary_id], references: [beneficiary_id], onDelete: Restrict)
+  installments Installment[]
+
+  @@index([beneficiary_id])
+  @@map("development_bills")
+}
+
+model Installment {
+  installment_id     String   @id @default(uuid())
+  bill_id            String
+  installment_number Int
+  percentage         Decimal
+  amount_due         Decimal
+  due_date           DateTime
+  amount_paid        Decimal  @default(0)
+  pending_amount     Decimal
+  status             String   @default("PENDING")
+  created_at         DateTime @default(now())
+  updated_at         DateTime @updatedAt
+
+  bill     DevelopmentBill @relation(fields: [bill_id], references: [bill_id], onDelete: Restrict)
+  payments Payment[]
+
+  @@unique([bill_id, installment_number])
+  @@index([bill_id])
+  @@index([status])
+  @@map("installments")
+}
+
+model Payment {
+  payment_id          String   @id @default(uuid())
+  beneficiary_id      String
+  installment_id      String?
+  running_bill_id     String?
+  extension_id        String?
+  amount              Decimal
+  payment_date        DateTime @default(now())
+  payment_reference   String?
+  receipt_number      String   @unique
+  payment_mode        String
+  status              String   @default("COMPLETED")
+  is_reversal         Boolean  @default(false)
+  reversal_payment_id String?
+  remarks             String?
+  recorded_by         String
+  created_at          DateTime @default(now())
+
+  beneficiary Beneficiary  @relation(fields: [beneficiary_id], references: [beneficiary_id], onDelete: Restrict)
+  installment Installment? @relation(fields: [installment_id], references: [installment_id], onDelete: Restrict)
+  runningBill RunningBill? @relation(fields: [running_bill_id], references: [running_bill_id], onDelete: Restrict)
+  extension   Extension?   @relation(fields: [extension_id], references: [extension_id], onDelete: Restrict)
+
+  @@index([beneficiary_id])
+  @@index([installment_id])
+  @@index([running_bill_id])
+  @@index([receipt_number])
+  @@map("payments")
+}
+
+model Infrastructure {
+  infrastructure_id       String    @id @default(uuid())
+  allotment_id            String    @unique
+  beneficiary_id          String
+  status                  String    @default("PLANNED")
+  planned_date            DateTime?
+  construction_start_date DateTime?
+  completion_date         DateTime?
+  commissioned_date       DateTime?
+  remarks                 String?
+  created_at              DateTime  @default(now())
+  updated_at              DateTime  @updatedAt
+
+  allotment   WaterAllotment @relation(fields: [allotment_id], references: [allotment_id], onDelete: Restrict)
+  beneficiary Beneficiary    @relation(fields: [beneficiary_id], references: [beneficiary_id], onDelete: Restrict)
+
+  @@index([beneficiary_id])
+  @@index([status])
+  @@map("infrastructure")
+}
+
+model RunningBill {
+  running_bill_id                 String   @id @default(uuid())
+  allotment_id                    String
+  beneficiary_id                  String
+  rate_id                         String
+  billing_period                  String
+  approved_litres_snapshot        Decimal
+  running_cost_per_litre_snapshot Decimal
+  amount_due                      Decimal
+  amount_paid                     Decimal  @default(0)
+  pending_amount                  Decimal
+  status                          String   @default("PENDING")
+  created_at                      DateTime @default(now())
+  updated_at                      DateTime @updatedAt
+
+  allotment   WaterAllotment    @relation(fields: [allotment_id], references: [allotment_id], onDelete: Restrict)
+  beneficiary Beneficiary       @relation(fields: [beneficiary_id], references: [beneficiary_id], onDelete: Restrict)
+  rate        RateConfiguration @relation(fields: [rate_id], references: [rate_id], onDelete: Restrict)
+  payments    Payment[]
+
+  @@index([allotment_id])
+  @@index([beneficiary_id])
+  @@map("running_bills")
+}
+
+model Extension {
+  extension_id                          String    @id @default(uuid())
+  beneficiary_id                        String
+  original_allotment_id                 String
+  requested_additional_area             Decimal
+  requested_additional_litres           Decimal
+  approved_additional_area              Decimal?
+  approved_additional_litres            Decimal?
+  rate_id                               String?
+  additional_development_cost_per_litre Decimal?
+  extension_cost                        Decimal?
+  status                                String    @default("REQUESTED")
+  requested_at                          DateTime  @default(now())
+  approved_by                           String?
+  approved_at                           DateTime?
+  remarks                               String?
+  created_at                            DateTime  @default(now())
+  updated_at                            DateTime  @updatedAt
+
+  beneficiary       Beneficiary        @relation(fields: [beneficiary_id], references: [beneficiary_id], onDelete: Restrict)
+  originalAllotment WaterAllotment     @relation(fields: [original_allotment_id], references: [allotment_id], onDelete: Restrict)
+  rate              RateConfiguration? @relation(fields: [rate_id], references: [rate_id], onDelete: Restrict)
+  payments          Payment[]
+
+  @@index([beneficiary_id])
+  @@index([original_allotment_id])
+  @@map("extensions")
+}
+
+model AuditLog {
+  audit_id    String   @id @default(uuid())
+  user_id     String?
+  action      String
+  entity_type String
+  entity_id   String
+  old_values  String?
+  new_values  String?
+  reason      String?
+  ip_address  String?
+  created_at  DateTime @default(now())
+
+  user User? @relation(fields: [user_id], references: [user_id], onDelete: SetNull)
+
+  @@index([entity_type, entity_id])
+  @@index([user_id])
+  @@index([action])
+  @@map("audit_logs")
+}
+
+model BeneficiaryDocument {
+  document_id     String   @id @default(uuid())
+  beneficiary_id  String
+  category        String
+  title           String
+  file_name       String
+  file_size_bytes Int?
+  mime_type       String?
+  storage_path    String
+  reference_id    String?
+  created_at      DateTime @default(now())
+
+  beneficiary Beneficiary @relation(fields: [beneficiary_id], references: [beneficiary_id], onDelete: Cascade)
+
+  @@index([beneficiary_id, category])
+  @@map("beneficiary_documents")
+}
