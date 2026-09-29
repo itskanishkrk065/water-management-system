@@ -593,3 +593,80 @@ Fetch single import batch diagnostics and error logs.
 #### `POST /admin/location-import/:id/cancel`
 Cancel or discard a pending validated import run.
 
+---
+
+### Find, Filter & Reporting Module (`/reports/find`)
+
+#### `POST /reports/find`
+Executes dynamic multi-entity query and returns paginated records alongside whole-population decimal-safe aggregate metrics.
+- **Roles**: `ADMIN`, `FIELD_OFFICER`, `ACCOUNTS`, `VIEWER`
+- **Request Body (`FindFilterDto`)**:
+  ```json
+  {
+    "districtId": "dis-uuid",
+    "blockId": "blk-uuid",
+    "villageId": "vil-uuid",
+    "beneficiaryName": "Ravi",
+    "phoneNumber": "98765",
+    "landAreaMin": 5.0,
+    "landAreaMax": 10.0,
+    "requiredLitresMin": 10000,
+    "paymentStatus": "UNPAID",
+    "installmentNumber": 1,
+    "infrastructureStatus": "COMMISSIONED",
+    "dateType": "application_date",
+    "dateFrom": "2026-01-01",
+    "dateTo": "2026-12-31",
+    "page": 1,
+    "limit": 50
+  }
+  ```
+- **Response**:
+  ```json
+  {
+    "items": [
+      {
+        "beneficiaryId": "ben-uuid",
+        "name": "Ravi Kumar",
+        "phoneNumber": "9876543210",
+        "districtName": "Kancheepuram",
+        "blockName": "Kancheepuram",
+        "villageName": "Angambakkam",
+        "totalLandAcres": "8.5000",
+        "approvedLitres": "25000.00",
+        "developmentCost": "50000.00",
+        "amountPaid": "0.00",
+        "pendingBalance": "50000.00",
+        "paymentStatus": "UNPAID",
+        "infrastructureStatus": "COMMISSIONED",
+        "applicationStatus": "APPROVED"
+      }
+    ],
+    "metrics": {
+      "beneficiaries": { "total": 38, "active": 38, "inactive": 0 },
+      "land": { "totalLandAcres": "126.4000", "totalHoldings": 42, "totalParcels": 84 },
+      "water": { "totalRequiredLitres": "1264000.00", "totalCalculatedLitres": "1190000.00", "totalApprovedLitres": "980000.00" },
+      "financials": { "totalDevelopmentCost": "1960000.00", "totalAmountDue": "1960000.00", "totalAmountPaid": "0.00", "totalPending": "1960000.00" },
+      "paymentBeneficiaries": { "paid": 0, "partiallyPaid": 0, "unpaid": 38, "overdue": 0 },
+      "installments": { "total": 190, "paid": 0, "partiallyPaid": 0, "pending": 190, "overdue": 0, "amountDue": "1960000.00", "amountPaid": "0.00", "pendingBalance": "1960000.00" },
+      "infrastructure": { "planned": 14, "underConstruction": 12, "completed": 5, "commissioned": 7 },
+      "extensions": { "totalRequests": 0, "pending": 0, "approved": 0, "rejected": 0, "additionalLitresRequested": "0.00", "additionalLitresApproved": "0.00" }
+    },
+    "meta": {
+      "total": 38,
+      "page": 1,
+      "limit": 50,
+      "totalPages": 1
+    }
+  }
+  ```
+
+#### `GET /reports/find/metadata`
+Retrieves reporting dropdown options, supported enums, and date type definitions.
+- **Roles**: `ADMIN`, `FIELD_OFFICER`, `ACCOUNTS`, `VIEWER`
+
+#### `POST /reports/find/export/pdf`
+Server-side generation and streaming of an authoritative, formatted landscape PDF report representing the exact filtered population.
+- **Roles**: `ADMIN`, `FIELD_OFFICER`, `ACCOUNTS`
+- **Response**: `application/pdf` binary stream with `Content-Disposition: attachment; filename="water-management-report-..."`.
+

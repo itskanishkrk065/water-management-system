@@ -47,6 +47,11 @@ Built for real-world government and irrigation authority deployments with strict
 10. **Comprehensive System Audit Trail**:
    - Full event sink with JSON diffs (`old_values`, `new_values`), actor ID, IP address, and timestamp.
    - Dedicated UI inspector with search, filters, and JSON viewer.
+11. **Advanced Find, Filter & Authoritative Reporting Engine**:
+   - Centralized multi-entity filtering query engine across Beneficiaries, Land, Water, 5-Stage Installments, Financials, Infrastructure, and Extensions.
+   - Decimal-safe whole-population aggregations calculated directly in PostgreSQL without join duplication.
+   - Authoritative server-side landscape PDF export (`POST /reports/find/export/pdf`) with active filter metadata, KPI cards, and multi-page record table.
+   - Interactive UI at `/admin/find` and `/reports/find` with collapsible filter sections, cascading location selectors, active chips, and URL query bookmarking.
 
 ---
 

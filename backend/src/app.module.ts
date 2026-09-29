@@ -17,6 +17,7 @@ import { InfrastructureModule } from './modules/infrastructure/infrastructure.mo
 import { ExtensionsModule } from './modules/extensions/extensions.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { BeneficiaryPortalModule } from './modules/beneficiary-portal/beneficiary-portal.module';
+import { ReportsModule } from './modules/reports/reports.module';
 
 @Module({
   imports: [
@@ -38,6 +39,7 @@ import { BeneficiaryPortalModule } from './modules/beneficiary-portal/beneficiar
     ExtensionsModule,
     DashboardModule,
     BeneficiaryPortalModule,
+    ReportsModule,
   ],
 })
 export class AppModule {}
