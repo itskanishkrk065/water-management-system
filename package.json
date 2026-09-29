@@ -33,12 +33,15 @@
       "output": "dist",
       "buildResources": "electron/resources"
     },
+    "asar": false,
     "files": [
       "electron/**/*",
       "backend/dist/**/*",
+      "backend/node_modules/**/*",
       "backend/package.json",
-      "backend/prisma/schema.sqlite.prisma",
-      "frontend/.next/**/*",
+      "backend/prisma/**/*",
+      "frontend/.next/standalone/**/*",
+      "frontend/.next/static/**/*",
       "frontend/public/**/*",
       "frontend/package.json",
       "village_eng1.xls"
