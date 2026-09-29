@@ -175,30 +175,30 @@ export function FindFilterManager() {
   });
 
   // 3. Location Dropdowns with Cascading
-  const { data: districtsData } = useQuery({
+  const { data: districtsData } = useQuery<any[]>({
     queryKey: ['locations-districts'],
     queryFn: async () => {
       const res = await apiClient.get('/locations/districts');
-      return res.data;
+      return Array.isArray(res.data) ? res.data : (res.data?.items || []);
     },
   });
 
-  const { data: blocksData } = useQuery({
+  const { data: blocksData } = useQuery<any[]>({
     queryKey: ['locations-blocks', draftFilters.districtId],
     queryFn: async () => {
       if (!draftFilters.districtId) return [];
       const res = await apiClient.get(`/locations/blocks?districtId=${draftFilters.districtId}`);
-      return res.data;
+      return Array.isArray(res.data) ? res.data : (res.data?.items || []);
     },
     enabled: !!draftFilters.districtId,
   });
 
-  const { data: villagesData } = useQuery({
+  const { data: villagesData } = useQuery<any[]>({
     queryKey: ['locations-villages', draftFilters.blockId],
     queryFn: async () => {
       if (!draftFilters.blockId) return [];
-      const res = await apiClient.get(`/locations/villages?blockId=${draftFilters.blockId}`);
-      return res.data;
+      const res = await apiClient.get(`/locations/villages?blockId=${draftFilters.blockId}&limit=200`);
+      return Array.isArray(res.data) ? res.data : (res.data?.items || []);
     },
     enabled: !!draftFilters.blockId,
   });
@@ -348,16 +348,20 @@ export function FindFilterManager() {
   const activeChips = useMemo(() => {
     const chips: { key: keyof FilterState; label: string; value: string }[] = [];
 
-    if (appliedFilters.districtId && districtsData) {
-      const d = districtsData.find((item: any) => item.district_id === appliedFilters.districtId);
+    const districtsList = Array.isArray(districtsData) ? districtsData : [];
+    const blocksList = Array.isArray(blocksData) ? blocksData : [];
+    const villagesList = Array.isArray(villagesData) ? villagesData : [];
+
+    if (appliedFilters.districtId && districtsList.length > 0) {
+      const d = districtsList.find((item: any) => item.district_id === appliedFilters.districtId);
       if (d) chips.push({ key: 'districtId', label: 'District', value: d.name });
     }
-    if (appliedFilters.blockId && blocksData) {
-      const b = blocksData.find((item: any) => item.block_id === appliedFilters.blockId);
+    if (appliedFilters.blockId && blocksList.length > 0) {
+      const b = blocksList.find((item: any) => item.block_id === appliedFilters.blockId);
       if (b) chips.push({ key: 'blockId', label: 'Block', value: b.name });
     }
-    if (appliedFilters.villageId && villagesData) {
-      const v = villagesData.find((item: any) => item.village_id === appliedFilters.villageId);
+    if (appliedFilters.villageId && villagesList.length > 0) {
+      const v = villagesList.find((item: any) => item.village_id === appliedFilters.villageId);
       if (v) chips.push({ key: 'villageId', label: 'Village', value: v.name });
     }
     if (appliedFilters.beneficiaryName) {
@@ -558,9 +562,9 @@ export function FindFilterManager() {
                   className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 bg-white"
                 >
                   <option value="">All Districts</option>
-                  {districtsData?.map((d: any) => (
+                  {(Array.isArray(districtsData) ? districtsData : []).map((d: any) => (
                     <option key={d.district_id} value={d.district_id}>
-                      {d.name} {d.lgd_code ? `(${d.lgd_code})` : ''}
+                      {d.name} {d.lgd_code || d.lgd_district_code ? `(${d.lgd_code || d.lgd_district_code})` : ''}
                     </option>
                   ))}
                 </select>
@@ -581,9 +585,9 @@ export function FindFilterManager() {
                   className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 bg-white disabled:bg-slate-100 disabled:text-slate-400"
                 >
                   <option value="">All Blocks</option>
-                  {blocksData?.map((b: any) => (
+                  {(Array.isArray(blocksData) ? blocksData : []).map((b: any) => (
                     <option key={b.block_id} value={b.block_id}>
-                      {b.name} {b.lgd_code ? `(${b.lgd_code})` : ''}
+                      {b.name} {b.lgd_code || b.lgd_block_code ? `(${b.lgd_code || b.lgd_block_code})` : ''}
                     </option>
                   ))}
                 </select>
@@ -598,9 +602,9 @@ export function FindFilterManager() {
                   className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 bg-white disabled:bg-slate-100 disabled:text-slate-400"
                 >
                   <option value="">All Villages</option>
-                  {villagesData?.map((v: any) => (
+                  {(Array.isArray(villagesData) ? villagesData : []).map((v: any) => (
                     <option key={v.village_id} value={v.village_id}>
-                      {v.name} {v.lgd_code ? `(${v.lgd_code})` : ''}
+                      {v.name} {v.lgd_code || v.lgd_village_code ? `(${v.lgd_code || v.lgd_village_code})` : ''}
                     </option>
                   ))}
                 </select>
