@@ -36,15 +36,33 @@
     "asar": false,
     "files": [
       "electron/**/*",
-      "backend/dist/**/*",
-      "backend/node_modules/**/*",
-      "backend/package.json",
-      "backend/prisma/**/*",
-      "frontend/.next/standalone/**/*",
-      "frontend/.next/static/**/*",
-      "frontend/public/**/*",
-      "frontend/package.json",
       "village_eng1.xls"
+    ],
+    "extraResources": [
+      {
+        "from": "backend/dist",
+        "to": "backend/dist"
+      },
+      {
+        "from": "backend/node_modules",
+        "to": "backend/node_modules"
+      },
+      {
+        "from": "backend/package.json",
+        "to": "backend/package.json"
+      },
+      {
+        "from": "backend/prisma",
+        "to": "backend/prisma"
+      },
+      {
+        "from": "frontend/.next/standalone",
+        "to": "frontend/.next/standalone"
+      },
+      {
+        "from": "village_eng1.xls",
+        "to": "village_eng1.xls"
+      }
     ],
     "win": {
       "target": [

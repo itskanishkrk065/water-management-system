@@ -61,9 +61,9 @@ if (!gotSingleLock) {
 // 3. Multi-Candidate Application Path Resolver
 function resolveAppPath(subpath) {
   const candidates = [
-    path.join(app.getAppPath(), subpath),
-    path.join(process.resourcesPath || '', 'app', subpath),
     path.join(process.resourcesPath || '', subpath),
+    path.join(process.resourcesPath || '', 'app', subpath),
+    path.join(app.getAppPath(), subpath),
     path.join(__dirname, '..', subpath),
   ];
 
@@ -188,7 +188,7 @@ function spawnNodeScript(scriptPath, args = [], options = {}) {
       logDesktop(`[${name} stderr]: ${data.toString().trim()}`);
     });
     child.on('exit', (code, signal) => {
-      logDesktop(`[${name}] exited with code=${code}, signal=${signal}`);
+      logDesktop(`[${name}] process exited with code=${code}, signal=${signal}`);
     });
 
     logDesktop(`[${name}] child_process.fork spawned successfully (PID: ${child.pid})`);
@@ -203,7 +203,11 @@ function spawnNodeScript(scriptPath, args = [], options = {}) {
 function startBackendService() {
   logDesktop('Initializing embedded NestJS backend service on 127.0.0.1...');
 
-  const backendDistPath = resolveAppPath(path.join('backend', 'dist', 'main.js'));
+  const backendDistCandidates = [
+    resolveAppPath(path.join('backend', 'dist', 'src', 'main.js')),
+    resolveAppPath(path.join('backend', 'dist', 'main.js')),
+  ];
+  const backendDistPath = backendDistCandidates.find((p) => fs.existsSync(p)) || backendDistCandidates[0];
   const backendCwd = resolveAppPath('backend');
   const sqliteDbPath = path.join(appDataDir, 'database', 'water_management.db');
 
@@ -216,6 +220,7 @@ function startBackendService() {
     DATABASE_URL: `file:${sqliteDbPath}`,
     WATER_APP_DATA_DIR: appDataDir,
     NODE_ENV: 'production',
+    NODE_PATH: path.join(backendCwd, 'node_modules'),
     CORS_ORIGIN: `http://localhost:${FRONTEND_PORT},http://${FRONTEND_HOST}:${FRONTEND_PORT},http://${BACKEND_HOST}:${BACKEND_PORT}`,
   };
 
@@ -236,8 +241,7 @@ function startFrontendService() {
 
   const standaloneServer = resolveAppPath(path.join('frontend', '.next', 'standalone', 'server.js'));
   const standaloneCwd = resolveAppPath(path.join('frontend', '.next', 'standalone'));
-  const nextBinPath = resolveAppPath(path.join('frontend', 'node_modules', 'next', 'dist', 'bin', 'next'));
-  const frontendCwd = resolveAppPath('frontend');
+  const standaloneNodeModules = path.join(standaloneCwd, 'node_modules');
 
   logDesktop(`Frontend standalone path: ${standaloneServer}`);
   logDesktop(`Frontend standalone working dir: ${standaloneCwd}`);
@@ -246,6 +250,7 @@ function startFrontendService() {
     PORT: String(FRONTEND_PORT),
     HOSTNAME: FRONTEND_HOST,
     NODE_ENV: 'production',
+    NODE_PATH: standaloneNodeModules,
     NEXT_PUBLIC_API_URL: `http://${BACKEND_HOST}:${BACKEND_PORT}/api/v1`,
   };
 
@@ -255,14 +260,8 @@ function startFrontendService() {
       cwd: standaloneCwd,
       env: frontendEnv,
     });
-  } else if (fs.existsSync(nextBinPath)) {
-    frontendProcess = spawnNodeScript(nextBinPath, ['start', '-p', String(FRONTEND_PORT), '-H', FRONTEND_HOST], {
-      name: 'Frontend-CLI',
-      cwd: frontendCwd,
-      env: frontendEnv,
-    });
   } else {
-    logDesktop(`Neither standalone server.js nor Next.js CLI binary found.`);
+    logDesktop(`Frontend standalone server.js not found at ${standaloneServer}`);
   }
 }
 
@@ -429,7 +428,6 @@ async function createMainWindow() {
     logDesktop('Main window displayed to user');
   });
 
-  // Toggle DevTools with F12 or CommandOrControl+Shift+I
   mainWindow.webContents.on('before-input-event', (event, input) => {
     if (input.key === 'F12' || (input.control && input.shift && input.key.toUpperCase() === 'I')) {
       mainWindow.webContents.toggleDevTools();
