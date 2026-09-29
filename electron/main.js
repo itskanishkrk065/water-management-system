@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell, utilityProcess, globalShortcut } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, utilityProcess } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
@@ -58,8 +58,25 @@ if (!gotSingleLock) {
   });
 }
 
-// 3. HTTP Health Check Helper
-function waitForHttpService(host, port, endpoint = '/', maxRetries = 60, intervalMs = 400) {
+// 3. Multi-Candidate Application Path Resolver
+function resolveAppPath(subpath) {
+  const candidates = [
+    path.join(app.getAppPath(), subpath),
+    path.join(process.resourcesPath || '', 'app', subpath),
+    path.join(process.resourcesPath || '', subpath),
+    path.join(__dirname, '..', subpath),
+  ];
+
+  for (const c of candidates) {
+    if (fs.existsSync(c)) {
+      return c;
+    }
+  }
+  return candidates[0];
+}
+
+// 4. HTTP Health Check Helper
+function waitForHttpService(host, port, endpoint = '/', maxRetries = 75, intervalMs = 400) {
   return new Promise((resolve) => {
     let attempts = 0;
 
@@ -106,22 +123,27 @@ function waitForHttpService(host, port, endpoint = '/', maxRetries = 60, interva
   });
 }
 
-// 4. Universal Background Node Process Spawner
+// 5. Universal Background Process Spawner (Clean Node/Electron Process)
 function spawnNodeScript(scriptPath, args = [], options = {}) {
-  const env = {
-    ...process.env,
-    ...(options.env || {}),
-    ELECTRON_RUN_AS_NODE: '1',
-  };
-
   const name = options.name || 'Child';
   logDesktop(`Spawning background process [${name}]: ${scriptPath}`);
 
+  if (!fs.existsSync(scriptPath)) {
+    logDesktop(`[${name} ERROR]: Script not found at path: ${scriptPath}`);
+    return null;
+  }
+
+  const workingDir = options.cwd || path.dirname(scriptPath);
+
+  // 1. Primary: Use Electron's native utilityProcess (DO NOT pass ELECTRON_RUN_AS_NODE here)
   if (utilityProcess && typeof utilityProcess.fork === 'function') {
     try {
       const child = utilityProcess.fork(scriptPath, args, {
-        cwd: options.cwd || process.cwd(),
-        env,
+        cwd: workingDir,
+        env: {
+          ...process.env,
+          ...(options.env || {}),
+        },
         stdio: 'pipe',
       });
 
@@ -139,17 +161,23 @@ function spawnNodeScript(scriptPath, args = [], options = {}) {
         logDesktop(`[${name}] exited with code=${code}`);
       });
 
-      logDesktop(`[${name}] utilityProcess spawned successfully (PID: ${child.pid})`);
+      logDesktop(`[${name}] utilityProcess spawned successfully`);
       return child;
     } catch (err) {
-      logDesktop(`utilityProcess.fork failed for ${name}: ${err.message}. Trying child_process.fork...`);
+      logDesktop(`utilityProcess.fork failed for ${name}: ${err.message}. Trying child_process.fork fallback...`);
     }
   }
 
+  // 2. Secondary: Fallback to standard child_process.fork with ELECTRON_RUN_AS_NODE
   try {
     const child = fork(scriptPath, args, {
-      cwd: options.cwd || process.cwd(),
-      env,
+      cwd: workingDir,
+      env: {
+        ...process.env,
+        ...(options.env || {}),
+        ELECTRON_RUN_AS_NODE: '1',
+      },
+      execPath: process.execPath,
       stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
     });
 
@@ -160,7 +188,7 @@ function spawnNodeScript(scriptPath, args = [], options = {}) {
       logDesktop(`[${name} stderr]: ${data.toString().trim()}`);
     });
     child.on('exit', (code, signal) => {
-      logDesktop(`[${name}] process exited with code=${code}, signal=${signal}`);
+      logDesktop(`[${name}] exited with code=${code}, signal=${signal}`);
     });
 
     logDesktop(`[${name}] child_process.fork spawned successfully (PID: ${child.pid})`);
@@ -171,13 +199,17 @@ function spawnNodeScript(scriptPath, args = [], options = {}) {
   }
 }
 
-// 5. Start Embedded NestJS Backend Process
+// 6. Start Embedded NestJS Backend Process
 function startBackendService() {
   logDesktop('Initializing embedded NestJS backend service on 127.0.0.1...');
 
-  const appRoot = app.isPackaged ? app.getAppPath() : path.join(__dirname, '..');
-  const backendDistPath = path.join(appRoot, 'backend', 'dist', 'main.js');
+  const backendDistPath = resolveAppPath(path.join('backend', 'dist', 'main.js'));
+  const backendCwd = resolveAppPath('backend');
   const sqliteDbPath = path.join(appDataDir, 'database', 'water_management.db');
+
+  logDesktop(`Backend dist path: ${backendDistPath}`);
+  logDesktop(`Backend working dir: ${backendCwd}`);
+  logDesktop(`SQLite database path: ${sqliteDbPath}`);
 
   const backendEnv = {
     PORT: String(BACKEND_PORT),
@@ -190,7 +222,7 @@ function startBackendService() {
   if (fs.existsSync(backendDistPath)) {
     backendProcess = spawnNodeScript(backendDistPath, [], {
       name: 'Backend',
-      cwd: path.join(appRoot, 'backend'),
+      cwd: backendCwd,
       env: backendEnv,
     });
   } else {
@@ -198,14 +230,17 @@ function startBackendService() {
   }
 }
 
-// 6. Start Embedded Next.js Frontend Process
+// 7. Start Embedded Next.js Frontend Process
 function startFrontendService() {
   logDesktop(`Initializing embedded Next.js frontend on ${FRONTEND_HOST}:${FRONTEND_PORT}...`);
 
-  const appRoot = app.isPackaged ? app.getAppPath() : path.join(__dirname, '..');
-  const standaloneServer = path.join(appRoot, 'frontend', '.next', 'standalone', 'server.js');
-  const standaloneCwd = path.join(appRoot, 'frontend', '.next', 'standalone');
-  const nextBinPath = path.join(appRoot, 'frontend', 'node_modules', 'next', 'dist', 'bin', 'next');
+  const standaloneServer = resolveAppPath(path.join('frontend', '.next', 'standalone', 'server.js'));
+  const standaloneCwd = resolveAppPath(path.join('frontend', '.next', 'standalone'));
+  const nextBinPath = resolveAppPath(path.join('frontend', 'node_modules', 'next', 'dist', 'bin', 'next'));
+  const frontendCwd = resolveAppPath('frontend');
+
+  logDesktop(`Frontend standalone path: ${standaloneServer}`);
+  logDesktop(`Frontend standalone working dir: ${standaloneCwd}`);
 
   const frontendEnv = {
     PORT: String(FRONTEND_PORT),
@@ -223,15 +258,15 @@ function startFrontendService() {
   } else if (fs.existsSync(nextBinPath)) {
     frontendProcess = spawnNodeScript(nextBinPath, ['start', '-p', String(FRONTEND_PORT), '-H', FRONTEND_HOST], {
       name: 'Frontend-CLI',
-      cwd: path.join(appRoot, 'frontend'),
+      cwd: frontendCwd,
       env: frontendEnv,
     });
   } else {
-    logDesktop(`Neither standalone server.js nor Next.js CLI binary found in ${appRoot}`);
+    logDesktop(`Neither standalone server.js nor Next.js CLI binary found.`);
   }
 }
 
-// 7. Initial Startup HTML Screen
+// 8. Initial Startup & Diagnostic HTML Screen
 function getStartupHtml(statusText = 'Starting Services...', error = null) {
   return `<!DOCTYPE html>
 <html>
@@ -256,7 +291,7 @@ function getStartupHtml(statusText = 'Starting Services...', error = null) {
       border: 1px solid #334155;
       border-radius: 20px;
       padding: 40px;
-      width: 520px;
+      width: 540px;
       text-align: center;
       box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
     }
@@ -350,7 +385,7 @@ function getStartupHtml(statusText = 'Starting Services...', error = null) {
       error
         ? `
       <div class="error-box">
-        <strong>Startup Error:</strong><br/>
+        <strong>Startup Diagnostic Report:</strong><br/><br/>
         ${error}
       </div>
       <div class="btn-row">
@@ -370,7 +405,7 @@ function getStartupHtml(statusText = 'Starting Services...', error = null) {
 </html>`;
 }
 
-// 8. Create Native Main Desktop Window
+// 9. Create Native Main Desktop Window
 async function createMainWindow() {
   mainWindow = new BrowserWindow({
     width: 1366,
@@ -414,12 +449,13 @@ async function createMainWindow() {
   });
 }
 
-// 9. Application Lifecycle & Startup Protocol
+// 10. Application Lifecycle & Startup Protocol
 app.whenReady().then(async () => {
   logDesktop('==============================================');
   logDesktop('Water Management Desktop Application Starting');
   logDesktop(`Local Storage: ${appDataDir}`);
   logDesktop(`App Path: ${app.getAppPath()}`);
+  logDesktop(`Resources Path: ${process.resourcesPath}`);
   logDesktop('==============================================');
 
   await createMainWindow();
@@ -440,8 +476,8 @@ app.whenReady().then(async () => {
   // 4. Await health checks
   logDesktop('Awaiting backend and frontend services readiness...');
   const [backendStatus, frontendStatus] = await Promise.all([
-    waitForHttpService(BACKEND_HOST, BACKEND_PORT, '/api/docs', 60, 400),
-    waitForHttpService(FRONTEND_HOST, FRONTEND_PORT, '/login', 60, 400),
+    waitForHttpService(BACKEND_HOST, BACKEND_PORT, '/api/docs', 75, 400),
+    waitForHttpService(FRONTEND_HOST, FRONTEND_PORT, '/login', 75, 400),
   ]);
 
   if (backendStatus.success && frontendStatus.success) {
@@ -472,7 +508,7 @@ app.whenReady().then(async () => {
   });
 });
 
-// 10. IPC Handlers
+// 11. IPC Handlers
 ipcMain.handle('app:get-info', () => {
   return {
     version: app.getVersion(),
@@ -487,7 +523,7 @@ ipcMain.handle('app:open-storage-folder', () => {
   return true;
 });
 
-// 11. Graceful Application Shutdown
+// 12. Graceful Application Shutdown
 app.on('before-quit', () => {
   logDesktop('Application closing. Initiating graceful shutdown...');
 
