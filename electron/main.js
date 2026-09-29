@@ -1,13 +1,17 @@
-const { app, BrowserWindow, ipcMain, shell, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
-const { spawn, fork } = require('child_process');
+const { fork } = require('child_process');
 
 let mainWindow = null;
 let backendProcess = null;
+let frontendProcess = null;
+
 const BACKEND_PORT = process.env.PORT || 4000;
 const BACKEND_HOST = '127.0.0.1';
+const FRONTEND_PORT = process.env.FRONTEND_PORT || 3000;
+const FRONTEND_HOST = '127.0.0.1';
 
 // 1. Resolve User AppData Storage Directory
 function getAppDataDirectory() {
@@ -54,16 +58,21 @@ if (!gotSingleLock) {
   });
 }
 
-// 3. Health Check Helper for Embedded Backend
-function waitForBackendReady(port, maxRetries = 40, intervalMs = 500) {
-  return new Promise((resolve, reject) => {
+// 3. HTTP Health Check Helper
+function waitForHttpService(host, port, endpoint = '/', maxRetries = 60, intervalMs = 400) {
+  return new Promise((resolve) => {
     let attempts = 0;
 
     const check = () => {
       attempts++;
-      const req = http.get(`http://${BACKEND_HOST}:${port}/api/docs`, (res) => {
-        if (res.statusCode === 200 || res.statusCode === 301 || res.statusCode === 302 || res.statusCode === 404) {
-          logDesktop(`Backend active and responding on port ${port} after ${attempts} attempts`);
+      const req = http.get({
+        host,
+        port,
+        path: endpoint,
+        timeout: 1000,
+      }, (res) => {
+        if (res.statusCode && res.statusCode < 500) {
+          logDesktop(`Service at http://${host}:${port}${endpoint} ready after ${attempts} attempts`);
           resolve(true);
         } else {
           retry();
@@ -74,7 +83,7 @@ function waitForBackendReady(port, maxRetries = 40, intervalMs = 500) {
         retry();
       });
 
-      req.setTimeout(1000, () => {
+      req.on('timeout', () => {
         req.destroy();
         retry();
       });
@@ -82,8 +91,8 @@ function waitForBackendReady(port, maxRetries = 40, intervalMs = 500) {
 
     const retry = () => {
       if (attempts >= maxRetries) {
-        logDesktop(`Backend failed to respond within ${(maxRetries * intervalMs) / 1000}s`);
-        resolve(false); // Resolve false so we still show UI with error state
+        logDesktop(`Service at http://${host}:${port}${endpoint} failed to respond within ${(maxRetries * intervalMs) / 1000}s`);
+        resolve(false);
       } else {
         setTimeout(check, intervalMs);
       }
@@ -106,7 +115,7 @@ function startBackendService() {
     DATABASE_URL: `file:${sqliteDbPath}`,
     WATER_APP_DATA_DIR: appDataDir,
     NODE_ENV: 'production',
-    CORS_ORIGIN: `http://localhost:3000,http://127.0.0.1:3000,http://${BACKEND_HOST}:${BACKEND_PORT}`,
+    CORS_ORIGIN: `http://localhost:${FRONTEND_PORT},http://${FRONTEND_HOST}:${FRONTEND_PORT},http://${BACKEND_HOST}:${BACKEND_PORT}`,
   };
 
   if (fs.existsSync(backendDistPath)) {
@@ -117,13 +126,11 @@ function startBackendService() {
       });
 
       backendProcess.stdout?.on('data', (data) => {
-        const str = data.toString();
-        logDesktop(`[Backend stdout]: ${str.trim()}`);
+        logDesktop(`[Backend stdout]: ${data.toString().trim()}`);
       });
 
       backendProcess.stderr?.on('data', (data) => {
-        const str = data.toString();
-        logDesktop(`[Backend stderr]: ${str.trim()}`);
+        logDesktop(`[Backend stderr]: ${data.toString().trim()}`);
       });
 
       backendProcess.on('exit', (code, signal) => {
@@ -135,11 +142,57 @@ function startBackendService() {
       logDesktop(`Failed to fork backend process: ${err.message}`);
     }
   } else {
-    logDesktop(`Backend build not found at ${backendDistPath}. In development mode, please run backend independently.`);
+    logDesktop(`Backend build not found at ${backendDistPath}`);
   }
 }
 
-// 5. Create Native Main Desktop Window
+// 5. Start Embedded Next.js Frontend Process
+function startFrontendService() {
+  logDesktop(`Initializing embedded Next.js frontend on ${FRONTEND_HOST}:${FRONTEND_PORT}...`);
+
+  const frontendDir = path.join(__dirname, '..', 'frontend');
+  const nextBinPath = path.join(frontendDir, 'node_modules', 'next', 'dist', 'bin', 'next');
+
+  if (fs.existsSync(nextBinPath)) {
+    try {
+      frontendProcess = fork(
+        nextBinPath,
+        ['start', '-p', String(FRONTEND_PORT), '-H', FRONTEND_HOST],
+        {
+          cwd: frontendDir,
+          env: {
+            ...process.env,
+            PORT: String(FRONTEND_PORT),
+            HOSTNAME: FRONTEND_HOST,
+            NODE_ENV: 'production',
+            NEXT_PUBLIC_API_URL: `http://${BACKEND_HOST}:${BACKEND_PORT}/api/v1`,
+          },
+          stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
+        }
+      );
+
+      frontendProcess.stdout?.on('data', (data) => {
+        logDesktop(`[Frontend stdout]: ${data.toString().trim()}`);
+      });
+
+      frontendProcess.stderr?.on('data', (data) => {
+        logDesktop(`[Frontend stderr]: ${data.toString().trim()}`);
+      });
+
+      frontendProcess.on('exit', (code, signal) => {
+        logDesktop(`Frontend process exited with code=${code}, signal=${signal}`);
+      });
+
+      logDesktop(`Frontend child process spawned (PID: ${frontendProcess.pid})`);
+    } catch (err) {
+      logDesktop(`Failed to fork frontend process: ${err.message}`);
+    }
+  } else {
+    logDesktop(`Next.js CLI binary not found at ${nextBinPath}`);
+  }
+}
+
+// 6. Create Native Main Desktop Window
 async function createMainWindow() {
   mainWindow = new BrowserWindow({
     width: 1366,
@@ -158,13 +211,11 @@ async function createMainWindow() {
     },
   });
 
-  // Gracefully show window when ready
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
     logDesktop('Main window displayed to user');
   });
 
-  // External links open in default OS browser
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith('http:') || url.startsWith('https:')) {
       shell.openExternal(url);
@@ -172,38 +223,42 @@ async function createMainWindow() {
     return { action: 'deny' };
   });
 
-  // Determine load target
-  const isDev = process.env.NODE_ENV === 'development';
-  if (isDev) {
-    mainWindow.loadURL('http://localhost:3000');
-  } else {
-    // In packaged production, connect to frontend dev server or exported static build
-    const frontendPort = process.env.FRONTEND_PORT || 3000;
-    mainWindow.loadURL(`http://127.0.0.1:${frontendPort}`).catch(() => {
-      // Fallback: load internal status if frontend server is starting
-      mainWindow.loadURL(`http://127.0.0.1:${BACKEND_PORT}/api/docs`);
-    });
-  }
+  const frontendUrl = `http://${FRONTEND_HOST}:${FRONTEND_PORT}/login`;
+  logDesktop(`Loading frontend URL: ${frontendUrl}`);
+  mainWindow.loadURL(frontendUrl).catch((err) => {
+    logDesktop(`Failed to load ${frontendUrl}: ${err.message}`);
+  });
 
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
 }
 
-// 6. Application Lifecycle & Startup Protocol
+// 7. Application Lifecycle & Startup Protocol
 app.whenReady().then(async () => {
   logDesktop('==============================================');
   logDesktop('Water Management Desktop Application Starting');
   logDesktop(`Local Storage: ${appDataDir}`);
   logDesktop('==============================================');
 
-  // Start embedded backend service
+  const isDev = process.env.NODE_ENV === 'development';
+
+  // 1. Start backend process
   startBackendService();
 
-  // Wait for backend to be ready
-  await waitForBackendReady(BACKEND_PORT);
+  // 2. Start frontend process if in production or not running
+  if (!isDev) {
+    startFrontendService();
+  }
 
-  // Open native UI window
+  // 3. Wait for backend and frontend to be responsive
+  logDesktop('Awaiting backend and frontend services...');
+  await Promise.all([
+    waitForHttpService(BACKEND_HOST, BACKEND_PORT, '/api/docs'),
+    waitForHttpService(FRONTEND_HOST, FRONTEND_PORT, '/login'),
+  ]);
+
+  // 4. Open native window
   await createMainWindow();
 
   app.on('activate', () => {
@@ -213,7 +268,7 @@ app.whenReady().then(async () => {
   });
 });
 
-// 7. IPC Handlers
+// 8. IPC Handlers
 ipcMain.handle('app:get-info', () => {
   return {
     version: app.getVersion(),
@@ -228,17 +283,22 @@ ipcMain.handle('app:open-storage-folder', () => {
   return true;
 });
 
-// 8. Graceful Application Shutdown
-app.on('before-quit', (e) => {
+// 9. Graceful Application Shutdown
+app.on('before-quit', () => {
   logDesktop('Application closing. Initiating graceful shutdown...');
 
   if (backendProcess) {
     try {
-      logDesktop('Terminating embedded backend process...');
+      logDesktop('Terminating backend process...');
       backendProcess.kill('SIGTERM');
-    } catch (err) {
-      logDesktop(`Error terminating backend process: ${err.message}`);
-    }
+    } catch {}
+  }
+
+  if (frontendProcess) {
+    try {
+      logDesktop('Terminating frontend process...');
+      frontendProcess.kill('SIGTERM');
+    } catch {}
   }
 });
 
