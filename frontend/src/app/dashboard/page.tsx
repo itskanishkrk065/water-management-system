@@ -146,7 +146,7 @@ export default function DashboardPage() {
       header: 'Requested Volume',
       align: 'right',
       cell: (app) => (
-        <span className="font-semibold text-sky-700 font-mono text-xs">
+        <span className="font-semibold text-sky-700 text-xs">
           {formatLitres(app.required_litres)}
         </span>
       ),
@@ -201,7 +201,7 @@ export default function DashboardPage() {
       header: 'Amount Paid',
       align: 'right',
       cell: (p) => (
-        <span className="font-mono font-bold text-emerald-700 text-xs">
+        <span className="font-bold text-emerald-700 text-xs">
           {formatCurrency(p.amount)}
         </span>
       ),
@@ -267,7 +267,7 @@ export default function DashboardPage() {
       {/* Filter Bar */}
       <div className="bg-white p-3 sm:p-3.5 rounded-xl border border-slate-200 shadow-xs space-y-2">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 text-xs font-bold text-slate-700 uppercase tracking-wider">
+          <div className="flex items-center gap-2 text-xs font-bold text-slate-800 uppercase tracking-wider">
             <Filter className="w-3.5 h-3.5 text-sky-600" /> Filters
             {hasActiveFilters && (
               <span className="px-2 py-0.5 rounded-full bg-sky-50 text-sky-700 border border-sky-200 text-[10px] font-semibold">
@@ -291,7 +291,7 @@ export default function DashboardPage() {
             <select
               value={selectedDistrict}
               onChange={(e) => setSelectedDistrict(e.target.value)}
-              className="w-full text-xs rounded-lg border-slate-200 bg-slate-50 py-1.5 px-2 focus:ring-sky-500 focus:border-sky-500"
+              className="w-full text-xs rounded-lg border-slate-200 bg-slate-50/70 py-1.5 px-2 focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500"
             >
               <option value="">All Districts</option>
               {(Array.isArray(districts) ? districts : []).map((d: any) => (
@@ -307,7 +307,7 @@ export default function DashboardPage() {
             <select
               value={selectedVillage}
               onChange={(e) => setSelectedVillage(e.target.value)}
-              className="w-full text-xs rounded-lg border-slate-200 bg-slate-50 py-1.5 px-2 focus:ring-sky-500 focus:border-sky-500"
+              className="w-full text-xs rounded-lg border-slate-200 bg-slate-50/70 py-1.5 px-2 focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500"
             >
               <option value="">All Villages</option>
               {(Array.isArray(villages) ? villages : []).map((v: any) => (
@@ -323,7 +323,7 @@ export default function DashboardPage() {
             <select
               value={selectedProject}
               onChange={(e) => setSelectedProject(e.target.value)}
-              className="w-full text-xs rounded-lg border-slate-200 bg-slate-50 py-1.5 px-2 focus:ring-sky-500 focus:border-sky-500"
+              className="w-full text-xs rounded-lg border-slate-200 bg-slate-50/70 py-1.5 px-2 focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500"
             >
               <option value="">All Schemes</option>
               {(Array.isArray(projects) ? projects : []).map((p: any) => (
@@ -339,7 +339,7 @@ export default function DashboardPage() {
             <select
               value={selectedStatus}
               onChange={(e) => setSelectedStatus(e.target.value)}
-              className="w-full text-xs rounded-lg border-slate-200 bg-slate-50 py-1.5 px-2 focus:ring-sky-500 focus:border-sky-500"
+              className="w-full text-xs rounded-lg border-slate-200 bg-slate-50/70 py-1.5 px-2 focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500"
             >
               <option value="">All Statuses</option>
               <option value="DRAFT">Draft</option>
@@ -357,7 +357,7 @@ export default function DashboardPage() {
               type="date"
               value={dateFrom}
               onChange={(e) => setDateFrom(e.target.value)}
-              className="w-full text-xs rounded-lg border-slate-200 bg-slate-50 py-1.5 px-2 focus:ring-sky-500 focus:border-sky-500"
+              className="w-full text-xs rounded-lg border-slate-200 bg-slate-50/70 py-1.5 px-2 focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500"
             />
           </div>
 
@@ -367,7 +367,7 @@ export default function DashboardPage() {
               type="date"
               value={dateTo}
               onChange={(e) => setDateTo(e.target.value)}
-              className="w-full text-xs rounded-lg border-slate-200 bg-slate-50 py-1.5 px-2 focus:ring-sky-500 focus:border-sky-500"
+              className="w-full text-xs rounded-lg border-slate-200 bg-slate-50/70 py-1.5 px-2 focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500"
             />
           </div>
         </div>
@@ -421,10 +421,10 @@ export default function DashboardPage() {
       {/* Secondary Operational Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         {/* Collections */}
-        <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-xs flex flex-col justify-between">
+        <div className="bg-[#F7FAFA] p-3.5 rounded-xl border border-[#DFEBE3] shadow-xs flex flex-col justify-between hover:border-slate-300 transition duration-150">
           <div>
             <div className="flex items-center justify-between">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Collections</span>
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600">Collections</span>
               <div className="p-1.5 bg-emerald-50 text-emerald-600 rounded-lg border border-emerald-100">
                 <CheckCircle className="w-3.5 h-3.5" />
               </div>
@@ -433,26 +433,26 @@ export default function DashboardPage() {
               <p className="mt-2 text-xs text-slate-400 italic">Financial data restricted under RBAC</p>
             ) : (
               <>
-                <div className="mt-1 text-xl font-bold font-mono text-slate-900">
+                <div className="mt-1 text-xl font-bold text-slate-900">
                   {formatCurrency(stats?.financial?.total_collected ?? stats?.total_collected)}
                 </div>
-                <p className="text-[11px] text-slate-500 mt-0.5">Verified receipts recorded</p>
+                <p className="text-[11px] text-slate-500 mt-0.5 font-normal">Verified receipts recorded</p>
               </>
             )}
           </div>
-          <div className="mt-2.5 pt-2 border-t border-slate-100 text-[11px] flex justify-between items-center text-slate-600">
+          <div className="mt-2.5 pt-2 border-t border-slate-200/60 text-[11px] flex justify-between items-center text-slate-600">
             <span>Pending Balance:</span>
-            <strong className="text-rose-600 font-mono">
+            <strong className="text-rose-600 font-semibold">
               {isFieldOfficer ? '---' : formatCurrency(stats?.financial?.total_pending ?? stats?.total_pending)}
             </strong>
           </div>
         </div>
 
         {/* Installments */}
-        <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-xs flex flex-col justify-between">
+        <div className="bg-[#FEFBF6] p-3.5 rounded-xl border border-[#FCEFE0] shadow-xs flex flex-col justify-between hover:border-slate-300 transition duration-150">
           <div>
             <div className="flex items-center justify-between">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Installments</span>
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600">Installments</span>
               <div className="p-1.5 bg-amber-50 text-amber-600 rounded-lg border border-amber-100">
                 <Clock className="w-3.5 h-3.5" />
               </div>
@@ -461,27 +461,27 @@ export default function DashboardPage() {
               <p className="mt-2 text-xs text-slate-400 italic">Financial data restricted under RBAC</p>
             ) : (
               <>
-                <div className="mt-1 text-xl font-bold font-mono text-slate-900">
+                <div className="mt-1 text-xl font-bold text-slate-900">
                   {stats?.financial?.pending_installments_count ?? 0} Pending
                 </div>
-                <p className="text-[11px] text-slate-500 mt-0.5">
-                  Overdue: <strong className="text-rose-600 font-mono">{stats?.financial?.overdue_installments_count ?? 0}</strong>
+                <p className="text-[11px] text-slate-500 mt-0.5 font-normal">
+                  Overdue: <strong className="text-rose-600 font-semibold">{stats?.financial?.overdue_installments_count ?? 0}</strong>
                 </p>
               </>
             )}
           </div>
-          <div className="mt-2.5 pt-2 border-t border-slate-100 text-[11px] flex justify-between items-center">
-            <Link href="/billing/installments" className="text-sky-600 hover:text-sky-800 flex items-center gap-1 font-semibold">
+          <div className="mt-2.5 pt-2 border-t border-slate-200/60 text-[11px] flex justify-between items-center">
+            <Link href="/billing/installments" className="text-sky-600 hover:text-sky-700 flex items-center gap-1 font-medium transition duration-150">
               View Schedule <ArrowRight className="w-3 h-3" />
             </Link>
           </div>
         </div>
 
         {/* Data Integrity */}
-        <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-xs flex flex-col justify-between">
+        <div className="bg-[#F7FAFA] p-3.5 rounded-xl border border-[#DFEBE3] shadow-xs flex flex-col justify-between hover:border-slate-300 transition duration-150">
           <div>
             <div className="flex items-center justify-between">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Data Integrity</span>
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600">Data Integrity</span>
               {stats?.data_quality?.status === 'PASS' ? (
                 <div className="p-1.5 bg-emerald-50 text-emerald-600 rounded-lg border border-emerald-100">
                   <ShieldCheck className="w-3.5 h-3.5" />
@@ -494,20 +494,20 @@ export default function DashboardPage() {
             </div>
             <div className="mt-1 flex items-center gap-2">
               <StatusBadge status={stats?.data_quality?.status || 'PASS'} size="sm" />
-              <span className="text-[11px] text-slate-500">
+              <span className="text-[11px] text-slate-500 font-normal">
                 {stats?.data_quality?.errorChecks ?? 0} errors • {stats?.data_quality?.warningChecks ?? 0} warnings
               </span>
             </div>
-            <p className="text-[11px] text-slate-500 mt-1">
+            <p className="text-[11px] text-slate-500 mt-1 font-normal">
               Database relations &amp; financial balances verified
             </p>
           </div>
-          <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px]">
+          <div className="mt-2.5 pt-2 border-t border-slate-200/60 text-[11px]">
             <Link
               href="/admin/integrity"
-              className="text-sky-600 hover:text-sky-800 font-semibold flex items-center gap-1"
+              className="text-sky-600 hover:text-sky-700 font-medium flex items-center gap-1 transition duration-150"
             >
-              Run Audit <ArrowUpRight className="w-3 h-3" />
+              Run Audit <ArrowUpRight className="w-3.5 h-3.5" />
             </Link>
           </div>
         </div>
@@ -519,11 +519,11 @@ export default function DashboardPage() {
           <div className="flex items-center justify-between px-0.5">
             <div>
               <h2 className="text-sm font-bold text-slate-900 tracking-tight">Recent Water Applications</h2>
-              <p className="text-[11px] text-slate-500">Submitted applications requiring review</p>
+              <p className="text-[11px] text-slate-500 font-normal">Submitted applications requiring review</p>
             </div>
             <Link
               href="/water/approvals"
-              className="text-xs font-semibold text-sky-600 hover:text-sky-800 flex items-center gap-1"
+              className="text-xs font-medium text-sky-600 hover:text-sky-700 flex items-center gap-1 transition duration-150"
             >
               Review All <ArrowRight className="w-3 h-3" />
             </Link>
@@ -542,11 +542,11 @@ export default function DashboardPage() {
           <div className="flex items-center justify-between px-0.5">
             <div>
               <h2 className="text-sm font-bold text-slate-900 tracking-tight">Recent Payment Ledger Activity</h2>
-              <p className="text-[11px] text-slate-500">Collection transactions recorded</p>
+              <p className="text-[11px] text-slate-500 font-normal">Collection transactions recorded</p>
             </div>
             <Link
               href="/payments"
-              className="text-xs font-semibold text-emerald-600 hover:text-emerald-800 flex items-center gap-1"
+              className="text-xs font-medium text-sky-600 hover:text-sky-700 flex items-center gap-1 transition duration-150"
             >
               Full Ledger <ArrowRight className="w-3 h-3" />
             </Link>
