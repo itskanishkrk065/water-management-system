@@ -1,7 +1,7 @@
 'use client';
 
-import AdminBeneficiaryDetailPage from '@/app/admin/beneficiaries/[id]/page';
+import AdminBeneficiaryDetailManager from '@/components/beneficiaries/AdminBeneficiaryDetailManager';
 
 export default function BeneficiaryDetailPage() {
-  return <AdminBeneficiaryDetailPage />;
+  return <AdminBeneficiaryDetailManager />;
 }
