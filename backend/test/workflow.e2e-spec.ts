@@ -79,14 +79,14 @@ describe('Water Management End-to-End & Authorization Test Suite', () => {
 
     // Fetch seeded location & project
     const district = await prisma.district.findFirst();
-    const panchayat = await prisma.panchayat.findFirst();
+    const block = await prisma.block.findFirst();
     const village = await prisma.village.findFirst();
     const project = await prisma.project.findFirst();
 
-    districtId = district.district_id;
-    panchayatId = panchayat.panchayat_id;
-    villageId = village.village_id;
-    projectId = project.project_id;
+    districtId = district!.district_id;
+    villageId = village!.village_id;
+    projectId = project!.project_id;
+    panchayatId = village!.panchayat_id || undefined as any;
   });
 
   afterAll(async () => {

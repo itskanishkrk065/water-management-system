@@ -16,6 +16,7 @@ describe('Beneficiary Portal E2E & Ownership Security Suite', () => {
   let beneficiaryBToken: string;
   let beneficiaryBId: string;
   let sampleVillageId: string;
+  let sampleBlockId: string;
   let samplePanchayatId: string;
   let sampleDistrictId: string;
   let activeProjectId: string;
@@ -64,11 +65,15 @@ describe('Beneficiary Portal E2E & Ownership Security Suite', () => {
 
     // Fetch sample village and project
     const village = await prisma.village.findFirst({
-      include: { panchayat: { include: { district: true } } },
+      include: {
+        block: { include: { district: true } },
+        panchayat: { include: { district: true } },
+      },
     });
     sampleVillageId = village!.village_id;
-    samplePanchayatId = village!.panchayat_id;
-    sampleDistrictId = village!.panchayat.district_id;
+    sampleBlockId = village!.block_id || undefined;
+    samplePanchayatId = village!.panchayat_id || undefined;
+    sampleDistrictId = village!.block?.district_id || village!.panchayat?.district_id;
 
     const project = await prisma.project.findFirst({ where: { status: 'ACTIVE' } });
     activeProjectId = project!.project_id;
@@ -189,6 +194,7 @@ describe('Beneficiary Portal E2E & Ownership Security Suite', () => {
         .send({
           addressLine1: 'Survey 102/3B, Old Canal Road',
           districtId: sampleDistrictId,
+          blockId: sampleBlockId,
           panchayatId: samplePanchayatId,
           villageId: sampleVillageId,
           pincode: '642001',

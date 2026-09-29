@@ -1,6 +1,7 @@
 import { PrismaClient, RoleName, LocationDirection, BeneficiaryStatus, LandStatus, ProjectStatus } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { Decimal } from 'decimal.js';
+import { importCoimbatoreAndTiruppur } from './seed-coimbatore-tiruppur';
 
 const prisma = new PrismaClient();
 
@@ -52,61 +53,18 @@ async function main() {
   }
   console.log('Seeded Users: admin@water.gov, field@water.gov, accounts@water.gov, viewer@water.gov (password: Admin@123456)');
 
-  // 3. Location Hierarchy: District -> Block -> Village
-  const district = await prisma.district.upsert({
-    where: { lgd_district_code: 528 },
-    update: { name: 'Coimbatore', is_active: true },
-    create: {
-      name: 'Coimbatore',
-      lgd_district_code: 528,
-      is_active: true,
-    },
-  });
+  // 3. Location Hierarchy: Coimbatore & Tiruppur Exclusively
+  await importCoimbatoreAndTiruppur();
 
-  const blockNorth = await prisma.block.upsert({
-    where: { lgd_block_code: 6482 },
-    update: { name: 'Pollachi North', district_id: district.district_id, is_active: true },
-    create: {
-      district_id: district.district_id,
-      lgd_block_code: 6482,
-      name: 'Pollachi North',
-      is_active: true,
-    },
+  const district = await prisma.district.findFirst({
+    where: { lgd_district_code: 523 }, // Coimbatore
   });
-
-  const blockSouth = await prisma.block.upsert({
-    where: { lgd_block_code: 6483 },
-    update: { name: 'Pollachi South', district_id: district.district_id, is_active: true },
-    create: {
-      district_id: district.district_id,
-      lgd_block_code: 6483,
-      name: 'Pollachi South',
-      is_active: true,
-    },
+  const block = await prisma.block.findFirst({
+    where: { district_id: district?.district_id },
   });
-
-  const village1 = await prisma.village.upsert({
-    where: { lgd_village_code: 223994 },
-    update: { name: 'Annamalai', block_id: blockNorth.block_id, is_active: true },
-    create: {
-      block_id: blockNorth.block_id,
-      lgd_village_code: 223994,
-      name: 'Annamalai',
-      is_active: true,
-    },
+  const village = await prisma.village.findFirst({
+    where: { block_id: block?.block_id },
   });
-
-  const village2 = await prisma.village.upsert({
-    where: { lgd_village_code: 223995 },
-    update: { name: 'Kinathukadavu', block_id: blockSouth.block_id, is_active: true },
-    create: {
-      block_id: blockSouth.block_id,
-      lgd_village_code: 223995,
-      name: 'Kinathukadavu',
-      is_active: true,
-    },
-  });
-  console.log('Seeded Locations: Coimbatore (528) -> Pollachi North (6482) / South (6483) -> Annamalai (223994) / Kinathukadavu (223995)');
 
   // 4. Project
   const project = await prisma.project.upsert({
@@ -124,7 +82,6 @@ async function main() {
   console.log(`Seeded Project: ${project.project_code} - ${project.project_name}`);
 
   // 5. Versioned Rate Configuration
-  // Example: Litres/Acre = 10,000, Dev Cost/L = 2.00, Running Cost/L = 0.50
   const existingRate = await prisma.rateConfiguration.findFirst({
     where: { project_id: project.project_id, is_active: true },
   });
@@ -180,19 +137,18 @@ async function main() {
     where: { phone_number: samplePhone },
   });
 
-  let beneficiaryId: string;
-  if (!existingBeneficiary) {
+  if (!existingBeneficiary && district && block && village) {
     const beneficiary = await prisma.beneficiary.create({
       data: {
         user_id: beneficiaryUser?.user_id,
         name: 'Ramasamy Gounder',
         email: 'beneficiary@water.gov',
         phone_number: samplePhone,
-        address_line_1: 'Survey Field 101, Near North Canal',
-        address_line_2: 'Annamalai Village',
+        address_line_1: 'Survey Field 101, Near Kongu Canal',
+        address_line_2: `${village.name} Village`,
         district_id: district.district_id,
-        block_id: blockNorth.block_id,
-        village_id: village1.village_id,
+        block_id: block.block_id,
+        village_id: village.village_id,
         pincode: '642001',
         location_direction: LocationDirection.NORTH,
         location_description: 'North-facing canal border farm',
@@ -230,11 +186,16 @@ async function main() {
       ],
     });
 
-    console.log('Seeded Sample Beneficiary: Ramasamy Gounder (9876543210) with 5.0 acres land in 2 parcels');
-  } else if (beneficiaryUser && !existingBeneficiary.user_id) {
+    console.log(`Seeded Sample Beneficiary: Ramasamy Gounder (9876543210) in ${district.name} -> ${block.name} -> ${village.name}`);
+  } else if (existingBeneficiary && district && block && village) {
     await prisma.beneficiary.update({
       where: { beneficiary_id: existingBeneficiary.beneficiary_id },
-      data: { user_id: beneficiaryUser.user_id, email: 'beneficiary@water.gov' },
+      data: {
+        user_id: beneficiaryUser?.user_id,
+        district_id: district.district_id,
+        block_id: block.block_id,
+        village_id: village.village_id,
+      },
     });
   }
 
