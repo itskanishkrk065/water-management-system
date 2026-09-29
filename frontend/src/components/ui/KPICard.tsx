@@ -37,24 +37,24 @@ export function KPICard({
 
   return (
     <div
-      className={`bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between hover:border-slate-300 transition ${className}`}
+      className={`bg-white p-3.5 sm:p-4 rounded-xl border border-slate-200 shadow-xs flex flex-col justify-between hover:border-slate-300 transition ${className}`}
     >
       <div>
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">{title}</span>
-          <div className={`p-2.5 rounded-xl border ${iconStyle}`}>
-            <Icon className="w-5 h-5 stroke-[1.75]" />
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">{title}</span>
+          <div className={`p-1.5 rounded-lg border ${iconStyle}`}>
+            <Icon className="w-4 h-4 stroke-[2]" />
           </div>
         </div>
-        <div className="mt-3 text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight">
+        <div className="mt-1 text-xl sm:text-2xl font-bold text-slate-900 tracking-tight font-mono">
           {value}
         </div>
       </div>
 
       {(subtitle || contextBadge) && (
-        <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
-          {subtitle && <span>{subtitle}</span>}
-          {contextBadge && <div>{contextBadge}</div>}
+        <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500 gap-1">
+          {subtitle && <span className="truncate">{subtitle}</span>}
+          {contextBadge && <div className="shrink-0">{contextBadge}</div>}
         </div>
       )}
     </div>

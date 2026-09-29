@@ -4,8 +4,8 @@ import Navbar from '@/components/layout/Navbar';
 import Sidebar from '@/components/layout/Sidebar';
 
 export const metadata = {
-  title: 'Water Management System | Production V1',
-  description: 'Production-Grade Water Allocation, 5-Stage Installment Billing, and Infrastructure Management',
+  title: 'WaterGrid V1 | Water Management System',
+  description: 'Water Resource Allocation, 5-Stage Installment Billing, and Infrastructure Management',
 };
 
 export default function RootLayout({
@@ -14,14 +14,16 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
-      <body className="bg-slate-50 min-h-screen text-slate-900 flex flex-col">
+    <html lang="en" className="h-full">
+      <body className="bg-slate-50 h-full text-slate-900 flex flex-col overflow-hidden antialiased">
         <Providers>
           <Navbar />
-          <div className="flex flex-1">
+          <div className="flex flex-1 min-h-0 overflow-hidden">
             <Sidebar />
-            <main className="flex-1 p-6 md:p-8 max-w-7xl mx-auto w-full overflow-y-auto">
-              {children}
+            <main className="flex-1 min-h-0 overflow-y-auto p-5 md:p-6 w-full">
+              <div className="max-w-7xl mx-auto space-y-6">
+                {children}
+              </div>
             </main>
           </div>
         </Providers>

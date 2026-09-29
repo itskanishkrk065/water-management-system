@@ -99,24 +99,23 @@ export default function DevelopmentBillsPage() {
   ];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <PageHeader
         title="Development Cost Bills"
         description="Capital expenditure billing for approved water allotments divided into 5 installment stages"
-        badge="Financial Ledger"
         actions={
           <div className="flex items-center gap-2">
             <Link
               href="/billing/installments"
-              className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl border border-slate-300 transition flex items-center gap-1.5"
+              className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg border border-slate-300 transition flex items-center gap-1.5"
             >
-              <Layers className="w-3.5 h-3.5" /> 5-Stage Schedule
+              <Layers className="w-3.5 h-3.5" /> 5-Stage Installments
             </Link>
             <Link
               href="/reports/find"
-              className="px-3.5 py-2 bg-slate-800 hover:bg-slate-900 text-white text-xs font-semibold rounded-xl shadow-sm transition flex items-center gap-1.5"
+              className="px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white text-xs font-semibold rounded-lg shadow-xs transition flex items-center gap-1.5"
             >
-              <FileSpreadsheet className="w-3.5 h-3.5" /> Export Report
+              <FileSpreadsheet className="w-3.5 h-3.5" /> Reports
             </Link>
           </div>
         }

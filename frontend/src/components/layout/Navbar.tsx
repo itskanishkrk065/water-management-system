@@ -79,7 +79,7 @@ export default function Navbar() {
                   </span>
                 </div>
                 <div className="flex items-center gap-0.5 px-1.5 py-0.5 bg-white rounded border border-slate-300/80 text-[10px] font-mono text-slate-500 shadow-sm shrink-0 ml-2">
-                  <span className="text-[9px]">⌘</span>K
+                  <span>{typeof window !== 'undefined' && /Mac/.test(navigator.userAgent) ? '⌘K' : 'Ctrl+K'}</span>
                 </div>
               </button>
             </div>

@@ -36,7 +36,7 @@ export function PageHeader({
   }[badgeVariant];
 
   return (
-    <div className="space-y-3 mb-6">
+    <div className="space-y-1.5">
       {breadcrumbs && breadcrumbs.length > 0 && (
         <nav className="flex items-center gap-1.5 text-xs text-slate-400 font-medium">
           {breadcrumbs.map((crumb, idx) => (
@@ -54,13 +54,13 @@ export function PageHeader({
         </nav>
       )}
 
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-5 md:p-6 rounded-2xl border border-slate-200 shadow-sm">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2.5 flex-wrap">
-            <h1 className="text-2xl font-bold text-slate-900 tracking-tight">{title}</h1>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-1">
+        <div className="space-y-0.5">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h1 className="text-xl md:text-2xl font-bold text-slate-900 tracking-tight">{title}</h1>
             {badge && (
               typeof badge === 'string' ? (
-                <span className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-full border ${badgeStyles}`}>
+                <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${badgeStyles}`}>
                   {badge}
                 </span>
               ) : (
@@ -69,11 +69,11 @@ export function PageHeader({
             )}
           </div>
           {description && (
-            <p className="text-sm text-slate-500 max-w-3xl leading-relaxed">{description}</p>
+            <p className="text-xs text-slate-500 max-w-2xl leading-relaxed">{description}</p>
           )}
         </div>
 
-        {actions && <div className="flex items-center gap-2.5 shrink-0 flex-wrap">{actions}</div>}
+        {actions && <div className="flex items-center gap-2 shrink-0 flex-wrap">{actions}</div>}
       </div>
 
       {children}

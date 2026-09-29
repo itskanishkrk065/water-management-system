@@ -166,7 +166,7 @@ export default function Sidebar() {
             heading: 'MASTER DATA',
             items: [
               { label: 'Project Schemes', href: '/admin/project-schemes', icon: Briefcase },
-              { label: 'Rate Tariff (Versioned)', href: '/settings/rates', icon: Sliders },
+              { label: 'Rate Tariff', href: '/settings/rates', icon: Sliders },
               { label: 'Installment Templates', href: '/settings/installments', icon: Layers },
               { label: 'Locations Hierarchy', href: '/settings/locations', icon: MapPin },
             ],
@@ -177,14 +177,14 @@ export default function Sidebar() {
       heading: 'SYSTEM & AUDIT',
       items: [
         ...((isAdmin || isAccounts) ? [{ label: 'Data Integrity Audit', href: '/admin/integrity', icon: ShieldCheck }] : []),
-        { label: 'Audit Trail', href: '/audit', icon: History },
-        ...(isAdmin ? [{ label: 'Database & Backup', href: '/settings/backup', icon: Database }] : []),
+        { label: 'Audit History', href: '/audit', icon: History },
+        ...(isAdmin ? [{ label: 'Backup & Restore', href: '/settings/backup', icon: Database }] : []),
       ],
     },
   ];
 
   return (
-    <aside className="w-64 bg-[#0B132B] text-slate-300 min-h-[calc(100vh-4rem)] p-3.5 flex flex-col justify-between shrink-0 border-r border-slate-800">
+    <aside className="w-64 bg-[#0B132B] text-slate-300 h-full overflow-y-auto min-h-0 p-3.5 flex flex-col justify-between shrink-0 border-r border-slate-800">
       <div className="space-y-5">
         {navGroups.map((group, gIdx) => (
           <div key={gIdx} className="space-y-1">
@@ -201,9 +201,9 @@ export default function Sidebar() {
                 <Link
                   key={item.href}
                   href={item.href}
-                  className={`flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold transition ${
+                  className={`flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
                     isActive
-                      ? 'bg-sky-500/15 text-sky-400 border-l-2 border-sky-400 shadow-sm'
+                      ? 'bg-sky-500/15 text-sky-400 border-l-2 border-sky-400'
                       : 'text-slate-400 hover:bg-slate-800/60 hover:text-slate-200'
                   }`}
                 >
@@ -217,9 +217,8 @@ export default function Sidebar() {
       </div>
 
       {/* System Footer */}
-      <div className="pt-4 border-t border-slate-800/80 text-[11px] text-slate-500 px-3 space-y-1">
-        <div className="font-semibold text-slate-300">WaterGrid Enterprise V1</div>
-        <div className="text-[10px] text-slate-500">Offline Standalone Edition</div>
+      <div className="pt-4 border-t border-slate-800/80 text-[11px] text-slate-500 px-3 space-y-0.5">
+        <div className="font-semibold text-slate-300">WaterGrid Enterprise</div>
         <div className="text-[10px] text-emerald-400/90 font-mono">● Local Engine Online</div>
       </div>
     </aside>

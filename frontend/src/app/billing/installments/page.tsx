@@ -94,15 +94,14 @@ export default function InstallmentsPage() {
   ];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <PageHeader
-        title="5-Stage Installment Ledger"
+        title="5-Stage Installments"
         description="Tracking Stage 1 (2.5%) through Stage 5 (27.5%) across all approved development commitments"
-        badge="Installment Engine"
         actions={
           <Link
             href="/billing/development"
-            className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl border border-slate-300 transition flex items-center gap-1.5"
+            className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg border border-slate-300 transition flex items-center gap-1.5"
           >
             <Receipt className="w-3.5 h-3.5" /> Development Bills
           </Link>

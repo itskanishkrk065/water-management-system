@@ -167,15 +167,14 @@ export default function PaymentsMasterPage() {
   ];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <PageHeader
-        title="Payments &amp; Financial Ledger"
+        title="Payments Ledger"
         description="Immutable transaction journal; payment adjustments handled exclusively via auditable reversal vouchers"
-        badge="Official Treasury"
       />
 
       {/* Search Input Filter */}
-      <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-3">
+      <div className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-xs flex items-center gap-3">
         <Search className="w-4 h-4 text-slate-400 shrink-0" />
         <input
           type="text"
