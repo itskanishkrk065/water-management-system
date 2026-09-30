@@ -20,7 +20,7 @@ export default function RootLayout({
           <Navbar />
           <div className="flex flex-1 min-h-0 overflow-hidden">
             <Sidebar />
-            <main className="flex-1 min-h-0 overflow-y-auto p-5 md:p-6 w-full">
+            <main className="flex-1 min-h-0 overflow-y-auto p-5 md:p-6 w-full custom-scrollbar">
               <div className="max-w-7xl mx-auto space-y-6">
                 {children}
               </div>

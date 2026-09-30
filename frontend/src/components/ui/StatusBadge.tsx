@@ -8,7 +8,6 @@ import {
   XCircle,
   HelpCircle,
   PauseCircle,
-  Check,
 } from 'lucide-react';
 
 export type BadgeVariant =
@@ -52,7 +51,7 @@ export function StatusBadge({
 }: StatusBadgeProps) {
   const norm = (status || '').toUpperCase().trim();
 
-  let styles = 'bg-slate-100 text-slate-700 border-slate-200';
+  let styles = 'bg-slate-100 text-slate-700 border-slate-200/80';
   let Icon = HelpCircle;
 
   switch (norm) {
@@ -96,20 +95,20 @@ export function StatusBadge({
     case 'SUSPENDED':
     case 'DRAFT':
     case 'WAIVED':
-      styles = 'bg-slate-100 text-slate-600 border-slate-200';
+      styles = 'bg-slate-100 text-slate-600 border-slate-200/80';
       Icon = PauseCircle;
       break;
 
     default:
-      styles = 'bg-slate-100 text-slate-700 border-slate-200';
+      styles = 'bg-slate-100 text-slate-700 border-slate-200/80';
       Icon = HelpCircle;
       break;
   }
 
   const sizeStyles = {
-    sm: 'text-[10px] px-2 py-0.5 gap-1',
-    md: 'text-xs px-2.5 py-0.5 gap-1.5',
-    lg: 'text-sm px-3 py-1 gap-2',
+    sm: 'text-[10px] px-1.5 py-0.5 gap-1',
+    md: 'text-xs px-2 py-0.5 gap-1.5',
+    lg: 'text-sm px-2.5 py-1 gap-2',
   }[size];
 
   const iconSizes = {
@@ -122,7 +121,7 @@ export function StatusBadge({
 
   return (
     <span
-      className={`inline-flex items-center font-semibold rounded-full border tracking-wide uppercase ${styles} ${sizeStyles} ${className}`}
+      className={`inline-flex items-center font-medium rounded-md border tracking-wide uppercase font-mono ${styles} ${sizeStyles} ${className}`}
     >
       {showIcon && <Icon className={`${iconSizes} shrink-0`} />}
       <span>{displayLabel}</span>
