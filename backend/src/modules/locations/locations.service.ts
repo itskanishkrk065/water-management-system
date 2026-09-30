@@ -1,10 +1,14 @@
-import { Injectable, ConflictException, NotFoundException } from '@nestjs/common';
+import { Injectable, ConflictException, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   CreateDistrictDto,
   CreateBlockDto,
   CreateVillageDto,
   CreatePanchayatDto,
+  UpdateDistrictDto,
+  UpdateBlockDto,
+  UpdateVillageDto,
+  UpdatePanchayatDto,
   QueryVillagesDto,
   QueryBlocksDto,
   LocationSearchQueryDto,
@@ -22,6 +26,9 @@ export class LocationsService {
     const where: Prisma.DistrictWhereInput = {};
     if (query?.activeOnly !== undefined) {
       where.is_active = query.activeOnly;
+    } else {
+      // Default to active districts only for general queries
+      where.is_active = true;
     }
     if (query?.search) {
       where.name = { contains: query.search.trim() };
@@ -388,4 +395,214 @@ export class LocationsService {
       include: { district: true },
     });
   }
+
+  /**
+   * Update District
+   */
+  async updateDistrict(districtId: string, dto: UpdateDistrictDto) {
+    const existing = await this.prisma.district.findUnique({ where: { district_id: districtId } });
+    if (!existing) {
+      throw new NotFoundException(`District with ID ${districtId} not found`);
+    }
+
+    if (dto.lgdDistrictCode && dto.lgdDistrictCode !== existing.lgd_district_code) {
+      const codeCheck = await this.prisma.district.findUnique({ where: { lgd_district_code: dto.lgdDistrictCode } });
+      if (codeCheck) {
+        throw new ConflictException(`District with LGD Code ${dto.lgdDistrictCode} already exists (${codeCheck.name})`);
+      }
+    }
+
+    return this.prisma.district.update({
+      where: { district_id: districtId },
+      data: {
+        name: dto.name !== undefined ? dto.name.trim() : undefined,
+        lgd_district_code: dto.lgdDistrictCode !== undefined ? dto.lgdDistrictCode : undefined,
+        is_active: dto.isActive !== undefined ? dto.isActive : undefined,
+      },
+    });
+  }
+
+  /**
+   * Safe Delete or Deactivate District
+   */
+  async deleteDistrict(districtId: string) {
+    const district = await this.prisma.district.findUnique({
+      where: { district_id: districtId },
+      include: {
+        _count: {
+          select: { blocks: true, panchayats: true, beneficiaries: true },
+        },
+      },
+    });
+    if (!district) {
+      throw new NotFoundException(`District with ID ${districtId} not found`);
+    }
+
+    const { blocks, panchayats, beneficiaries } = district._count;
+    if (blocks > 0 || panchayats > 0 || beneficiaries > 0) {
+      throw new BadRequestException(
+        `Cannot delete district '${district.name}' because it is referenced by ${blocks} block(s), ${panchayats} panchayat(s), and ${beneficiaries} beneficiary record(s). Please deactivate the district instead to preserve historical integrity.`,
+      );
+    }
+
+    await this.prisma.district.delete({ where: { district_id: districtId } });
+    return { success: true, message: `District '${district.name}' was permanently deleted.` };
+  }
+
+  /**
+   * Update Block
+   */
+  async updateBlock(blockId: string, dto: UpdateBlockDto) {
+    const existing = await this.prisma.block.findUnique({ where: { block_id: blockId } });
+    if (!existing) {
+      throw new NotFoundException(`Block with ID ${blockId} not found`);
+    }
+
+    if (dto.lgdBlockCode && dto.lgdBlockCode !== existing.lgd_block_code) {
+      const codeCheck = await this.prisma.block.findUnique({ where: { lgd_block_code: dto.lgdBlockCode } });
+      if (codeCheck) {
+        throw new ConflictException(`Block with LGD Code ${dto.lgdBlockCode} already exists (${codeCheck.name})`);
+      }
+    }
+
+    return this.prisma.block.update({
+      where: { block_id: blockId },
+      data: {
+        name: dto.name !== undefined ? dto.name.trim() : undefined,
+        district_id: dto.districtId !== undefined ? dto.districtId : undefined,
+        lgd_block_code: dto.lgdBlockCode !== undefined ? dto.lgdBlockCode : undefined,
+        is_active: dto.isActive !== undefined ? dto.isActive : undefined,
+      },
+      include: { district: true },
+    });
+  }
+
+  /**
+   * Safe Delete Block
+   */
+  async deleteBlock(blockId: string) {
+    const block = await this.prisma.block.findUnique({
+      where: { block_id: blockId },
+      include: {
+        _count: {
+          select: { villages: true, beneficiaries: true },
+        },
+      },
+    });
+    if (!block) {
+      throw new NotFoundException(`Block with ID ${blockId} not found`);
+    }
+
+    const { villages, beneficiaries } = block._count;
+    if (villages > 0 || beneficiaries > 0) {
+      throw new BadRequestException(
+        `Cannot delete block '${block.name}' because it contains ${villages} village(s) and ${beneficiaries} beneficiary record(s). Please deactivate the block instead.`,
+      );
+    }
+
+    await this.prisma.block.delete({ where: { block_id: blockId } });
+    return { success: true, message: `Block '${block.name}' was permanently deleted.` };
+  }
+
+  /**
+   * Update Village
+   */
+  async updateVillage(villageId: string, dto: UpdateVillageDto) {
+    const existing = await this.prisma.village.findUnique({ where: { village_id: villageId } });
+    if (!existing) {
+      throw new NotFoundException(`Village with ID ${villageId} not found`);
+    }
+
+    if (dto.lgdVillageCode && dto.lgdVillageCode !== existing.lgd_village_code) {
+      const codeCheck = await this.prisma.village.findUnique({ where: { lgd_village_code: dto.lgdVillageCode } });
+      if (codeCheck) {
+        throw new ConflictException(`Village with LGD Code ${dto.lgdVillageCode} already exists (${codeCheck.name})`);
+      }
+    }
+
+    return this.prisma.village.update({
+      where: { village_id: villageId },
+      data: {
+        name: dto.name !== undefined ? dto.name.trim() : undefined,
+        block_id: dto.blockId !== undefined ? dto.blockId : undefined,
+        panchayat_id: dto.panchayatId !== undefined ? dto.panchayatId : undefined,
+        lgd_village_code: dto.lgdVillageCode !== undefined ? dto.lgdVillageCode : undefined,
+        is_active: dto.isActive !== undefined ? dto.isActive : undefined,
+      },
+      include: { block: { include: { district: true } } },
+    });
+  }
+
+  /**
+   * Safe Delete Village
+   */
+  async deleteVillage(villageId: string) {
+    const village = await this.prisma.village.findUnique({
+      where: { village_id: villageId },
+      include: {
+        _count: {
+          select: { beneficiaries: true },
+        },
+      },
+    });
+    if (!village) {
+      throw new NotFoundException(`Village with ID ${villageId} not found`);
+    }
+
+    if (village._count.beneficiaries > 0) {
+      throw new BadRequestException(
+        `Cannot delete village '${village.name}' because it is linked to ${village._count.beneficiaries} registered beneficiary record(s). Please deactivate the village instead.`,
+      );
+    }
+
+    await this.prisma.village.delete({ where: { village_id: villageId } });
+    return { success: true, message: `Village '${village.name}' was permanently deleted.` };
+  }
+
+  /**
+   * Update Panchayat
+   */
+  async updatePanchayat(panchayatId: string, dto: UpdatePanchayatDto) {
+    const existing = await this.prisma.panchayat.findUnique({ where: { panchayat_id: panchayatId } });
+    if (!existing) {
+      throw new NotFoundException(`Panchayat with ID ${panchayatId} not found`);
+    }
+
+    return this.prisma.panchayat.update({
+      where: { panchayat_id: panchayatId },
+      data: {
+        name: dto.name !== undefined ? dto.name.trim() : undefined,
+        district_id: dto.districtId !== undefined ? dto.districtId : undefined,
+      },
+      include: { district: true },
+    });
+  }
+
+  /**
+   * Safe Delete Panchayat
+   */
+  async deletePanchayat(panchayatId: string) {
+    const panchayat = await this.prisma.panchayat.findUnique({
+      where: { panchayat_id: panchayatId },
+      include: {
+        _count: {
+          select: { villages: true, beneficiaries: true },
+        },
+      },
+    });
+    if (!panchayat) {
+      throw new NotFoundException(`Panchayat with ID ${panchayatId} not found`);
+    }
+
+    const { villages, beneficiaries } = panchayat._count;
+    if (villages > 0 || beneficiaries > 0) {
+      throw new BadRequestException(
+        `Cannot delete panchayat '${panchayat.name}' because it is linked to ${villages} village(s) and ${beneficiaries} beneficiary record(s).`,
+      );
+    }
+
+    await this.prisma.panchayat.delete({ where: { panchayat_id: panchayatId } });
+    return { success: true, message: `Panchayat '${panchayat.name}' was permanently deleted.` };
+  }
 }
+

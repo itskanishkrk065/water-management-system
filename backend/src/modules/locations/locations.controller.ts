@@ -2,6 +2,8 @@ import {
   Controller,
   Get,
   Post,
+  Patch,
+  Delete,
   Body,
   Param,
   Query,
@@ -14,6 +16,10 @@ import {
   CreateBlockDto,
   CreateVillageDto,
   CreatePanchayatDto,
+  UpdateDistrictDto,
+  UpdateBlockDto,
+  UpdateVillageDto,
+  UpdatePanchayatDto,
   QueryVillagesDto,
   QueryBlocksDto,
   LocationSearchQueryDto,
@@ -66,6 +72,23 @@ export class LocationsController {
     return this.locationsService.createDistrict(dto);
   }
 
+  @Patch('districts/:districtId')
+  @Roles(RoleName.ADMIN)
+  @ApiOperation({ summary: 'Update district (Admin only)' })
+  async updateDistrict(
+    @Param('districtId') districtId: string,
+    @Body() dto: UpdateDistrictDto,
+  ) {
+    return this.locationsService.updateDistrict(districtId, dto);
+  }
+
+  @Delete('districts/:districtId')
+  @Roles(RoleName.ADMIN)
+  @ApiOperation({ summary: 'Safe delete unused district (Admin only)' })
+  async deleteDistrict(@Param('districtId') districtId: string) {
+    return this.locationsService.deleteDistrict(districtId);
+  }
+
   @Get('districts/:districtId/blocks')
   @ApiOperation({ summary: 'Get cascading blocks belonging to a specific district' })
   async getBlocksForDistrict(
@@ -94,6 +117,23 @@ export class LocationsController {
   @ApiOperation({ summary: 'Create block manually (Admin only)' })
   async createBlock(@Body() dto: CreateBlockDto) {
     return this.locationsService.createBlock(dto);
+  }
+
+  @Patch('blocks/:blockId')
+  @Roles(RoleName.ADMIN)
+  @ApiOperation({ summary: 'Update block (Admin only)' })
+  async updateBlock(
+    @Param('blockId') blockId: string,
+    @Body() dto: UpdateBlockDto,
+  ) {
+    return this.locationsService.updateBlock(blockId, dto);
+  }
+
+  @Delete('blocks/:blockId')
+  @Roles(RoleName.ADMIN)
+  @ApiOperation({ summary: 'Safe delete unused block (Admin only)' })
+  async deleteBlock(@Param('blockId') blockId: string) {
+    return this.locationsService.deleteBlock(blockId);
   }
 
   @Get('blocks/:blockId/villages')
@@ -126,6 +166,23 @@ export class LocationsController {
     return this.locationsService.createVillage(dto);
   }
 
+  @Patch('villages/:villageId')
+  @Roles(RoleName.ADMIN)
+  @ApiOperation({ summary: 'Update village (Admin only)' })
+  async updateVillage(
+    @Param('villageId') villageId: string,
+    @Body() dto: UpdateVillageDto,
+  ) {
+    return this.locationsService.updateVillage(villageId, dto);
+  }
+
+  @Delete('villages/:villageId')
+  @Roles(RoleName.ADMIN)
+  @ApiOperation({ summary: 'Safe delete unused village (Admin only)' })
+  async deleteVillage(@Param('villageId') villageId: string) {
+    return this.locationsService.deleteVillage(villageId);
+  }
+
   // --- LEGACY PANCHAYAT ROUTES ---
 
   @Get('panchayats')
@@ -140,4 +197,22 @@ export class LocationsController {
   async createPanchayat(@Body() dto: CreatePanchayatDto) {
     return this.locationsService.createPanchayat(dto);
   }
+
+  @Patch('panchayats/:panchayatId')
+  @Roles(RoleName.ADMIN)
+  @ApiOperation({ summary: 'Update legacy panchayat (Admin only)' })
+  async updatePanchayat(
+    @Param('panchayatId') panchayatId: string,
+    @Body() dto: UpdatePanchayatDto,
+  ) {
+    return this.locationsService.updatePanchayat(panchayatId, dto);
+  }
+
+  @Delete('panchayats/:panchayatId')
+  @Roles(RoleName.ADMIN)
+  @ApiOperation({ summary: 'Safe delete unused legacy panchayat (Admin only)' })
+  async deletePanchayat(@Param('panchayatId') panchayatId: string) {
+    return this.locationsService.deletePanchayat(panchayatId);
+  }
 }
+

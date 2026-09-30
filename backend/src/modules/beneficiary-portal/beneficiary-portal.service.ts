@@ -413,7 +413,23 @@ export class BeneficiaryPortalService {
       }
     }
 
-    // Strict parcel checksum validation
+    // Strict parcel duplicate check & checksum validation
+    const seenParcels = new Set<string>();
+    for (const p of dto.parcels) {
+      const sNum = (p.surveyNumber || '').trim().toUpperCase();
+      const subNum = (p.subdivisionNumber || '').trim().toUpperCase();
+      if (!sNum) {
+        throw new BadRequestException('Survey number (SF) is required for all parcels.');
+      }
+      const key = `${sNum}#${subNum}`;
+      if (seenParcels.has(key)) {
+        throw new BadRequestException(
+          `Duplicate parcel detected: Survey ${p.surveyNumber.trim()} / Subdivision ${(p.subdivisionNumber || '').trim()} is specified more than once in this land holding.`,
+        );
+      }
+      seenParcels.add(key);
+    }
+
     const declared = d(dto.declaredTotalArea);
     let sumParcels = new Decimal(0);
 

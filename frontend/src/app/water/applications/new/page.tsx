@@ -2,13 +2,14 @@
 
 import React, { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api';
 import { formatAcres, formatLitres, formatCurrency } from '@/lib/utils';
-import { Search, Droplet, AlertCircle, ArrowRight, Loader2 } from 'lucide-react';
+import { Search, Droplet, AlertCircle, ArrowRight, Loader2, CheckCircle2 } from 'lucide-react';
 
 function NewWaterApplicationContent() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const searchParams = useSearchParams();
   const prefillBeneficiaryId = searchParams.get('beneficiaryId') || '';
 
@@ -42,21 +43,37 @@ function NewWaterApplicationContent() {
       apiClient.get(`/beneficiaries/${prefillBeneficiaryId}`).then((res) => {
         setBeneficiary(res.data);
         setPhoneSearch(res.data.phone_number);
-        const activeHoldings = res.data.landHoldings?.filter((l: any) => l.status === 'ACTIVE') || [];
-        const available = activeHoldings.find((l: any) => {
-          return !res.data.waterApplications?.some(
-            (a: any) => a.land_id === l.land_id && !['REJECTED', 'CANCELLED', 'VOIDED'].includes(a.status)
-          );
-        });
-        if (available) {
-          setSelectedLandId(available.land_id);
-          if (available.project_id) setSelectedProjectId(available.project_id);
-        } else if (activeHoldings[0]) {
-          setSelectedLandId(activeHoldings[0].land_id);
-        }
       });
     }
   }, [prefillBeneficiaryId]);
+
+  // Fetch Eligible Holdings for Beneficiary
+  const { data: eligibleData, isLoading: eligibleLoading } = useQuery({
+    queryKey: ['eligible-holdings', beneficiary?.beneficiary_id],
+    queryFn: async () => {
+      if (!beneficiary?.beneficiary_id) return null;
+      const res = await apiClient.get(`/water/eligible-holdings/${beneficiary.beneficiary_id}`);
+      return res.data;
+    },
+    enabled: !!beneficiary?.beneficiary_id,
+  });
+
+  const eligibleHoldings = eligibleData?.eligible_holdings || [];
+
+  // Auto-select first eligible holding when loaded
+  useEffect(() => {
+    if (eligibleHoldings.length > 0) {
+      const currentStillEligible = eligibleHoldings.find((h: any) => h.land_id === selectedLandId);
+      if (!currentStillEligible) {
+        setSelectedLandId(eligibleHoldings[0].land_id);
+        if (eligibleHoldings[0].project_id) {
+          setSelectedProjectId(eligibleHoldings[0].project_id);
+        }
+      }
+    } else {
+      setSelectedLandId('');
+    }
+  }, [eligibleHoldings, selectedLandId]);
 
   // Preview Allotment Query
   const { data: preview } = useQuery({
@@ -72,7 +89,7 @@ function NewWaterApplicationContent() {
       });
       return res.data;
     },
-    enabled: !!beneficiary?.beneficiary_id && !!selectedProjectId,
+    enabled: !!beneficiary?.beneficiary_id && !!selectedProjectId && !!selectedLandId,
   });
 
   const handlePhoneSearch = async (e: React.FormEvent) => {
@@ -85,18 +102,6 @@ function NewWaterApplicationContent() {
       });
       if (res.data.found) {
         setBeneficiary(res.data.beneficiary);
-        const activeHoldings = res.data.beneficiary.landHoldings?.filter((l: any) => l.status === 'ACTIVE') || [];
-        const available = activeHoldings.find((l: any) => {
-          return !res.data.beneficiary.waterApplications?.some(
-            (a: any) => a.land_id === l.land_id && !['REJECTED', 'CANCELLED', 'VOIDED'].includes(a.status)
-          );
-        });
-        if (available) {
-          setSelectedLandId(available.land_id);
-          if (available.project_id) setSelectedProjectId(available.project_id);
-        } else if (activeHoldings[0]) {
-          setSelectedLandId(activeHoldings[0].land_id);
-        }
       } else {
         setError('Beneficiary phone not found in registry. Please onboard the beneficiary first.');
         setBeneficiary(null);
@@ -132,6 +137,17 @@ function NewWaterApplicationContent() {
         requiredLitres: litres,
         remarks: remarks || undefined,
       });
+
+      // Synchronize all query keys
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['water-applications'] }),
+        queryClient.invalidateQueries({ queryKey: ['water-approvals-queue'] }),
+        queryClient.invalidateQueries({ queryKey: ['eligible-holdings', beneficiary.beneficiary_id] }),
+        queryClient.invalidateQueries({ queryKey: ['beneficiary-water', beneficiary.beneficiary_id] }),
+        queryClient.invalidateQueries({ queryKey: ['beneficiary-land', beneficiary.beneficiary_id] }),
+        queryClient.invalidateQueries({ queryKey: ['admin-beneficiary-overview', beneficiary.beneficiary_id] }),
+        queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] }),
+      ]);
 
       router.push(`/water/applications`);
     } catch (err: any) {
@@ -204,72 +220,87 @@ function NewWaterApplicationContent() {
           {/* Land Holding Selector */}
           <div className="space-y-2">
             <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
-              Select Land Holding * (One Water Application per Holding)
+              Select Eligible Land Holding * (One Water Application per Holding)
             </label>
-            <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-              {beneficiary.landHoldings?.map((lh: any, idx: number) => {
-                const existingActiveApp = beneficiary.waterApplications?.find(
-                  (a: any) => a.land_id === lh.land_id && !['REJECTED', 'CANCELLED', 'VOIDED'].includes(a.status),
-                );
-                const isSelected = selectedLandId === lh.land_id;
-                const isDisabled = !!existingActiveApp || lh.status !== 'ACTIVE';
 
-                return (
-                  <div
-                    key={lh.land_id}
-                    onClick={() => {
-                      if (!isDisabled) {
+            {eligibleLoading ? (
+              <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-500 flex items-center space-x-2">
+                <Loader2 className="w-4 h-4 animate-spin text-sky-600" />
+                <span>Checking land holding eligibility...</span>
+              </div>
+            ) : eligibleHoldings.length === 0 ? (
+              <div className="p-5 bg-amber-50/80 border border-amber-200 rounded-xl space-y-2">
+                <div className="flex items-center space-x-2 text-amber-900 font-bold text-xs">
+                  <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                  <span>No land holdings are currently eligible for a new water application.</span>
+                </div>
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  Existing approved or active water allocations must be completed, cancelled, or otherwise become eligible before a new application can be created.
+                </p>
+                {eligibleData?.ineligible_holdings && eligibleData.ineligible_holdings.length > 0 && (
+                  <div className="pt-2 border-t border-amber-200/60 space-y-1">
+                    <span className="text-[11px] font-bold text-slate-700">Holdings with Active Allotments / Applications:</span>
+                    {eligibleData.ineligible_holdings.map((ih: any) => (
+                      <div key={ih.land_id} className="text-[11px] text-slate-600 flex items-center justify-between bg-white/70 px-2.5 py-1 rounded border border-amber-100">
+                        <span>Holding #{ih.holding_index} ({formatAcres(ih.declared_total_area)})</span>
+                        <span className="font-bold text-amber-800 bg-amber-100 px-2 py-0.5 rounded text-[10px]">
+                          Status: {ih.blocking_status}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                {eligibleHoldings.map((lh: any) => {
+                  const isSelected = selectedLandId === lh.land_id;
+
+                  return (
+                    <div
+                      key={lh.land_id}
+                      onClick={() => {
                         setSelectedLandId(lh.land_id);
                         if (lh.project_id) setSelectedProjectId(lh.project_id);
-                      }
-                    }}
-                    className={`p-3 rounded-xl border text-xs transition cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-2 ${
-                      isDisabled
-                        ? 'bg-slate-50 border-slate-200 opacity-60 cursor-not-allowed'
-                        : isSelected
-                        ? 'bg-sky-50 border-sky-500 ring-2 ring-sky-500/20 shadow-sm'
-                        : 'bg-white border-slate-200 hover:border-slate-300'
-                    }`}
-                  >
-                    <div className="flex items-start space-x-2.5">
-                      <input
-                        type="radio"
-                        name="selectedHolding"
-                        checked={isSelected}
-                        disabled={isDisabled}
-                        onChange={() => {
-                          if (!isDisabled) {
+                      }}
+                      className={`p-3 rounded-xl border text-xs transition cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-2 ${
+                        isSelected
+                          ? 'bg-sky-50 border-sky-500 ring-2 ring-sky-500/20 shadow-sm'
+                          : 'bg-white border-slate-200 hover:border-slate-300'
+                      }`}
+                    >
+                      <div className="flex items-start space-x-2.5">
+                        <input
+                          type="radio"
+                          name="selectedHolding"
+                          checked={isSelected}
+                          onChange={() => {
                             setSelectedLandId(lh.land_id);
                             if (lh.project_id) setSelectedProjectId(lh.project_id);
-                          }
-                        }}
-                        className="mt-0.5 text-sky-600 focus:ring-sky-500"
-                      />
-                      <div>
-                        <div className="font-bold text-slate-900">
-                          Holding #{idx + 1} ({formatAcres(lh.declared_total_area)})
-                        </div>
-                        <div className="text-[11px] text-slate-500 font-mono">
-                          Parcels: {lh.parcels?.map((p: any) => `SF ${p.survey_number}/${p.subdivision_number}`).join(', ') || 'No parcels'}
+                          }}
+                          className="mt-0.5 text-sky-600 focus:ring-sky-500"
+                        />
+                        <div>
+                          <div className="font-bold text-slate-900">
+                            Holding #{lh.holding_index} ({formatAcres(lh.declared_total_area)}) • {lh.project_name || 'Kongu Basin Scheme'}
+                          </div>
+                          <div className="text-[11px] text-slate-500 font-mono">
+                            Parcels: {lh.parcels?.map((p: any) => `SF ${p.survey_number}/${p.subdivision_number}`).join(', ') || 'No parcels recorded'}
+                          </div>
                         </div>
                       </div>
-                    </div>
 
-                    <div>
-                      {existingActiveApp ? (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300">
-                          App #{existingActiveApp.application_id.slice(0, 8)} ({existingActiveApp.status})
-                        </span>
-                      ) : (
+                      <div>
                         <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                          <CheckCircle2 className="w-3 h-3 mr-1" />
                           Eligible
                         </span>
-                      )}
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           <div>

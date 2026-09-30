@@ -46,9 +46,18 @@ export default function WaterApprovalsPage() {
       });
       return res.data;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['water-approvals-queue'] });
+      queryClient.invalidateQueries({ queryKey: ['water-applications'] });
+      queryClient.invalidateQueries({ queryKey: ['eligible-holdings'] });
+      queryClient.invalidateQueries({ queryKey: ['beneficiary-water'] });
+      queryClient.invalidateQueries({ queryKey: ['beneficiary-land'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-beneficiary-overview'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-beneficiaries'] });
+      queryClient.invalidateQueries({ queryKey: ['beneficiaries'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
+      queryClient.invalidateQueries({ queryKey: ['previewAllotment'] });
       setSelectedApp(null);
       setApprovedLitres('');
       setApprovalRemarks('');
@@ -70,6 +79,14 @@ export default function WaterApprovalsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['water-approvals-queue'] });
+      queryClient.invalidateQueries({ queryKey: ['water-applications'] });
+      queryClient.invalidateQueries({ queryKey: ['eligible-holdings'] });
+      queryClient.invalidateQueries({ queryKey: ['beneficiary-water'] });
+      queryClient.invalidateQueries({ queryKey: ['beneficiary-land'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-beneficiary-overview'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-beneficiaries'] });
+      queryClient.invalidateQueries({ queryKey: ['beneficiaries'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
       setShowRejectModal(false);
       setSelectedApp(null);
       setRejectionRemarks('');

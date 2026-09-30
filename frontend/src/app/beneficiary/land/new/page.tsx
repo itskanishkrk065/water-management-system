@@ -112,6 +112,19 @@ export default function NewLandHoldingPage() {
       }
     }
 
+    // Check duplicate survey + subdivision within this holding
+    const seen = new Set<string>();
+    for (const p of parcels) {
+      const key = `${p.surveyNumber.trim().toUpperCase()}#${(p.subdivisionNumber || '').trim().toUpperCase()}`;
+      if (seen.has(key)) {
+        setErrorMsg(
+          `Duplicate parcel detected: Survey ${p.surveyNumber.trim()} / Subdivision ${(p.subdivisionNumber || '').trim()} is specified more than once in this holding.`,
+        );
+        return;
+      }
+      seen.add(key);
+    }
+
     if (!projectId) {
       setErrorMsg('Project Scheme is required.');
       return;
@@ -237,67 +250,87 @@ export default function NewLandHoldingPage() {
               <div className="col-span-1 text-center">Action</div>
             </div>
 
-            {parcels.map((row, idx) => (
-              <div
-                key={idx}
-                className="grid grid-cols-1 sm:grid-cols-12 gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200 items-center"
-              >
-                <div className="sm:col-span-4">
-                  <label className="sm:hidden text-xs font-semibold text-slate-500 block mb-1">
-                    Survey Number (SF)
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={row.surveyNumber}
-                    onChange={(e) => handleParcelChange(idx, 'surveyNumber', e.target.value)}
-                    placeholder="e.g. 104/1A"
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white font-mono focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition"
-                  />
-                </div>
-
-                <div className="sm:col-span-4">
-                  <label className="sm:hidden text-xs font-semibold text-slate-500 block mb-1">
-                    Subdivision
-                  </label>
-                  <input
-                    type="text"
-                    value={row.subdivisionNumber}
-                    onChange={(e) => handleParcelChange(idx, 'subdivisionNumber', e.target.value)}
-                    placeholder="e.g. 1B"
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white font-mono focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition"
-                  />
-                </div>
-
-                <div className="sm:col-span-3">
-                  <label className="sm:hidden text-xs font-semibold text-slate-500 block mb-1">
-                    Area (Acres)
-                  </label>
-                  <input
-                    type="number"
-                    step="0.0001"
-                    min="0.0001"
-                    required
-                    value={row.areaAcres}
-                    onChange={(e) => handleParcelChange(idx, 'areaAcres', e.target.value)}
-                    placeholder="e.g. 1.7500"
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white font-mono font-bold text-slate-900 focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition"
-                  />
-                </div>
-
-                <div className="sm:col-span-1 flex justify-center">
-                  <button
-                    type="button"
-                    disabled={parcels.length <= 1}
-                    onClick={() => handleRemoveParcel(idx)}
-                    className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition disabled:opacity-30"
-                    title="Remove row"
+            {parcels.map((row, idx) => {
+              const sNorm = (row.surveyNumber || '').trim().toUpperCase();
+              const subNorm = (row.subdivisionNumber || '').trim().toUpperCase();
+              const isDup =
+                sNorm &&
+                parcels.some(
+                  (other, oIdx) =>
+                    oIdx !== idx &&
+                    (other.surveyNumber || '').trim().toUpperCase() === sNorm &&
+                    (other.subdivisionNumber || '').trim().toUpperCase() === subNorm,
+                );
+              return (
+                <div key={idx} className="space-y-1">
+                  <div
+                    className={`grid grid-cols-1 sm:grid-cols-12 gap-3 p-3 bg-slate-50 rounded-xl border ${
+                      isDup ? 'border-rose-400 bg-rose-50/40' : 'border-slate-200'
+                    } items-center`}
                   >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                    <div className="sm:col-span-4">
+                      <label className="sm:hidden text-xs font-semibold text-slate-500 block mb-1">
+                        Survey Number (SF)
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={row.surveyNumber}
+                        onChange={(e) => handleParcelChange(idx, 'surveyNumber', e.target.value)}
+                        placeholder="e.g. 104/1A"
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white font-mono focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition"
+                      />
+                    </div>
+
+                    <div className="sm:col-span-4">
+                      <label className="sm:hidden text-xs font-semibold text-slate-500 block mb-1">
+                        Subdivision
+                      </label>
+                      <input
+                        type="text"
+                        value={row.subdivisionNumber}
+                        onChange={(e) => handleParcelChange(idx, 'subdivisionNumber', e.target.value)}
+                        placeholder="e.g. 1B"
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white font-mono focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition"
+                      />
+                    </div>
+
+                    <div className="sm:col-span-3">
+                      <label className="sm:hidden text-xs font-semibold text-slate-500 block mb-1">
+                        Area (Acres)
+                      </label>
+                      <input
+                        type="number"
+                        step="0.0001"
+                        min="0.0001"
+                        required
+                        value={row.areaAcres}
+                        onChange={(e) => handleParcelChange(idx, 'areaAcres', e.target.value)}
+                        placeholder="e.g. 1.7500"
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white font-mono font-bold text-slate-900 focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition"
+                      />
+                    </div>
+
+                    <div className="sm:col-span-1 flex justify-center">
+                      <button
+                        type="button"
+                        disabled={parcels.length <= 1}
+                        onClick={() => handleRemoveParcel(idx)}
+                        className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition disabled:opacity-30"
+                        title="Remove row"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                  {isDup && (
+                    <p className="text-[11px] text-rose-600 font-semibold px-2">
+                      &bull; Duplicate parcel: Survey {row.surveyNumber.trim()} / Subdivision {(row.subdivisionNumber || '').trim()} is already entered for this holding.
+                    </p>
+                  )}
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           {/* Real-time Live Checksum Box */}

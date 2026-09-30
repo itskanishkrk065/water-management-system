@@ -146,3 +146,88 @@ export class LocationSearchQueryDto {
   @Min(1)
   limit?: number = 10;
 }
+
+export class UpdateDistrictDto {
+  @ApiPropertyOptional({ example: 'Coimbatore' })
+  @IsOptional()
+  @IsString()
+  name?: string;
+
+  @ApiPropertyOptional({ example: 523 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  lgdDistrictCode?: number;
+
+  @ApiPropertyOptional({ example: true })
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
+}
+
+export class UpdateBlockDto {
+  @ApiPropertyOptional({ example: 'Pollachi North' })
+  @IsOptional()
+  @IsString()
+  name?: string;
+
+  @ApiPropertyOptional({ example: 'UUID of district' })
+  @IsOptional()
+  @IsUUID()
+  districtId?: string;
+
+  @ApiPropertyOptional({ example: 6482 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  lgdBlockCode?: number;
+
+  @ApiPropertyOptional({ example: true })
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
+}
+
+export class UpdateVillageDto {
+  @ApiPropertyOptional({ example: 'Angambakkam' })
+  @IsOptional()
+  @IsString()
+  name?: string;
+
+  @ApiPropertyOptional({ example: 'UUID of block' })
+  @IsOptional()
+  @IsUUID()
+  blockId?: string;
+
+  @ApiPropertyOptional({ example: 'UUID of legacy panchayat' })
+  @IsOptional()
+  @IsUUID()
+  panchayatId?: string;
+
+  @ApiPropertyOptional({ example: 223994 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  lgdVillageCode?: number;
+
+  @ApiPropertyOptional({ example: true })
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
+}
+
+export class UpdatePanchayatDto {
+  @ApiPropertyOptional({ example: 'Pollachi North' })
+  @IsOptional()
+  @IsString()
+  name?: string;
+
+  @ApiPropertyOptional({ example: 'UUID of district' })
+  @IsOptional()
+  @IsUUID()
+  districtId?: string;
+}
+

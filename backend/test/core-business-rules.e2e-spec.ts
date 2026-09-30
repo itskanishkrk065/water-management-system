@@ -21,6 +21,7 @@ describe('Core Business Rules & Integrity Test Suite (Tests 1-12)', () => {
   let blockId: string;
   let villageId: string;
   let projectId: string;
+  const uid = Math.floor(1000 + Math.random() * 9000);
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -97,7 +98,7 @@ describe('Core Business Rules & Integrity Test Suite (Tests 1-12)', () => {
           beneficiaryId: ben1Id,
           projectId,
           declaredTotalArea: 5.0,
-          parcels: [{ surveyNumber: '101', subdivisionNumber: '1A', area: 5.0 }],
+          parcels: [{ surveyNumber: `S${uid}-101`, subdivisionNumber: '1A', area: 5.0 }],
         })
         .expect(201);
       holding1Id = landRes.body.land_id;
@@ -193,7 +194,7 @@ describe('Core Business Rules & Integrity Test Suite (Tests 1-12)', () => {
           beneficiaryId: ben2Id,
           projectId,
           declaredTotalArea: 5.0,
-          parcels: [{ surveyNumber: '201', subdivisionNumber: 'A', area: 5.0 }],
+          parcels: [{ surveyNumber: `S${uid}-201`, subdivisionNumber: 'A', area: 5.0 }],
         })
         .expect(201);
       const holdingAId = landARes.body.land_id;
@@ -206,7 +207,7 @@ describe('Core Business Rules & Integrity Test Suite (Tests 1-12)', () => {
           beneficiaryId: ben2Id,
           projectId,
           declaredTotalArea: 3.0,
-          parcels: [{ surveyNumber: '202', subdivisionNumber: 'B', area: 3.0 }],
+          parcels: [{ surveyNumber: `S${uid}-202`, subdivisionNumber: 'B', area: 3.0 }],
         })
         .expect(201);
       const holdingBId = landBRes.body.land_id;
@@ -272,7 +273,7 @@ describe('Core Business Rules & Integrity Test Suite (Tests 1-12)', () => {
           beneficiaryId: benRateId,
           projectId,
           declaredTotalArea: 5.0,
-          parcels: [{ surveyNumber: '301', subdivisionNumber: 'A', area: 5.0 }],
+          parcels: [{ surveyNumber: `S${uid}-301`, subdivisionNumber: 'A', area: 5.0 }],
         })
         .expect(201);
       holdingRateId = landRes.body.land_id;
@@ -402,7 +403,7 @@ describe('Core Business Rules & Integrity Test Suite (Tests 1-12)', () => {
           beneficiaryId: benFinId,
           projectId,
           declaredTotalArea: 5.0,
-          parcels: [{ surveyNumber: '401', subdivisionNumber: 'A', area: 5.0 }],
+          parcels: [{ surveyNumber: `S${uid}-401`, subdivisionNumber: 'A', area: 5.0 }],
         })
         .expect(201);
 

@@ -1,4 +1,15 @@
-import { IsEnum, IsNotEmpty, IsOptional, IsString, IsUUID } from 'class-validator';
+import {
+  IsArray,
+  IsEnum,
+  IsNotEmpty,
+  IsNumber,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Min,
+  ValidateNested,
+} from 'class-validator';
+import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { BeneficiaryStatus, LocationDirection } from '@prisma/client';
 
@@ -74,7 +85,90 @@ export class CreateBeneficiaryDto {
   status?: BeneficiaryStatus;
 }
 
+export class OnboardingParcelDto {
+  @ApiProperty({ example: '101' })
+  @IsString()
+  @IsNotEmpty()
+  surveyNumber: string;
+
+  @ApiProperty({ example: '1A' })
+  @IsString()
+  @IsNotEmpty()
+  subdivisionNumber: string;
+
+  @ApiProperty({ example: 2.5000, description: 'Parcel area in acres' })
+  @IsNumber()
+  @Min(0.0001)
+  @IsNotEmpty()
+  area: number;
+
+  @ApiPropertyOptional({ example: 'ACRES', default: 'ACRES' })
+  @IsOptional()
+  @IsString()
+  areaUnit?: string;
+}
+
+export class OnboardingHoldingDto {
+  @ApiProperty({ example: 'UUID of Project Scheme' })
+  @IsUUID()
+  @IsNotEmpty()
+  projectId: string;
+
+  @ApiProperty({ example: 5.0000, description: 'Total declared area for this holding in acres' })
+  @IsNumber()
+  @Min(0.0001)
+  @IsNotEmpty()
+  declaredTotalArea: number;
+
+  @ApiPropertyOptional({ example: 'ACRES', default: 'ACRES' })
+  @IsOptional()
+  @IsString()
+  areaUnit?: string;
+
+  @ApiPropertyOptional({ type: [OnboardingParcelDto] })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => OnboardingParcelDto)
+  parcels?: OnboardingParcelDto[];
+}
+
+export class OnboardingWaterAppDto {
+  @ApiProperty({ example: 0, description: 'Zero-based index of holding in the holdings array' })
+  @IsNumber()
+  @IsNotEmpty()
+  holdingIndex: number;
+
+  @ApiProperty({ example: 10000, description: 'Required water volume in litres' })
+  @IsNumber()
+  @Min(1)
+  @IsNotEmpty()
+  requiredLitres: number;
+
+  @ApiPropertyOptional({ example: 'Initial crop requirement application' })
+  @IsOptional()
+  @IsString()
+  remarks?: string;
+}
+
+export class CompleteOnboardingDto extends CreateBeneficiaryDto {
+  @ApiPropertyOptional({ type: [OnboardingHoldingDto] })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => OnboardingHoldingDto)
+  holdings?: OnboardingHoldingDto[];
+
+  @ApiPropertyOptional({ type: [OnboardingWaterAppDto] })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => OnboardingWaterAppDto)
+  waterApplications?: OnboardingWaterAppDto[];
+}
+
 export class UpdateBeneficiaryDto {
+
   @ApiPropertyOptional({ example: 'K. Ramasamy Gounder' })
   @IsOptional()
   @IsString()

@@ -1,7 +1,7 @@
-import { Controller, Get, Post, Patch, Param, Body, UseGuards, Ip } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Param, Body, UseGuards, Ip, HttpCode, HttpStatus } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { LandService } from './land.service';
-import { CreateLandHoldingDto } from './dto/land.dto';
+import { CreateLandHoldingDto, UpdateLandHoldingDto, CheckParcelAvailabilityDto } from './dto/land.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -14,6 +14,13 @@ import { RoleName } from '@prisma/client';
 @Controller('land')
 export class LandController {
   constructor(private readonly landService: LandService) {}
+
+  @Post('parcels/check-availability')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Real-time check for survey and subdivision number availability' })
+  async checkParcelAvailability(@Body() dto: CheckParcelAvailabilityDto) {
+    return this.landService.checkParcelAvailability(dto);
+  }
 
   @Post('holdings')
   @Roles(RoleName.ADMIN, RoleName.FIELD_OFFICER)
@@ -38,6 +45,18 @@ export class LandController {
     return this.landService.getTotalBeneficiaryLand(beneficiaryId);
   }
 
+  @Patch('holdings/:id')
+  @Roles(RoleName.ADMIN, RoleName.FIELD_OFFICER)
+  @ApiOperation({ summary: 'Update a land holding and its subdivision parcels' })
+  async updateHolding(
+    @Param('id') id: string,
+    @Body() dto: UpdateLandHoldingDto,
+    @CurrentUser() user: RequestUser,
+    @Ip() ip: string,
+  ) {
+    return this.landService.updateHoldingWithParcels(id, dto, user.user_id, ip);
+  }
+
   @Patch('holdings/:id/deactivate')
   @Roles(RoleName.ADMIN)
   @ApiOperation({ summary: 'Deactivate a land holding (Admin only)' })
@@ -48,4 +67,17 @@ export class LandController {
   ) {
     return this.landService.deactivateHolding(id, user.user_id, ip);
   }
+
+  @Delete('holdings/:id')
+  @Roles(RoleName.ADMIN)
+  @ApiOperation({ summary: 'Permanently delete unused land holding (Admin only)' })
+  async deleteHolding(
+    @Param('id') id: string,
+    @CurrentUser() user: RequestUser,
+    @Ip() ip: string,
+  ) {
+    return this.landService.deleteHolding(id, user.user_id, ip);
+  }
 }
+
+

@@ -44,7 +44,10 @@ import {
   ExternalLink,
   Lock,
   Unlock,
+  Info,
   Sparkles,
+  RefreshCw,
+  Loader2,
 } from 'lucide-react';
 
 function AdminBeneficiaryDetailContent() {
@@ -66,6 +69,7 @@ function AdminBeneficiaryDetailContent() {
   const [showReactivateModal, setShowReactivateModal] = useState(false);
   const [showArchiveModal, setShowArchiveModal] = useState(false);
   const [showAddLandModal, setShowAddLandModal] = useState(false);
+  const [showEditLandModal, setShowEditLandModal] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showReversePaymentModal, setShowReversePaymentModal] = useState(false);
   const [showAccountModal, setShowAccountModal] = useState(false);
@@ -100,6 +104,16 @@ function AdminBeneficiaryDetailContent() {
   ]);
   const [landFormError, setLandFormError] = useState<string | null>(null);
 
+  // Edit Land Form State
+  const [editingLandId, setEditingLandId] = useState('');
+  const [editLandProjectId, setEditLandProjectId] = useState('');
+  const [editLandDeclaredArea, setEditLandDeclaredArea] = useState('');
+  const [editLandParcels, setEditLandParcels] = useState<
+    Array<{ surveyNumber: string; subdivisionNumber: string; area: string }>
+  >([{ surveyNumber: '', subdivisionNumber: '', area: '' }]);
+  const [editLandError, setEditLandError] = useState<string | null>(null);
+  const [isSubmittingEditLand, setIsSubmittingEditLand] = useState(false);
+
   // Record Payment Form State
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentMode, setPaymentMode] = useState('UPI');
@@ -116,7 +130,68 @@ function AdminBeneficiaryDetailContent() {
   const [waterAppError, setWaterAppError] = useState<string | null>(null);
   const [isSubmittingWaterApp, setIsSubmittingWaterApp] = useState(false);
 
-  // 1. Lightweight Beneficiary Overview Query (Initial fast load)
+  // Real-time Modal Parcel Availability Cache
+  const [modalParcelAvailability, setModalParcelAvailability] = useState<{
+    [key: string]: { checking: boolean; available?: boolean; message?: string; owner?: string };
+  }>({});
+  const modalAvailabilityTimers = React.useRef<{ [key: string]: NodeJS.Timeout }>({});
+
+  const checkModalParcelAvailability = (key: string, survey: string, sub: string, currentParcelId?: string) => {
+    const sTrim = survey.trim();
+    const subTrim = sub.trim();
+    if (!sTrim || !subTrim) {
+      setModalParcelAvailability((prev) => {
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
+      return;
+    }
+
+    if (modalAvailabilityTimers.current[key]) {
+      clearTimeout(modalAvailabilityTimers.current[key]);
+    }
+
+    setModalParcelAvailability((prev) => ({
+      ...prev,
+      [key]: { checking: true },
+    }));
+
+    modalAvailabilityTimers.current[key] = setTimeout(async () => {
+      try {
+        const res = await apiClient.post('/land/parcels/check-availability', {
+          surveyNumber: sTrim,
+          subdivisionNumber: subTrim,
+          currentParcelId: currentParcelId || undefined,
+        });
+        setModalParcelAvailability((prev) => ({
+          ...prev,
+          [key]: {
+            checking: false,
+            available: res.data.available,
+            message: res.data.message,
+            owner: res.data.existingOwner,
+          },
+        }));
+      } catch {
+        setModalParcelAvailability((prev) => ({
+          ...prev,
+          [key]: { checking: false, available: false, message: 'Failed to verify parcel' },
+        }));
+      }
+    }, 300);
+  };
+
+  // Safe Deletion Modals State
+  const [holdingToDelete, setHoldingToDelete] = useState<any | null>(null);
+  const [deleteHoldingError, setDeleteHoldingError] = useState<string | null>(null);
+  const [isDeletingHolding, setIsDeletingHolding] = useState(false);
+
+  const [appToDelete, setAppToDelete] = useState<any | null>(null);
+  const [deleteAppError, setDeleteAppError] = useState<string | null>(null);
+  const [isDeletingApp, setIsDeletingApp] = useState(false);
+
+  // 1. Lightweight Beneficiary Overview Query (Always fresh server state)
   const { data: b, isLoading, refetch } = useQuery({
     queryKey: ['admin-beneficiary-overview', id],
     queryFn: async () => {
@@ -129,10 +204,9 @@ function AdminBeneficiaryDetailContent() {
       }
     },
     enabled: !!id,
-    staleTime: 30 * 1000,
   });
 
-  // 2. Lazy Tab Queries (Loaded on-demand upon tab click & cached)
+  // 2. Tab Queries (Synchronized dynamically without stale cache lock)
   const { data: landData, isLoading: isLandLoading } = useQuery({
     queryKey: ['beneficiary-land', id],
     queryFn: async () => {
@@ -140,7 +214,6 @@ function AdminBeneficiaryDetailContent() {
       return res.data;
     },
     enabled: !!id && (activeTab === 'land' || showAddWaterAppModal),
-    staleTime: 60 * 1000,
   });
 
   const { data: waterData, isLoading: isWaterLoading } = useQuery({
@@ -150,8 +223,21 @@ function AdminBeneficiaryDetailContent() {
       return res.data;
     },
     enabled: !!id && activeTab === 'water',
-    staleTime: 60 * 1000,
   });
+
+  // Canonical Eligible Holdings Query for Water Quota Application
+  const { data: eligibleHoldingsData, isLoading: isEligibleHoldingsLoading } = useQuery({
+    queryKey: ['eligible-holdings', id],
+    queryFn: async () => {
+      const res = await apiClient.get(`/water/eligible-holdings/${id}`);
+      return res.data;
+    },
+    enabled: !!id,
+  });
+
+  const eligibleHoldings: any[] = Array.isArray(eligibleHoldingsData)
+    ? eligibleHoldingsData
+    : (eligibleHoldingsData?.eligible_holdings || []);
 
   const { data: billingData, isLoading: isBillingLoading } = useQuery({
     queryKey: ['beneficiary-billing', id],
@@ -160,7 +246,6 @@ function AdminBeneficiaryDetailContent() {
       return res.data;
     },
     enabled: !!id && activeTab === 'billing',
-    staleTime: 60 * 1000,
   });
 
   const { data: paymentsData, isLoading: isPaymentsLoading } = useQuery({
@@ -170,7 +255,6 @@ function AdminBeneficiaryDetailContent() {
       return res.data;
     },
     enabled: !!id && (activeTab === 'billing' || activeTab === 'payments'),
-    staleTime: 60 * 1000,
   });
 
   const { data: infraData, isLoading: isInfraLoading } = useQuery({
@@ -180,7 +264,6 @@ function AdminBeneficiaryDetailContent() {
       return res.data;
     },
     enabled: !!id && activeTab === 'infrastructure',
-    staleTime: 60 * 1000,
   });
 
   const { data: extensionsData, isLoading: isExtensionsLoading } = useQuery({
@@ -190,7 +273,6 @@ function AdminBeneficiaryDetailContent() {
       return res.data;
     },
     enabled: !!id && activeTab === 'extensions',
-    staleTime: 60 * 1000,
   });
 
   const { data: documentsData, isLoading: isDocumentsLoading } = useQuery({
@@ -200,7 +282,6 @@ function AdminBeneficiaryDetailContent() {
       return res.data;
     },
     enabled: !!id && activeTab === 'documents',
-    staleTime: 60 * 1000,
   });
 
   // 3. History Query (Lazy)
@@ -211,7 +292,6 @@ function AdminBeneficiaryDetailContent() {
       return res.data;
     },
     enabled: !!id && activeTab === 'history',
-    staleTime: 60 * 1000,
   });
 
   // Active Obligations Query
@@ -319,7 +399,8 @@ function AdminBeneficiaryDetailContent() {
       return res.data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin-beneficiary-detail', id] });
+      queryClient.invalidateQueries({ queryKey: ['admin-beneficiary-overview', id] });
+      queryClient.invalidateQueries({ queryKey: ['admin-beneficiaries'] });
       setShowEditModal(false);
       setActionReason('');
     },
@@ -335,7 +416,8 @@ function AdminBeneficiaryDetailContent() {
       return res.data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin-beneficiary-detail', id] });
+      queryClient.invalidateQueries({ queryKey: ['admin-beneficiary-overview', id] });
+      queryClient.invalidateQueries({ queryKey: ['admin-beneficiaries'] });
       setShowDeactivateModal(false);
       setActionReason('');
     },
@@ -351,7 +433,8 @@ function AdminBeneficiaryDetailContent() {
       return res.data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin-beneficiary-detail', id] });
+      queryClient.invalidateQueries({ queryKey: ['admin-beneficiary-overview', id] });
+      queryClient.invalidateQueries({ queryKey: ['admin-beneficiaries'] });
       setShowReactivateModal(false);
       setActionReason('');
     },
@@ -367,7 +450,8 @@ function AdminBeneficiaryDetailContent() {
       return res.data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin-beneficiary-detail', id] });
+      queryClient.invalidateQueries({ queryKey: ['admin-beneficiary-overview', id] });
+      queryClient.invalidateQueries({ queryKey: ['admin-beneficiaries'] });
       setShowArchiveModal(false);
       setActionReason('');
     },
@@ -383,7 +467,7 @@ function AdminBeneficiaryDetailContent() {
       return res.data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin-beneficiary-detail', id] });
+      queryClient.invalidateQueries({ queryKey: ['admin-beneficiary-overview', id] });
       setShowAccountModal(false);
       setActionReason('');
     },
@@ -437,6 +521,18 @@ function AdminBeneficiaryDetailContent() {
       }
     }
 
+    const seenParcels = new Set<string>();
+    for (const p of parsedParcels) {
+      const key = `${p.surveyNumber.toUpperCase()}#${p.subdivisionNumber.toUpperCase()}`;
+      if (seenParcels.has(key)) {
+        setLandFormError(
+          `Duplicate parcel detected: Survey ${p.surveyNumber} / Subdivision ${p.subdivisionNumber} is specified more than once for this land holding.`,
+        );
+        return;
+      }
+      seenParcels.add(key);
+    }
+
     const sumParcels = parsedParcels.reduce((sum, p) => sum + p.area, 0);
     if (Math.abs(sumParcels - declared) > 0.001) {
       setLandFormError(
@@ -451,12 +547,166 @@ function AdminBeneficiaryDetailContent() {
         declaredTotalArea: declared,
         parcels: parsedParcels,
       });
-      queryClient.invalidateQueries({ queryKey: ['admin-beneficiary-detail', id] });
+      queryClient.invalidateQueries({ queryKey: ['admin-beneficiary-overview', id] });
+      queryClient.invalidateQueries({ queryKey: ['beneficiary-land', id] });
+      queryClient.invalidateQueries({ queryKey: ['beneficiary-water', id] });
+      queryClient.invalidateQueries({ queryKey: ['eligible-holdings', id] });
+      queryClient.invalidateQueries({ queryKey: ['admin-beneficiaries'] });
+      queryClient.invalidateQueries({ queryKey: ['beneficiaries'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
       setShowAddLandModal(false);
       setDeclaredTotalArea('');
       setParcels([{ surveyNumber: '', subdivisionNumber: '', area: '' }]);
     } catch (err: any) {
       setLandFormError(err.response?.data?.message || 'Error adding land holding');
+    }
+  };
+
+  // Open Edit Land Modal Helper
+  const openEditLandModal = (lh: any) => {
+    setEditingLandId(lh.land_id || lh.holding_id);
+    setEditLandProjectId(lh.project_id || lh.project?.project_id || '');
+    setEditLandDeclaredArea(String(lh.declared_total_area || ''));
+    if (lh.parcels && lh.parcels.length > 0) {
+      setEditLandParcels(
+        lh.parcels.map((p: any) => ({
+          surveyNumber: p.survey_number || '',
+          subdivisionNumber: p.subdivision_number || '',
+          area: String(p.area || ''),
+        })),
+      );
+    } else {
+      setEditLandParcels([{ surveyNumber: '', subdivisionNumber: '', area: '' }]);
+    }
+    setEditLandError(null);
+    setShowEditLandModal(true);
+  };
+
+  // Edit Land Submit Handler
+  const handleEditLandSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setEditLandError(null);
+
+    const declared = parseFloat(editLandDeclaredArea);
+    if (isNaN(declared) || declared <= 0) {
+      setEditLandError('Please enter a valid declared total area');
+      return;
+    }
+
+    const filteredParcels = editLandParcels.filter(
+      (p) => p.surveyNumber.trim() || p.subdivisionNumber.trim() || p.area.trim(),
+    );
+
+    let parsedParcels: any[] = [];
+    if (filteredParcels.length > 0) {
+      parsedParcels = filteredParcels.map((p) => ({
+        surveyNumber: p.surveyNumber.trim(),
+        subdivisionNumber: p.subdivisionNumber.trim(),
+        area: parseFloat(p.area) || 0,
+      }));
+
+      for (const p of parsedParcels) {
+        if (!p.surveyNumber || !p.subdivisionNumber || p.area <= 0) {
+          setEditLandError('All survey parcels must have survey number, subdivision, and positive area');
+          return;
+        }
+      }
+
+      const seen = new Set<string>();
+      for (const p of parsedParcels) {
+        const key = `${p.surveyNumber.toUpperCase()}#${p.subdivisionNumber.toUpperCase()}`;
+        if (seen.has(key)) {
+          setEditLandError(`Duplicate parcel detected in form: Survey ${p.surveyNumber} / Subdivision ${p.subdivisionNumber}`);
+          return;
+        }
+        seen.add(key);
+      }
+
+      const sum = parsedParcels.reduce((acc, p) => acc + p.area, 0);
+      if (Math.abs(sum - declared) > 0.001) {
+        setEditLandError(
+          `Sum of parcels (${sum.toFixed(2)} ac) does not match declared total area (${declared.toFixed(2)} ac)`,
+        );
+        return;
+      }
+    }
+
+    setIsSubmittingEditLand(true);
+    try {
+      await apiClient.patch(`/land/holdings/${editingLandId}`, {
+        projectId: editLandProjectId || undefined,
+        declaredTotalArea: declared,
+        parcels: parsedParcels,
+      });
+
+      queryClient.invalidateQueries({ queryKey: ['admin-beneficiary-overview', id] });
+      queryClient.invalidateQueries({ queryKey: ['beneficiary-land', id] });
+      queryClient.invalidateQueries({ queryKey: ['beneficiary-water', id] });
+      queryClient.invalidateQueries({ queryKey: ['eligible-holdings', id] });
+      queryClient.invalidateQueries({ queryKey: ['admin-beneficiaries'] });
+      queryClient.invalidateQueries({ queryKey: ['beneficiaries'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
+      setShowEditLandModal(false);
+    } catch (err: any) {
+      setEditLandError(err.response?.data?.message || 'Failed to update land holding');
+    } finally {
+      setIsSubmittingEditLand(false);
+    }
+  };
+
+  // Safe Land Holding Deletion Handler
+  const handleDeleteHolding = async () => {
+    if (!holdingToDelete) return;
+    setIsDeletingHolding(true);
+    setDeleteHoldingError(null);
+    try {
+      const landId = holdingToDelete.land_id || holdingToDelete.holding_id;
+      await apiClient.delete(`/land/holdings/${landId}`);
+      queryClient.invalidateQueries({ queryKey: ['admin-beneficiary-overview', id] });
+      queryClient.invalidateQueries({ queryKey: ['beneficiary-land', id] });
+      queryClient.invalidateQueries({ queryKey: ['beneficiary-water', id] });
+      queryClient.invalidateQueries({ queryKey: ['eligible-holdings', id] });
+      queryClient.invalidateQueries({ queryKey: ['admin-beneficiaries'] });
+      queryClient.invalidateQueries({ queryKey: ['beneficiaries'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
+      setHoldingToDelete(null);
+    } catch (err: any) {
+      setDeleteHoldingError(err.response?.data?.message || 'Cannot delete land holding because it is referenced by existing records.');
+    } finally {
+      setIsDeletingHolding(false);
+    }
+  };
+
+  // Safe Water Application Deletion / Cancellation Handler
+  const handleDeleteWaterApp = async () => {
+    if (!appToDelete) return;
+    setIsDeletingApp(true);
+    setDeleteAppError(null);
+    try {
+      const appId = appToDelete.application_id || appToDelete.id;
+      if (appToDelete.status === 'DRAFT') {
+        await apiClient.delete(`/water/applications/${appId}`);
+      } else {
+        await apiClient.post(`/water/applications/${appId}/cancel`, {
+          reason: 'Administrative cancellation via Beneficiary Dossier',
+        });
+      }
+      queryClient.invalidateQueries({ queryKey: ['admin-beneficiary-overview', id] });
+      queryClient.invalidateQueries({ queryKey: ['beneficiary-water', id] });
+      queryClient.invalidateQueries({ queryKey: ['beneficiary-land', id] });
+      queryClient.invalidateQueries({ queryKey: ['eligible-holdings', id] });
+      queryClient.invalidateQueries({ queryKey: ['water-applications'] });
+      queryClient.invalidateQueries({ queryKey: ['water-approvals-queue'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
+      setAppToDelete(null);
+    } catch (err: any) {
+      setDeleteAppError(err.response?.data?.message || 'Cannot delete water application because it has dependent historical or financial records.');
+    } finally {
+      setIsDeletingApp(false);
     }
   };
 
@@ -484,7 +734,10 @@ function AdminBeneficiaryDetailContent() {
         referenceNumber: paymentRef.trim() || undefined,
         notes: paymentNotes.trim() || undefined,
       });
-      queryClient.invalidateQueries({ queryKey: ['admin-beneficiary-detail', id] });
+      queryClient.invalidateQueries({ queryKey: ['admin-beneficiary-overview', id] });
+      queryClient.invalidateQueries({ queryKey: ['beneficiary-billing', id] });
+      queryClient.invalidateQueries({ queryKey: ['beneficiary-payments', id] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
       setShowPaymentModal(false);
       setPaymentAmount('');
       setPaymentRef('');
@@ -500,22 +753,18 @@ function AdminBeneficiaryDetailContent() {
     setWaterAppRemarks('');
     setWaterAppRequiredLitres('');
 
-    // Determine eligible holdings (active holdings without active application)
-    const activeHoldings = b?.landHoldings?.filter((l: any) => l.status === 'ACTIVE') || [];
-    const availableHoldings = activeHoldings.filter((l: any) => {
-      const hasActiveApp = b?.waterApplications?.some(
-        (app: any) => app.land_id === l.land_id && !['REJECTED', 'CANCELLED', 'VOIDED'].includes(app.status),
-      );
-      return !hasActiveApp;
-    });
+    // Determine eligible holdings from canonical query or fallback
+    const available = Array.isArray(eligibleHoldings) && eligibleHoldings.length > 0
+      ? eligibleHoldings
+      : (Array.isArray(landHoldings) && landHoldings.length > 0 ? landHoldings : (landData?.holdings || []));
 
-    const targetLandId = preselectedLandId || (availableHoldings.length > 0 ? availableHoldings[0].land_id : (activeHoldings[0]?.land_id || ''));
+    const targetLandId = preselectedLandId || (available.length > 0 ? (available[0].land_id || available[0].holding_id) : '');
     setWaterAppLandId(targetLandId);
 
-    const targetHolding = activeHoldings.find((l: any) => l.land_id === targetLandId);
+    const targetHolding = available.find((l: any) => (l.land_id || l.holding_id) === targetLandId);
     if (targetHolding?.project_id) {
       setWaterAppProjectId(targetHolding.project_id);
-    } else if (projects?.length > 0 && !waterAppProjectId) {
+    } else if (projects?.length > 0) {
       setWaterAppProjectId(projects[0].project_id);
     }
 
@@ -528,18 +777,7 @@ function AdminBeneficiaryDetailContent() {
     setWaterAppError(null);
 
     if (!waterAppLandId) {
-      setWaterAppError('Please select a valid land holding for this water application.');
-      return;
-    }
-
-    // Check if selected holding already has an active water application
-    const existingActiveApp = b?.waterApplications?.find(
-      (app: any) => app.land_id === waterAppLandId && !['REJECTED', 'CANCELLED', 'VOIDED'].includes(app.status),
-    );
-    if (existingActiveApp) {
-      setWaterAppError(
-        `Land Holding #${waterAppLandId.slice(0, 8)} already has an active water application (#${existingActiveApp.application_id.slice(0, 8)} - ${existingActiveApp.status}). Duplicate applications per land holding are prohibited.`,
-      );
+      setWaterAppError('Please select a valid eligible land holding for this water application.');
       return;
     }
 
@@ -564,9 +802,15 @@ function AdminBeneficiaryDetailContent() {
         remarks: waterAppRemarks.trim() || undefined,
       });
 
-      queryClient.invalidateQueries({ queryKey: ['admin-beneficiary-detail', id] });
+      queryClient.invalidateQueries({ queryKey: ['admin-beneficiary-overview', id] });
+      queryClient.invalidateQueries({ queryKey: ['beneficiary-water', id] });
+      queryClient.invalidateQueries({ queryKey: ['beneficiary-land', id] });
+      queryClient.invalidateQueries({ queryKey: ['eligible-holdings', id] });
       queryClient.invalidateQueries({ queryKey: ['water-applications'] });
+      queryClient.invalidateQueries({ queryKey: ['water-approvals-queue'] });
       queryClient.invalidateQueries({ queryKey: ['beneficiary-history', id] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
       setShowAddWaterAppModal(false);
       setWaterAppRequiredLitres('');
       setWaterAppRemarks('');
@@ -578,6 +822,7 @@ function AdminBeneficiaryDetailContent() {
       setIsSubmittingWaterApp(false);
     }
   };
+
 
   const copyToClipboard = (text: string, copyKey: string) => {
     navigator.clipboard.writeText(text);
@@ -1013,18 +1258,19 @@ function AdminBeneficiaryDetailContent() {
           </div>
 
           <div className="space-y-4">
-            {b.landHoldings?.length > 0 ? (
-              b.landHoldings.map((lh: any, idx: number) => {
-                const totalParcelsArea = lh.parcels?.reduce(
-                  (acc: number, curr: any) => acc + parseFloat(curr.area || '0'),
-                  0,
-                ) || 0;
-                const isChecksumValid =
-                  Math.abs(totalParcelsArea - parseFloat(lh.declared_total_area)) < 0.001;
+            {landHoldings?.length > 0 ? (
+              landHoldings.map((lh: any, idx: number) => {
+                const hasParcels = lh.parcels && lh.parcels.length > 0;
+                const totalParcelsArea = hasParcels
+                  ? lh.parcels.reduce((acc: number, curr: any) => acc + (parseFloat(curr.area) || 0), 0)
+                  : 0;
+                const declaredAreaNum = parseFloat(lh.declared_total_area) || 0;
+                const isAreaMatch = hasParcels && Math.abs(totalParcelsArea - declaredAreaNum) < 0.0001;
+                const diffArea = totalParcelsArea - declaredAreaNum;
 
                 return (
                   <div
-                    key={lh.holding_id}
+                    key={lh.land_id || lh.holding_id || idx}
                     className="bg-white rounded-2xl border border-slate-200 p-6 space-y-4 shadow-sm"
                   >
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-100 gap-2">
@@ -1048,18 +1294,46 @@ function AdminBeneficiaryDetailContent() {
                       </div>
 
                       <div className="flex items-center space-x-2">
-                        {isChecksumValid ? (
+                        {!hasParcels ? (
+                          <span className="inline-flex items-center px-2.5 py-1 bg-slate-100 text-slate-700 border border-slate-200 text-xs font-semibold rounded-lg" title="No subdivision parcels recorded yet for this land holding">
+                            <Info className="w-3.5 h-3.5 mr-1 text-slate-500" /> Parcels Not Recorded
+                          </span>
+                        ) : isAreaMatch ? (
                           <span className="inline-flex items-center px-2.5 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-semibold rounded-lg">
-                            <CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Area Balanced
+                            <CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Area Verified
                           </span>
                         ) : (
-                          <span className="inline-flex items-center px-2.5 py-1 bg-amber-50 text-amber-800 border border-amber-300 text-xs font-semibold rounded-lg">
-                            <AlertTriangle className="w-3.5 h-3.5 mr-1" /> Area Mismatch
+                          <span className="inline-flex items-center px-2.5 py-1 bg-rose-50 text-rose-700 border border-rose-200 text-xs font-semibold rounded-lg" title={`Sum of parcels (${totalParcelsArea.toFixed(2)} ac) differs from declared area (${declaredAreaNum.toFixed(2)} ac)`}>
+                            <AlertTriangle className="w-3.5 h-3.5 mr-1 text-rose-500" /> Area Mismatch ({diffArea > 0 ? `+${diffArea.toFixed(2)}` : diffArea.toFixed(2)} ac)
                           </span>
                         )}
                         <span className={`px-2 py-0.5 text-xs font-bold rounded-lg border ${getStatusBadgeClass(lh.status)}`}>
                           {lh.status}
                         </span>
+                        {(isAdmin || user?.role === 'FIELD_OFFICER') && (
+                          <div className="flex items-center space-x-1 ml-1">
+                            <button
+                              onClick={() => openEditLandModal(lh)}
+                              className="inline-flex items-center px-2.5 py-1 bg-slate-100 hover:bg-sky-50 hover:text-sky-700 hover:border-sky-300 text-slate-700 border border-slate-200 rounded-lg text-xs font-semibold transition shadow-sm"
+                              title="Edit declared area, scheme, or parcels"
+                            >
+                              <Edit className="w-3 h-3 mr-1" />
+                              Edit
+                            </button>
+                            {isAdmin && (
+                              <button
+                                onClick={() => {
+                                  setHoldingToDelete(lh);
+                                  setDeleteHoldingError(null);
+                                }}
+                                className="inline-flex items-center px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-xs font-semibold transition shadow-sm"
+                                title="Delete or Archive Land Holding"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -1068,35 +1342,42 @@ function AdminBeneficiaryDetailContent() {
                       <div className="text-xs font-bold text-slate-700 uppercase tracking-wider">
                         Survey & Subdivision Parcels ({lh.parcels?.length || 0})
                       </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-                        {lh.parcels?.map((p: any) => (
-                          <div
-                            key={p.parcel_id}
-                            className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between text-xs"
-                          >
-                            <div>
-                              <div className="font-mono font-bold text-slate-800">
-                                SF {p.survey_number}/{p.subdivision_number}
+                      {hasParcels ? (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                          {lh.parcels?.map((p: any) => (
+                            <div
+                              key={p.parcel_id || `${p.survey_number}-${p.subdivision_number}`}
+                              className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between text-xs"
+                            >
+                              <div>
+                                <div className="font-mono font-bold text-slate-800">
+                                  SF {p.survey_number}/{p.subdivision_number}
+                                </div>
+                                <div className="text-[11px] text-slate-500 mt-0.5">
+                                  Verified Boundary
+                                </div>
                               </div>
-                              <div className="text-[11px] text-slate-500 mt-0.5">
-                                Verified Boundary
+                              <div className="text-right">
+                                <div className="font-bold text-emerald-700 text-sm">
+                                  {formatAcres(p.area)}
+                                </div>
+                                <div className="text-[10px] text-slate-400">{p.status || 'ACTIVE'}</div>
                               </div>
                             </div>
-                            <div className="text-right">
-                              <div className="font-bold text-emerald-700 text-sm">
-                                {formatAcres(p.area)}
-                              </div>
-                              <div className="text-[10px] text-slate-400">{p.status}</div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="p-4 bg-slate-50 border border-dashed border-slate-200 rounded-xl text-center text-xs text-slate-500 flex items-center justify-center space-x-2">
+                          <Info className="w-4 h-4 text-slate-400" />
+                          <span>No SF/subdivision parcels recorded for this land holding. Click "Edit" above to record survey parcels.</span>
+                        </div>
+                      )}
                     </div>
 
                     {/* Water Application Status for this Land Holding */}
                     {(() => {
-                      const holdingApp = b.waterApplications?.find(
-                        (a: any) => a.land_id === lh.land_id && !['REJECTED', 'CANCELLED', 'VOIDED'].includes(a.status),
+                      const holdingApp = waterApplications?.find(
+                        (a: any) => a.land_id === (lh.land_id || lh.holding_id) && !['REJECTED', 'CANCELLED', 'VOIDED'].includes(a.status),
                       );
                       if (holdingApp) {
                         return (
@@ -1126,7 +1407,7 @@ function AdminBeneficiaryDetailContent() {
                             </div>
                             {(isAdmin || user?.role === 'FIELD_OFFICER') && (
                               <button
-                                onClick={() => openAddWaterAppModal(lh.land_id)}
+                                onClick={() => openAddWaterAppModal(lh.land_id || lh.holding_id)}
                                 className="px-3 py-1 bg-sky-600 hover:bg-sky-700 text-white rounded-lg font-bold text-[11px] transition shrink-0 ml-2"
                               >
                                 + Apply for Water Quota
@@ -1139,7 +1420,7 @@ function AdminBeneficiaryDetailContent() {
                     })()}
 
                     {/* Historical Protection Notice */}
-                    {b.waterAllotments?.length > 0 && (
+                    {waterAllotments?.length > 0 && (
                       <div className="p-3 bg-sky-50 border border-sky-200 rounded-xl text-sky-800 text-xs flex items-center space-x-2">
                         <Lock className="w-4 h-4 text-sky-600 shrink-0" />
                         <span>
@@ -1158,6 +1439,7 @@ function AdminBeneficiaryDetailContent() {
               </div>
             )}
           </div>
+
         </div>
       )}
 
@@ -1185,8 +1467,8 @@ function AdminBeneficiaryDetailContent() {
           </div>
 
           <div className="space-y-4">
-            {b.waterApplications?.length > 0 ? (
-              b.waterApplications.map((app: any) => (
+            {waterApplications?.length > 0 ? (
+              waterApplications.map((app: any) => (
                 <div
                   key={app.application_id}
                   className="bg-white rounded-2xl border border-slate-200 p-6 space-y-4 shadow-sm"
@@ -1210,9 +1492,23 @@ function AdminBeneficiaryDetailContent() {
                         Submitted: {formatDate(app.created_at)} {app.created_by ? `• By ${app.created_by}` : ''}
                       </div>
                     </div>
-                    <span className={`px-2.5 py-1 text-xs font-bold rounded-full border ${getStatusBadgeClass(app.status)}`}>
-                      {app.status}
-                    </span>
+                    <div className="flex items-center space-x-2">
+                      <span className={`px-2.5 py-1 text-xs font-bold rounded-full border ${getStatusBadgeClass(app.status)}`}>
+                        {app.status}
+                      </span>
+                      {isAdmin && (
+                        <button
+                          onClick={() => {
+                            setAppToDelete(app);
+                            setDeleteAppError(null);
+                          }}
+                          className="inline-flex items-center px-2 py-1 bg-slate-100 hover:bg-rose-50 hover:text-rose-700 text-slate-600 border border-slate-200 rounded-lg text-xs font-semibold transition"
+                          title={app.status === 'DRAFT' ? 'Delete Draft Application' : 'Cancel Application'}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
@@ -1286,8 +1582,8 @@ function AdminBeneficiaryDetailContent() {
           </div>
 
           <div className="space-y-4">
-            {b.developmentBills?.length > 0 ? (
-              b.developmentBills.map((bill: any) => (
+            {developmentBills?.length > 0 ? (
+              developmentBills.map((bill: any) => (
                 <div
                   key={bill.bill_id}
                   className="bg-white rounded-2xl border border-slate-200 p-6 space-y-4 shadow-sm"
@@ -1357,7 +1653,7 @@ function AdminBeneficiaryDetailContent() {
           </div>
 
           {/* 5-Installment Schedule */}
-          {b.developmentBills?.[0]?.installments?.length > 0 && (
+          {(developmentBills?.[0]?.installments?.length > 0 || b.developmentBills?.[0]?.installments?.length > 0) && (
             <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
               <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 font-bold text-xs text-slate-800 uppercase tracking-wider">
                 5-Stage Milestone Schedule
@@ -1376,7 +1672,7 @@ function AdminBeneficiaryDetailContent() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {b.developmentBills[0].installments.map((inst: any) => {
+                    {(developmentBills[0] || b.developmentBills[0]).installments.map((inst: any) => {
                       const getMilestoneLabel = (num: number) => {
                         switch (num) {
                           case 1:
@@ -1460,8 +1756,8 @@ function AdminBeneficiaryDetailContent() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {b.payments?.length > 0 ? (
-                    b.payments.map((p: any) => (
+                  {paymentsList?.length > 0 ? (
+                    paymentsList.map((p: any) => (
                       <tr key={p.payment_id} className="hover:bg-slate-50">
                         <td className="px-4 py-3.5 font-mono font-bold text-sky-700">
                           {p.receipt_number || p.payment_id.slice(0, 8)}
@@ -1512,8 +1808,8 @@ function AdminBeneficiaryDetailContent() {
           </div>
 
           <div className="space-y-4">
-            {b.infrastructures?.length > 0 ? (
-              b.infrastructures.map((infra: any) => (
+            {infrastructuresList?.length > 0 ? (
+              infrastructuresList.map((infra: any) => (
                 <div
                   key={infra.infrastructure_id}
                   className="bg-white rounded-2xl border border-slate-200 p-6 space-y-4 shadow-sm"
@@ -1578,8 +1874,8 @@ function AdminBeneficiaryDetailContent() {
           </div>
 
           <div className="space-y-4">
-            {b.extensions?.length > 0 ? (
-              b.extensions.map((ext: any) => (
+            {extensionsList?.length > 0 ? (
+              extensionsList.map((ext: any) => (
                 <div
                   key={ext.extension_id}
                   className="bg-white rounded-2xl border border-slate-200 p-6 space-y-4 shadow-sm"
@@ -1630,6 +1926,7 @@ function AdminBeneficiaryDetailContent() {
           </div>
         </div>
       )}
+
 
       {/* ──────────────────────────────────────────────────────────── */}
       {/* TAB 8: DOCUMENTS */}
@@ -2135,67 +2432,124 @@ function AdminBeneficiaryDetailContent() {
                   </button>
                 </div>
 
-                {parcels.map((p, idx) => (
-                  <div
-                    key={idx}
-                    className="grid grid-cols-1 sm:grid-cols-12 gap-2 p-3 bg-slate-50 rounded-xl border border-slate-200 items-center"
-                  >
-                    <div className="sm:col-span-4">
-                      <input
-                        type="text"
-                        required
-                        placeholder="Survey No (e.g. 101)"
-                        value={p.surveyNumber}
-                        onChange={(e) => {
-                          const updated = [...parcels];
-                          updated[idx].surveyNumber = e.target.value;
-                          setParcels(updated);
-                        }}
-                        className="w-full p-2 bg-white border border-slate-200 rounded-lg text-xs"
-                      />
+                {parcels.map((p, idx) => {
+                  const sNorm = p.surveyNumber.trim().toUpperCase();
+                  const subNorm = p.subdivisionNumber.trim().toUpperCase();
+                  const isComplete = !!(sNorm && subNorm);
+
+                  const isDup =
+                    isComplete &&
+                    parcels.some(
+                      (other, oIdx) =>
+                        oIdx !== idx &&
+                        other.surveyNumber.trim().toUpperCase() === sNorm &&
+                        other.subdivisionNumber.trim().toUpperCase() === subNorm,
+                    );
+
+                  const pKey = `add_${idx}`;
+                  const avail = modalParcelAvailability[pKey];
+
+                  const isInvalid = isDup || (avail && avail.available === false);
+                  const isValid = !isDup && avail && avail.available === true && isComplete;
+
+                  return (
+                    <div key={idx} className="space-y-1">
+                      <div
+                        className={`grid grid-cols-1 sm:grid-cols-12 gap-2 p-3 bg-slate-50 rounded-xl border ${
+                          isInvalid
+                            ? 'border-rose-400 bg-rose-50/40'
+                            : isValid
+                            ? 'border-emerald-400 bg-emerald-50/20'
+                            : 'border-slate-200'
+                        } items-center`}
+                      >
+                        <div className="sm:col-span-4">
+                          <input
+                            type="text"
+                            required
+                            placeholder="Survey No (e.g. 101)"
+                            value={p.surveyNumber}
+                            onChange={(e) => {
+                              const updated = [...parcels];
+                              updated[idx].surveyNumber = e.target.value;
+                              setParcels(updated);
+                              checkModalParcelAvailability(pKey, e.target.value, p.subdivisionNumber);
+                            }}
+                            className="w-full p-2 bg-white border border-slate-200 rounded-lg text-xs"
+                          />
+                        </div>
+                        <div className="sm:col-span-4">
+                          <input
+                            type="text"
+                            required
+                            placeholder="Subdivision (e.g. 1A)"
+                            value={p.subdivisionNumber}
+                            onChange={(e) => {
+                              const updated = [...parcels];
+                              updated[idx].subdivisionNumber = e.target.value;
+                              setParcels(updated);
+                              checkModalParcelAvailability(pKey, p.surveyNumber, e.target.value);
+                            }}
+                            className="w-full p-2 bg-white border border-slate-200 rounded-lg text-xs"
+                          />
+                        </div>
+                        <div className="sm:col-span-3">
+                          <input
+                            type="number"
+                            step="0.01"
+                            required
+                            placeholder="Area (ac)"
+                            value={p.area}
+                            onChange={(e) => {
+                              const updated = [...parcels];
+                              updated[idx].area = e.target.value;
+                              setParcels(updated);
+                            }}
+                            className="w-full p-2 bg-white border border-slate-200 rounded-lg text-xs font-mono"
+                          />
+                        </div>
+                        <div className="sm:col-span-1 text-center">
+                          {parcels.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => setParcels(parcels.filter((_, i) => i !== idx))}
+                              className="text-rose-500 hover:text-rose-700"
+                            >
+                              <Trash2 className="w-4 h-4 mx-auto" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Visual Real-time Verification Badge */}
+                      {isDup ? (
+                        <p className="text-[11px] text-rose-600 font-semibold px-2 flex items-center">
+                          <AlertTriangle className="w-3.5 h-3.5 mr-1 text-rose-500 shrink-0" />
+                          ✕ Survey {p.surveyNumber.trim()} / Subdivision {p.subdivisionNumber.trim()} is duplicated in this land holding.
+                        </p>
+                      ) : avail?.checking ? (
+                        <p className="text-[11px] text-slate-500 px-2 flex items-center">
+                          <RefreshCw className="w-3 h-3 mr-1 animate-spin text-slate-400 shrink-0" />
+                          Checking parcel availability...
+                        </p>
+                      ) : avail && avail.available === false ? (
+                        <p className="text-[11px] text-rose-600 font-semibold px-2 flex items-center">
+                          <AlertTriangle className="w-3.5 h-3.5 mr-1 text-rose-500 shrink-0" />
+                          ✕ Survey {p.surveyNumber.trim()} / Subdivision {p.subdivisionNumber.trim()} is already registered in the system.
+                        </p>
+                      ) : isValid ? (
+                        <p className="text-[11px] text-emerald-600 font-semibold px-2 flex items-center">
+                          <CheckCircle2 className="w-3.5 h-3.5 mr-1 text-emerald-500 shrink-0" />
+                          ✓ Survey {p.surveyNumber.trim()} / Subdivision {p.subdivisionNumber.trim()} is available
+                        </p>
+                      ) : (sNorm || subNorm) ? (
+                        <p className="text-[11px] text-slate-400 px-2">
+                          Enter both Survey and Subdivision to verify availability.
+                        </p>
+                      ) : null}
                     </div>
-                    <div className="sm:col-span-4">
-                      <input
-                        type="text"
-                        required
-                        placeholder="Subdivision (e.g. 1A)"
-                        value={p.subdivisionNumber}
-                        onChange={(e) => {
-                          const updated = [...parcels];
-                          updated[idx].subdivisionNumber = e.target.value;
-                          setParcels(updated);
-                        }}
-                        className="w-full p-2 bg-white border border-slate-200 rounded-lg text-xs"
-                      />
-                    </div>
-                    <div className="sm:col-span-3">
-                      <input
-                        type="number"
-                        step="0.01"
-                        required
-                        placeholder="Area (ac)"
-                        value={p.area}
-                        onChange={(e) => {
-                          const updated = [...parcels];
-                          updated[idx].area = e.target.value;
-                          setParcels(updated);
-                        }}
-                        className="w-full p-2 bg-white border border-slate-200 rounded-lg text-xs font-mono"
-                      />
-                    </div>
-                    <div className="sm:col-span-1 text-center">
-                      {parcels.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={() => setParcels(parcels.filter((_, i) => i !== idx))}
-                          className="text-rose-500 hover:text-rose-700"
-                        >
-                          <Trash2 className="w-4 h-4 mx-auto" />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
 
               <div className="flex items-center justify-end space-x-3 pt-3 border-t border-slate-100">
@@ -2217,6 +2571,220 @@ function AdminBeneficiaryDetailContent() {
           </div>
         </div>
       )}
+
+      {/* ──────────────────────────────────────────────────────────── */}
+
+      {/* MODAL: EDIT LAND HOLDING */}
+      {/* ──────────────────────────────────────────────────────────── */}
+      {showEditLandModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-slate-200">
+            <div className="p-5 bg-slate-900 text-white flex items-center justify-between sticky top-0 z-10">
+              <div className="flex items-center space-x-2">
+                <Edit className="w-5 h-5 text-sky-400" />
+                <h3 className="font-bold text-base">Edit Land Holding & Parcels</h3>
+              </div>
+              <button onClick={() => setShowEditLandModal(false)} className="text-slate-400 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleEditLandSubmit} className="p-6 space-y-4 text-xs">
+              {editLandError && (
+                <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl flex items-center space-x-2">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>{editLandError}</span>
+                </div>
+              )}
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  Project Scheme *
+                </label>
+                <select
+                  required
+                  value={editLandProjectId}
+                  onChange={(e) => setEditLandProjectId(e.target.value)}
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 font-medium"
+                >
+                  <option value="">-- Select Project Scheme --</option>
+                  {projects?.map((p: any) => (
+                    <option key={p.project_id} value={p.project_id}>
+                      {p.project_name} ({p.project_code}) {p.status === 'INACTIVE' ? ' - [Inactive]' : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  Declared Total Area (Acres) *
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  required
+                  placeholder="e.g. 5.00"
+                  value={editLandDeclaredArea}
+                  onChange={(e) => setEditLandDeclaredArea(e.target.value)}
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-mono text-sm"
+                />
+              </div>
+
+              {/* Dynamic Parcels */}
+              <div className="space-y-3 pt-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-slate-800">
+                    Survey Numbers & Subdivision Parcels
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setEditLandParcels([...editLandParcels, { surveyNumber: '', subdivisionNumber: '', area: '' }])
+                    }
+                    className="text-sky-600 font-bold hover:underline flex items-center"
+                  >
+                    <Plus className="w-3.5 h-3.5 mr-1" /> Add Parcel
+                  </button>
+                </div>
+
+                {editLandParcels.map((p: any, idx) => {
+                  const sNorm = p.surveyNumber.trim().toUpperCase();
+                  const subNorm = p.subdivisionNumber.trim().toUpperCase();
+                  const isComplete = !!(sNorm && subNorm);
+
+                  const isDup =
+                    isComplete &&
+                    editLandParcels.some(
+                      (other: any, oIdx) =>
+                        oIdx !== idx &&
+                        other.surveyNumber.trim().toUpperCase() === sNorm &&
+                        other.subdivisionNumber.trim().toUpperCase() === subNorm,
+                    );
+
+                  const pKey = `edit_${idx}`;
+                  const avail = modalParcelAvailability[pKey];
+
+                  const isInvalid = isDup || (avail && avail.available === false);
+                  const isValid = !isDup && avail && avail.available === true && isComplete;
+
+                  return (
+                    <div key={idx} className="space-y-1">
+                      <div
+                        className={`grid grid-cols-1 sm:grid-cols-12 gap-2 p-3 bg-slate-50 rounded-xl border ${
+                          isInvalid
+                            ? 'border-rose-400 bg-rose-50/40'
+                            : isValid
+                            ? 'border-emerald-400 bg-emerald-50/20'
+                            : 'border-slate-200'
+                        } items-center`}
+                      >
+                        <div className="sm:col-span-4">
+                          <input
+                            type="text"
+                            placeholder="Survey No (e.g. 101)"
+                            value={p.surveyNumber}
+                            onChange={(e) => {
+                              const updated = [...editLandParcels];
+                              updated[idx].surveyNumber = e.target.value;
+                              setEditLandParcels(updated);
+                              checkModalParcelAvailability(pKey, e.target.value, p.subdivisionNumber, p.parcel_id);
+                            }}
+                            className="w-full p-2 bg-white border border-slate-200 rounded-lg text-xs"
+                          />
+                        </div>
+                        <div className="sm:col-span-4">
+                          <input
+                            type="text"
+                            placeholder="Subdivision (e.g. 1A)"
+                            value={p.subdivisionNumber}
+                            onChange={(e) => {
+                              const updated = [...editLandParcels];
+                              updated[idx].subdivisionNumber = e.target.value;
+                              setEditLandParcels(updated);
+                              checkModalParcelAvailability(pKey, p.surveyNumber, e.target.value, p.parcel_id);
+                            }}
+                            className="w-full p-2 bg-white border border-slate-200 rounded-lg text-xs"
+                          />
+                        </div>
+                        <div className="sm:col-span-3">
+                          <input
+                            type="number"
+                            step="0.01"
+                            placeholder="Area (ac)"
+                            value={p.area}
+                            onChange={(e) => {
+                              const updated = [...editLandParcels];
+                              updated[idx].area = e.target.value;
+                              setEditLandParcels(updated);
+                            }}
+                            className="w-full p-2 bg-white border border-slate-200 rounded-lg text-xs font-mono"
+                          />
+                        </div>
+                        <div className="sm:col-span-1 text-center">
+                          <button
+                            type="button"
+                            onClick={() => setEditLandParcels(editLandParcels.filter((_, i) => i !== idx))}
+                            className="text-rose-500 hover:text-rose-700"
+                            title="Remove parcel"
+                          >
+                            <Trash2 className="w-4 h-4 mx-auto" />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Visual Real-time Verification Badge */}
+                      {isDup ? (
+                        <p className="text-[11px] text-rose-600 font-semibold px-2 flex items-center">
+                          <AlertTriangle className="w-3.5 h-3.5 mr-1 text-rose-500 shrink-0" />
+                          ✕ Duplicate parcel: Survey {p.surveyNumber.trim()} / Subdivision {p.subdivisionNumber.trim()} is already entered for this holding.
+                        </p>
+                      ) : avail?.checking ? (
+                        <p className="text-[11px] text-slate-500 px-2 flex items-center">
+                          <RefreshCw className="w-3 h-3 mr-1 animate-spin text-slate-400 shrink-0" />
+                          Checking parcel availability...
+                        </p>
+                      ) : avail && avail.available === false ? (
+                        <p className="text-[11px] text-rose-600 font-semibold px-2 flex items-center">
+                          <AlertTriangle className="w-3.5 h-3.5 mr-1 text-rose-500 shrink-0" />
+                          ✕ Survey {p.surveyNumber.trim()} / Subdivision {p.subdivisionNumber.trim()} is already registered in the system.
+                        </p>
+                      ) : isValid ? (
+                        <p className="text-[11px] text-emerald-600 font-semibold px-2 flex items-center">
+                          <CheckCircle2 className="w-3.5 h-3.5 mr-1 text-emerald-500 shrink-0" />
+                          ✓ Survey {p.surveyNumber.trim()} / Subdivision {p.subdivisionNumber.trim()} is available
+                        </p>
+                      ) : (sNorm || subNorm) ? (
+                        <p className="text-[11px] text-slate-400 px-2">
+                          Enter both Survey and Subdivision to verify availability.
+                        </p>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="flex items-center justify-end space-x-3 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowEditLandModal(false)}
+                  className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-xl font-semibold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingEditLand}
+                  className="px-5 py-2 bg-sky-600 hover:bg-sky-700 text-white rounded-xl font-bold shadow transition disabled:opacity-50"
+                >
+                  {isSubmittingEditLand ? 'Updating...' : 'Save Changes'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
 
       {/* ──────────────────────────────────────────────────────────── */}
       {/* MODAL: ADD WATER APPLICATION */}
@@ -2261,82 +2829,77 @@ function AdminBeneficiaryDetailContent() {
               {/* Land Holding Selector (Core Rule: One Application per Land Holding) */}
               <div className="space-y-2">
                 <label className="block font-bold text-slate-700">
-                  Select Land Holding * <span className="text-[11px] text-slate-500 font-normal">(Each holding is eligible for strictly one active water quota)</span>
+                  Select Eligible Land Holding * <span className="text-[11px] text-slate-500 font-normal">(Holdings with fulfilled or active water allocations are excluded)</span>
                 </label>
-                <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                  {b.landHoldings?.map((lh: any, idx: number) => {
-                    const existingActiveApp = b.waterApplications?.find(
-                      (a: any) => a.land_id === lh.land_id && !['REJECTED', 'CANCELLED', 'VOIDED'].includes(a.status),
-                    );
-                    const isSelected = waterAppLandId === lh.land_id;
-                    const isDisabled = !!existingActiveApp || lh.status !== 'ACTIVE';
+                {isEligibleHoldingsLoading ? (
+                  <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl text-center text-slate-500 text-xs flex items-center justify-center space-x-2">
+                    <Loader2 className="w-4 h-4 animate-spin text-sky-600" />
+                    <span>Verifying land holding quota eligibility...</span>
+                  </div>
+                ) : eligibleHoldings.length === 0 ? (
+                  <div className="p-4 bg-amber-50/80 border border-amber-200 rounded-xl space-y-1 text-center">
+                    <div className="font-bold text-amber-900 text-xs flex items-center justify-center space-x-1.5">
+                      <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                      <span>No land holdings are currently eligible for a new water application.</span>
+                    </div>
+                    <p className="text-[11px] text-amber-800/90 leading-relaxed max-w-md mx-auto">
+                      Existing approved or active water allocations must be completed, cancelled, or otherwise become eligible before a new application can be created.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                    {eligibleHoldings.map((lh: any, idx: number) => {
+                      const isSelected = waterAppLandId === (lh.land_id || lh.holding_id);
 
-                    return (
-                      <div
-                        key={lh.land_id}
-                        onClick={() => {
-                          if (!isDisabled) {
-                            setWaterAppLandId(lh.land_id);
+                      return (
+                        <div
+                          key={lh.land_id || lh.holding_id || idx}
+                          onClick={() => {
+                            setWaterAppLandId(lh.land_id || lh.holding_id);
                             if (lh.project_id) {
                               setWaterAppProjectId(lh.project_id);
                             }
-                          }
-                        }}
-                        className={`p-3 rounded-xl border transition cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-2 ${
-                          isDisabled
-                            ? 'bg-slate-50 border-slate-200 opacity-70 cursor-not-allowed'
-                            : isSelected
-                            ? 'bg-sky-50 border-sky-500 ring-2 ring-sky-500/20 shadow-sm'
-                            : 'bg-white border-slate-200 hover:border-slate-300'
-                        }`}
-                      >
-                        <div className="flex items-start space-x-2.5">
-                          <input
-                            type="radio"
-                            name="selectedLandHolding"
-                            checked={isSelected}
-                            disabled={isDisabled}
-                            onChange={() => {
-                              if (!isDisabled) {
-                                setWaterAppLandId(lh.land_id);
+                          }}
+                          className={`p-3 rounded-xl border transition cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-2 ${
+                            isSelected
+                              ? 'bg-sky-50 border-sky-500 ring-2 ring-sky-500/20 shadow-sm'
+                              : 'bg-white border-slate-200 hover:border-slate-300'
+                          }`}
+                        >
+                          <div className="flex items-start space-x-2.5">
+                            <input
+                              type="radio"
+                              name="selectedLandHolding"
+                              checked={isSelected}
+                              onChange={() => {
+                                setWaterAppLandId(lh.land_id || lh.holding_id);
                                 if (lh.project_id) {
                                   setWaterAppProjectId(lh.project_id);
                                 }
-                              }
-                            }}
-                            className="mt-0.5 text-sky-600 focus:ring-sky-500"
-                          />
-                          <div>
-                            <div className="font-bold text-slate-900 text-xs">
-                              Holding #{idx + 1} ({formatAcres(lh.declared_total_area)})
-                            </div>
-                            <div className="text-[11px] text-slate-500 font-mono">
-                              Parcels: {lh.parcels?.map((p: any) => `SF ${p.survey_number}/${p.subdivision_number}`).join(', ') || 'No parcels'}
+                              }}
+                              className="mt-0.5 text-sky-600 focus:ring-sky-500"
+                            />
+                            <div>
+                              <div className="font-bold text-slate-900 text-xs">
+                                Holding #{idx + 1} ({formatAcres(lh.declared_total_area)})
+                              </div>
+                              <div className="text-[11px] text-slate-500 font-mono">
+                                Parcels: {lh.parcels?.map((p: any) => `SF ${p.survey_number}/${p.subdivision_number}`).join(', ') || 'No parcels'}
+                              </div>
                             </div>
                           </div>
-                        </div>
 
-                        <div>
-                          {existingActiveApp ? (
-                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300">
-                              <AlertTriangle className="w-3 h-3 mr-1" />
-                              App #{existingActiveApp.application_id.slice(0, 8)} ({existingActiveApp.status})
-                            </span>
-                          ) : lh.status !== 'ACTIVE' ? (
-                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
-                              Inactive Holding
-                            </span>
-                          ) : (
+                          <div>
                             <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
                               <CheckCircle2 className="w-3 h-3 mr-1" />
                               Available for Application
                             </span>
-                          )}
+                          </div>
                         </div>
-                      </div>
-                    );
-                  })}
-                </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               {/* Project Scheme Selector */}
@@ -2737,6 +3300,184 @@ function AdminBeneficiaryDetailContent() {
                   className="px-5 py-2 bg-slate-900 hover:bg-black text-white rounded-xl font-bold shadow transition disabled:opacity-50"
                 >
                   {archiveMutation.isPending ? 'Archiving...' : 'Confirm Archival'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* ──────────────────────────────────────────────────────────── */}
+      {/* MODAL: DELETE / ARCHIVE LAND HOLDING */}
+      {/* ──────────────────────────────────────────────────────────── */}
+      {holdingToDelete && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden text-xs">
+            <div className="p-5 bg-slate-900 text-white flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <Trash2 className="w-5 h-5 text-rose-400" />
+                <h3 className="font-bold text-base">Delete Land Holding</h3>
+              </div>
+              <button onClick={() => setHoldingToDelete(null)} className="text-slate-400 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              {deleteHoldingError ? (
+                <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl space-y-1">
+                  <div className="font-bold flex items-center space-x-1">
+                    <AlertTriangle className="w-4 h-4 shrink-0" />
+                    <span>Historical Deletion Protection</span>
+                  </div>
+                  <p className="text-[11px] leading-relaxed">{deleteHoldingError}</p>
+                </div>
+              ) : (() => {
+                const landId = holdingToDelete.land_id || holdingToDelete.holding_id;
+                const hasApps = waterApplications?.some((a: any) => a.land_id === landId);
+                const isLinked = hasApps || (waterAllotments?.length > 0 && waterAllotments.some((al: any) => al.land_id === landId));
+
+                if (isLinked) {
+                  return (
+                    <div className="p-3 bg-amber-50 border border-amber-200 text-amber-800 rounded-xl space-y-1.5">
+                      <div className="font-bold flex items-center space-x-1">
+                        <Lock className="w-4 h-4 text-amber-600 shrink-0" />
+                        <span>Protected Historical Record</span>
+                      </div>
+                      <p className="text-[11px] leading-relaxed">
+                        This land holding has linked historical water applications or quota records and cannot be permanently deleted.
+                      </p>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="space-y-2">
+                    <p className="text-slate-700 font-medium">
+                      Are you sure you want to permanently delete this land holding?
+                    </p>
+                    <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                      <div className="font-bold text-slate-900">
+                        Holding #{holdingToDelete.land_id?.slice(0, 8) || holdingToDelete.holding_id?.slice(0, 8)} ({formatAcres(holdingToDelete.declared_total_area)})
+                      </div>
+                      <div className="text-[11px] text-slate-500 mt-0.5">
+                        Parcels: {holdingToDelete.parcels?.map((p: any) => `SF ${p.survey_number}/${p.subdivision_number}`).join(', ') || 'None'}
+                      </div>
+                    </div>
+                    <p className="text-[11px] text-slate-500">
+                      This will permanently remove this land holding because it has no linked historical records.
+                    </p>
+                  </div>
+                );
+              })()}
+
+              <div className="flex items-center justify-end space-x-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setHoldingToDelete(null)}
+                  className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-xl font-semibold"
+                >
+                  Cancel
+                </button>
+                {(() => {
+                  const landId = holdingToDelete.land_id || holdingToDelete.holding_id;
+                  const hasApps = waterApplications?.some((a: any) => a.land_id === landId);
+                  const isLinked = hasApps || (waterAllotments?.length > 0 && waterAllotments.some((al: any) => al.land_id === landId));
+
+                  if (isLinked) {
+                    return (
+                      <button
+                        type="button"
+                        onClick={() => setHoldingToDelete(null)}
+                        className="px-5 py-2 bg-slate-200 text-slate-700 rounded-xl font-bold transition"
+                      >
+                        Understood
+                      </button>
+                    );
+                  }
+
+                  return (
+                    <button
+                      type="button"
+                      disabled={isDeletingHolding}
+                      onClick={handleDeleteHolding}
+                      className="px-5 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-bold shadow transition disabled:opacity-50"
+                    >
+                      {isDeletingHolding ? 'Deleting...' : 'Delete Land Holding'}
+                    </button>
+                  );
+                })()}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ──────────────────────────────────────────────────────────── */}
+      {/* MODAL: DELETE / CANCEL WATER APPLICATION */}
+      {/* ──────────────────────────────────────────────────────────── */}
+      {appToDelete && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden text-xs">
+            <div className="p-5 bg-slate-900 text-white flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <Trash2 className="w-5 h-5 text-rose-400" />
+                <h3 className="font-bold text-base">
+                  {appToDelete.status === 'DRAFT' ? 'Delete Draft Application' : 'Cancel Water Application'}
+                </h3>
+              </div>
+              <button onClick={() => setAppToDelete(null)} className="text-slate-400 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              {deleteAppError ? (
+                <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl space-y-1">
+                  <div className="font-bold flex items-center space-x-1">
+                    <AlertTriangle className="w-4 h-4 shrink-0" />
+                    <span>Protected Record</span>
+                  </div>
+                  <p className="text-[11px] leading-relaxed">{deleteAppError}</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <p className="text-slate-700 font-medium">
+                    {appToDelete.status === 'DRAFT'
+                      ? 'Permanently remove this draft water application?'
+                      : 'Cancel this water application? This will release the land holding for a new quota application.'}
+                  </p>
+                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                    <div className="font-bold text-slate-900">
+                      Water Application #{appToDelete.application_id?.slice(0, 8)} ({appToDelete.status})
+                    </div>
+                    <div className="text-[11px] text-slate-500 mt-0.5">
+                      Quota Request: {formatLitres(appToDelete.required_litres)} • Scheme: {appToDelete.project?.project_name || 'Kongu Scheme'}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex items-center justify-end space-x-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setAppToDelete(null)}
+                  className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-xl font-semibold"
+                >
+                  Close
+                </button>
+                <button
+                  type="button"
+                  disabled={isDeletingApp}
+                  onClick={handleDeleteWaterApp}
+                  className={`px-5 py-2 text-white rounded-xl font-bold shadow transition disabled:opacity-50 ${
+                    appToDelete.status === 'DRAFT' ? 'bg-rose-600 hover:bg-rose-700' : 'bg-amber-600 hover:bg-amber-700'
+                  }`}
+                >
+                  {isDeletingApp
+                    ? 'Processing...'
+                    : appToDelete.status === 'DRAFT'
+                    ? 'Delete Draft'
+                    : 'Confirm Cancellation'}
                 </button>
               </div>
             </div>

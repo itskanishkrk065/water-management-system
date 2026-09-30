@@ -138,6 +138,10 @@ export default function AdminBeneficiariesManager() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-beneficiaries'] });
+      queryClient.invalidateQueries({ queryKey: ['beneficiaries'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-beneficiary-overview'] });
+      queryClient.invalidateQueries({ queryKey: ['beneficiary'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
       setShowDeactivateModal(false);
       setSelectedBeneficiary(null);
       setActionReason('');
@@ -155,6 +159,10 @@ export default function AdminBeneficiariesManager() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-beneficiaries'] });
+      queryClient.invalidateQueries({ queryKey: ['beneficiaries'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-beneficiary-overview'] });
+      queryClient.invalidateQueries({ queryKey: ['beneficiary'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
       setShowReactivateModal(false);
       setSelectedBeneficiary(null);
       setActionReason('');
@@ -172,6 +180,10 @@ export default function AdminBeneficiariesManager() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-beneficiaries'] });
+      queryClient.invalidateQueries({ queryKey: ['beneficiaries'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-beneficiary-overview'] });
+      queryClient.invalidateQueries({ queryKey: ['beneficiary'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
       setShowArchiveModal(false);
       setSelectedBeneficiary(null);
       setActionReason('');
@@ -189,6 +201,9 @@ export default function AdminBeneficiariesManager() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-beneficiaries'] });
+      queryClient.invalidateQueries({ queryKey: ['beneficiaries'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-beneficiary-overview'] });
+      queryClient.invalidateQueries({ queryKey: ['beneficiary'] });
       setShowAccountModal(false);
       setSelectedBeneficiary(null);
       setActionReason('');
@@ -205,6 +220,10 @@ export default function AdminBeneficiariesManager() {
       return res.data;
     },
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-beneficiaries'] });
+      queryClient.invalidateQueries({ queryKey: ['beneficiaries'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-beneficiary-overview'] });
+      queryClient.invalidateQueries({ queryKey: ['beneficiary'] });
       alert('Password reset request recorded. Beneficiary notified via secure channel.');
       setShowAccountModal(false);
       setSelectedBeneficiary(null);
@@ -445,8 +464,9 @@ export default function AdminBeneficiariesManager() {
                   </td>
                 </tr>
               ) : data?.items?.length > 0 ? (
-                data.items.map((b: any) => {
+                data.items.map((b: any, bIdx: number) => {
                   const isMenuOpen = activeMenuId === b.beneficiary_id;
+                  const isNearBottom = bIdx >= Math.max(0, data.items.length - 3) && data.items.length > 3;
                   return (
                     <tr
                       key={b.beneficiary_id}
@@ -564,7 +584,10 @@ export default function AdminBeneficiariesManager() {
                             {isMenuOpen && (
                               <div
                                 onMouseLeave={() => setActiveMenuId(null)}
-                                className="absolute right-0 mt-1 w-56 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-30 text-left text-xs divide-y divide-slate-100"
+                                onWheel={(e) => e.stopPropagation()}
+                                className={`absolute right-0 ${
+                                  isNearBottom ? 'bottom-full mb-1' : 'top-full mt-1'
+                                } w-56 max-h-[70vh] overflow-y-auto overscroll-contain bg-white rounded-xl shadow-2xl border border-slate-200 py-1.5 z-50 text-left text-xs divide-y divide-slate-100`}
                               >
                                 <div className="py-1">
                                   <Link

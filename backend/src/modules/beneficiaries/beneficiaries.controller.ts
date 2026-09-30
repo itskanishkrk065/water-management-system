@@ -16,6 +16,7 @@ import { BeneficiariesService } from './beneficiaries.service';
 import {
   CreateBeneficiaryDto,
   UpdateBeneficiaryDto,
+  CompleteOnboardingDto,
   DeactivateBeneficiaryDto,
   ReactivateBeneficiaryDto,
   ArchiveBeneficiaryDto,
@@ -53,6 +54,17 @@ export class BeneficiariesController {
     return this.beneficiariesService.checkDuplicates(dto, excludeId);
   }
 
+  @Post('complete-onboarding')
+  @Roles(RoleName.ADMIN, RoleName.FIELD_OFFICER)
+  @ApiOperation({ summary: 'Atomic complete onboarding: Beneficiary + Land Holdings + Parcels + Water Applications' })
+  async completeOnboarding(
+    @Body() dto: CompleteOnboardingDto,
+    @CurrentUser() user: RequestUser,
+    @Ip() ip: string,
+  ) {
+    return this.beneficiariesService.completeOnboarding(dto, user.user_id, ip);
+  }
+
   @Post()
   @Roles(RoleName.ADMIN, RoleName.FIELD_OFFICER)
   @ApiOperation({ summary: 'Create new beneficiary profile' })
@@ -63,6 +75,7 @@ export class BeneficiariesController {
   ) {
     return this.beneficiariesService.create(dto, user.user_id, ip);
   }
+
 
   @Get()
   @ApiOperation({ summary: 'List beneficiaries with search, filters and pagination' })

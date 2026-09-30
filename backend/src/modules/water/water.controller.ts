@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Param, Body, Query, UseGuards, Ip } from '@nestjs/common';
+import { Controller, Get, Post, Delete, Param, Body, Query, UseGuards, Ip } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { WaterService } from './water.service';
 import { CreateWaterApplicationDto, ApproveWaterApplicationDto, RejectWaterApplicationDto } from './dto/water.dto';
@@ -82,6 +82,35 @@ export class WaterController {
     return this.waterService.rejectApplication(dto, user.email, user.user_id, ip);
   }
 
+  @Get('eligible-holdings/:beneficiaryId')
+  @ApiOperation({ summary: 'Get land holdings eligible for new water applications (excludes approved/fulfilled/active applications)' })
+  async getEligibleHoldings(@Param('beneficiaryId') beneficiaryId: string) {
+    return this.waterService.getEligibleHoldings(beneficiaryId);
+  }
+
+  @Delete('applications/:id')
+  @Roles(RoleName.ADMIN)
+  @ApiOperation({ summary: 'Safely delete draft or unapproved water application (Admin only)' })
+  async deleteApplication(
+    @Param('id') id: string,
+    @CurrentUser() user: RequestUser,
+    @Ip() ip: string,
+  ) {
+    return this.waterService.deleteApplication(id, user.user_id, ip);
+  }
+
+  @Post('applications/:id/cancel')
+  @Roles(RoleName.ADMIN, RoleName.FIELD_OFFICER)
+  @ApiOperation({ summary: 'Cancel or void water application' })
+  async cancelApplication(
+    @Param('id') id: string,
+    @Body('reason') reason: string,
+    @CurrentUser() user: RequestUser,
+    @Ip() ip: string,
+  ) {
+    return this.waterService.cancelApplication(id, reason, user.user_id, ip);
+  }
+
   @Get('allotments')
   @ApiOperation({ summary: 'List all water allotments' })
   async findAllAllotments(
@@ -102,3 +131,4 @@ export class WaterController {
     return this.waterService.findOneAllotment(id);
   }
 }
+

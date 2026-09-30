@@ -6,7 +6,12 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
-import { CreateBeneficiaryDto, UpdateBeneficiaryDto } from './dto/beneficiary.dto';
+import {
+  CreateBeneficiaryDto,
+  UpdateBeneficiaryDto,
+  CompleteOnboardingDto,
+} from './dto/beneficiary.dto';
+import { DecimalUtil } from '../common/decimal.util';
 import { AuditAction, BeneficiaryStatus, LandStatus, Prisma } from '@prisma/client';
 import { Decimal } from 'decimal.js';
 
@@ -178,6 +183,207 @@ export class BeneficiariesService {
     return beneficiary;
   }
 
+  /**
+   * ATOMIC COMPLETE ONBOARDING:
+   * Creates Beneficiary + Multiple Land Holdings + SF Parcels + Water Applications in a single database transaction.
+   * If any step fails, everything is rolled back.
+   */
+  async completeOnboarding(dto: CompleteOnboardingDto, userId?: string, ipAddress?: string) {
+    // 1. Validate phone number duplication
+    const existing = await this.prisma.beneficiary.findFirst({
+      where: { phone_number: dto.phoneNumber.trim() },
+    });
+    if (existing) {
+      throw new ConflictException(
+        `Beneficiary with phone number '${dto.phoneNumber}' already exists with ID ${existing.beneficiary_id}.`,
+      );
+    }
+
+    // 2. Validate location hierarchy
+    await this.validateLocationHierarchy(
+      dto.districtId,
+      dto.blockId,
+      dto.villageId,
+      dto.panchayatId,
+    );
+
+    // 3. Pre-validate project schemes & parcel sums for all holdings
+    if (dto.holdings && dto.holdings.length > 0) {
+      for (let i = 0; i < dto.holdings.length; i++) {
+        const h = dto.holdings[i];
+        const project = await this.prisma.project.findUnique({
+          where: { project_id: h.projectId },
+        });
+        if (!project) {
+          throw new NotFoundException(`Holding #${i + 1}: Project Scheme with ID '${h.projectId}' not found.`);
+        }
+        if (project.status !== 'ACTIVE') {
+          throw new BadRequestException(
+            `Holding #${i + 1}: Project Scheme '${project.project_name}' (${project.project_code}) is inactive.`,
+          );
+        }
+
+        const declared = new Decimal(h.declaredTotalArea);
+        if (h.parcels && h.parcels.length > 0) {
+          const seenInHolding = new Set<string>();
+          for (const p of h.parcels) {
+            const sTrim = p.surveyNumber.trim();
+            const subTrim = p.subdivisionNumber.trim();
+            const key = `${sTrim.toUpperCase()}#${subTrim.toUpperCase()}`;
+            if (seenInHolding.has(key)) {
+              throw new BadRequestException(
+                `Holding #${i + 1}: Duplicate parcel detected (Survey ${sTrim} / Subdivision ${subTrim}).`,
+              );
+            }
+            seenInHolding.add(key);
+
+            // Check if already registered in active database
+            const existingParcel = await this.prisma.landParcel.findFirst({
+              where: {
+                survey_number: sTrim,
+                subdivision_number: subTrim,
+                landHolding: { status: LandStatus.ACTIVE },
+              },
+              include: {
+                landHolding: {
+                  include: {
+                    beneficiary: { select: { name: true, phone_number: true } },
+                  },
+                },
+              },
+            });
+
+            if (existingParcel) {
+              const owner = existingParcel.landHolding?.beneficiary?.name || 'another holding';
+              throw new BadRequestException(
+                `Holding #${i + 1}: Survey number ${sTrim} with subdivision ${subTrim} is already registered under ${owner}. Duplicate survey parcels are not permitted.`,
+              );
+            }
+          }
+
+          const sumParcels = DecimalUtil.sum(h.parcels.map((p) => p.area));
+          if (!DecimalUtil.equalsWithTolerance(sumParcels, declared)) {
+            throw new BadRequestException(
+              `Holding #${i + 1}: Sum of parcel areas (${sumParcels.toFixed(4)}) does not match declared total area (${declared.toFixed(4)}).`,
+            );
+          }
+        }
+      }
+    }
+
+    // 4. Pre-validate water applications (1 per holding index)
+    if (dto.waterApplications && dto.waterApplications.length > 0) {
+      const holdingIndices = new Set<number>();
+      for (const w of dto.waterApplications) {
+        if (
+          w.holdingIndex === undefined ||
+          w.holdingIndex < 0 ||
+          !dto.holdings ||
+          w.holdingIndex >= dto.holdings.length
+        ) {
+          throw new BadRequestException(`Water application references invalid land holding index ${w.holdingIndex}.`);
+        }
+        if (holdingIndices.has(w.holdingIndex)) {
+          throw new BadRequestException(
+            `Holding #${w.holdingIndex + 1} has multiple water applications in this onboarding request. Only one active water application per land holding is allowed.`,
+          );
+        }
+        holdingIndices.add(w.holdingIndex);
+      }
+    }
+
+    // 5. Execute complete atomic transaction
+    const result = await this.prisma.$transaction(async (tx) => {
+      // 5a. Create Beneficiary
+      const beneficiary = await tx.beneficiary.create({
+        data: {
+          name: dto.name.trim(),
+          email: dto.email?.trim() || null,
+          phone_number: dto.phoneNumber.trim(),
+          address_line_1: dto.addressLine1?.trim(),
+          address_line_2: dto.addressLine2?.trim() || null,
+          address_line_3: dto.addressLine3?.trim() || null,
+          district_id: dto.districtId,
+          block_id: dto.blockId || null,
+          panchayat_id: dto.panchayatId || null,
+          village_id: dto.villageId,
+          pincode: dto.pincode?.trim(),
+          location_direction: dto.locationDirection,
+          location_description: dto.locationDescription?.trim() || null,
+          status: dto.status || BeneficiaryStatus.ACTIVE,
+        },
+      });
+
+      // 5b. Create Land Holdings + Parcels
+      const createdHoldings: any[] = [];
+      if (dto.holdings && dto.holdings.length > 0) {
+        for (const h of dto.holdings) {
+          const holding = await tx.landHolding.create({
+            data: {
+              beneficiary_id: beneficiary.beneficiary_id,
+              project_id: h.projectId,
+              declared_total_area: new Decimal(h.declaredTotalArea),
+              area_unit: h.areaUnit || 'ACRES',
+              status: LandStatus.ACTIVE,
+            },
+          });
+
+          if (h.parcels && h.parcels.length > 0) {
+            await tx.landParcel.createMany({
+              data: h.parcels.map((p) => ({
+                land_id: holding.land_id,
+                survey_number: p.surveyNumber.trim(),
+                subdivision_number: p.subdivisionNumber.trim(),
+                area: new Decimal(p.area),
+                area_unit: p.areaUnit || h.areaUnit || 'ACRES',
+              })),
+            });
+          }
+
+          createdHoldings.push(holding);
+        }
+      }
+
+      // 5c. Create Water Applications
+      const createdWaterApps: any[] = [];
+      if (dto.waterApplications && dto.waterApplications.length > 0) {
+        for (const w of dto.waterApplications) {
+          const targetHolding = createdHoldings[w.holdingIndex];
+          const waterApp = await tx.waterApplication.create({
+            data: {
+              beneficiary_id: beneficiary.beneficiary_id,
+              land_id: targetHolding.land_id,
+              project_id: targetHolding.project_id,
+              required_litres: new Decimal(w.requiredLitres),
+              status: 'SUBMITTED',
+              created_by: userId || 'SYSTEM',
+            },
+          });
+          createdWaterApps.push(waterApp);
+        }
+      }
+
+      return {
+        beneficiary,
+        holdingsCount: createdHoldings.length,
+        waterAppsCount: createdWaterApps.length,
+      };
+    });
+
+    await this.auditService.log({
+      userId,
+      action: AuditAction.CREATE,
+      entityType: 'Beneficiary',
+      entityId: result.beneficiary.beneficiary_id,
+      newValues: result,
+      reason: `Completed full onboarding: Beneficiary registered with ${result.holdingsCount} land holding(s) and ${result.waterAppsCount} water application(s)`,
+      ipAddress,
+    });
+
+    return result.beneficiary;
+  }
+
+
   async findAll(query: {
     search?: string;
     districtId?: string;
@@ -276,10 +482,17 @@ export class BeneficiariesService {
     const totalLand = this.calculateTotalLand(beneficiary.landHoldings as any);
 
     // Parallel aggregate overview stats
-    const [allotmentAgg, billAgg, paymentAgg, appsCount, infraCount] = await Promise.all([
+    const [allotmentAgg, appAgg, billAgg, paymentAgg, appsCount, infraCount] = await Promise.all([
       this.prisma.waterAllotment.aggregate({
         where: { beneficiary_id: id },
         _sum: { approved_litres: true },
+      }),
+      this.prisma.waterApplication.aggregate({
+        where: {
+          beneficiary_id: id,
+          status: { notIn: ['REJECTED', 'CANCELLED', 'VOIDED'] },
+        },
+        _sum: { required_litres: true },
       }),
       this.prisma.developmentBill.aggregate({
         where: { beneficiary_id: id },
@@ -300,6 +513,7 @@ export class BeneficiariesService {
         totalLandAcres: totalLand.toString(),
         activeHoldingsCount: beneficiary.landHoldings.length,
         waterApplicationsCount: appsCount,
+        requiredLitresTotal: appAgg._sum.required_litres?.toString() || '0',
         approvedLitresTotal: allotmentAgg._sum.approved_litres?.toString() || '0',
         billsTotalAmount: billAgg._sum.total_amount?.toString() || '0',
         pendingBalance: billAgg._sum.pending_amount?.toString() || '0',

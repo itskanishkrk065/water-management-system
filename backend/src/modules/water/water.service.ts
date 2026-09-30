@@ -89,6 +89,102 @@ export class WaterService {
     };
   }
 
+  /**
+   * Canonical backend query: Get eligible land holdings for a new water application.
+   * Excludes land holdings that already have an active / blocking water application (APPROVED, SUBMITTED, UNDER_REVIEW, DRAFT).
+   * Holdings with REJECTED, CANCELLED, or VOIDED applications are released and eligible.
+   */
+  async getEligibleHoldings(beneficiaryId: string) {
+    const beneficiary = await this.prisma.beneficiary.findUnique({
+      where: { beneficiary_id: beneficiaryId },
+      include: {
+        landHoldings: {
+          where: { status: LandStatus.ACTIVE },
+          include: {
+            parcels: { orderBy: { survey_number: 'asc' } },
+            project: { select: { project_id: true, project_code: true, project_name: true } },
+          },
+          orderBy: { created_at: 'asc' },
+        },
+        waterApplications: {
+          select: {
+            application_id: true,
+            land_id: true,
+            status: true,
+            required_litres: true,
+            created_at: true,
+          },
+        },
+      },
+    });
+
+    if (!beneficiary) {
+      throw new NotFoundException(`Beneficiary ${beneficiaryId} not found`);
+    }
+
+    const blockingStatuses = [
+      ApplicationStatus.APPROVED,
+      ApplicationStatus.SUBMITTED,
+      ApplicationStatus.UNDER_REVIEW,
+      'DRAFT',
+    ];
+
+    const eligibleHoldings = beneficiary.landHoldings
+      .filter((h) => {
+        const blockingApp = beneficiary.waterApplications.find(
+          (a) => a.land_id === h.land_id && blockingStatuses.includes(a.status as any),
+        );
+        return !blockingApp;
+      })
+      .map((h, idx) => ({
+        holding_index: idx + 1,
+        land_id: h.land_id,
+        project_id: h.project_id,
+        project_name: h.project?.project_name,
+        project_code: h.project?.project_code,
+        declared_total_area: h.declared_total_area.toString(),
+        area_unit: h.area_unit,
+        parcels: h.parcels.map((p) => ({
+          parcel_id: p.parcel_id,
+          survey_number: p.survey_number,
+          subdivision_number: p.subdivision_number,
+          area: p.area.toString(),
+        })),
+        is_eligible: true,
+      }));
+
+    const fulfilledOrBlockedHoldings = beneficiary.landHoldings
+      .filter((h) => {
+        const blockingApp = beneficiary.waterApplications.find(
+          (a) => a.land_id === h.land_id && blockingStatuses.includes(a.status as any),
+        );
+        return !!blockingApp;
+      })
+      .map((h, idx) => {
+        const blockingApp = beneficiary.waterApplications.find(
+          (a) => a.land_id === h.land_id && blockingStatuses.includes(a.status as any),
+        );
+        return {
+          holding_index: idx + 1,
+          land_id: h.land_id,
+          declared_total_area: h.declared_total_area.toString(),
+          blocking_application_id: blockingApp?.application_id,
+          blocking_status: blockingApp?.status,
+          is_eligible: false,
+          reason: `Holding already has a water application in status: ${blockingApp?.status}`,
+        };
+      });
+
+    return {
+      beneficiary_id: beneficiary.beneficiary_id,
+      beneficiary_name: beneficiary.name,
+      total_active_holdings: beneficiary.landHoldings.length,
+      eligible_holdings_count: eligibleHoldings.length,
+      eligible_holdings: eligibleHoldings,
+      ineligible_holdings: fulfilledOrBlockedHoldings,
+    };
+  }
+
   private readonly holdingLocks = new Set<string>();
 
   private async acquireLock(key: string): Promise<() => void> {
@@ -637,4 +733,108 @@ export class WaterService {
 
     return allotment;
   }
+
+  /**
+   * Safe Delete Water Application.
+   * Only unapproved/draft/rejected/cancelled applications without linked allotment or financial records can be permanently deleted.
+   * Approved or financially linked applications must be voided/cancelled to preserve audit and financial integrity.
+   */
+  async deleteApplication(applicationId: string, userId?: string, ipAddress?: string) {
+    const application = await this.prisma.waterApplication.findUnique({
+      where: { application_id: applicationId },
+      include: {
+        allotment: {
+          include: {
+            developmentBill: {
+              include: { installments: { include: { payments: true } } },
+            },
+          },
+        },
+      },
+    });
+
+    if (!application) {
+      throw new NotFoundException(`Water application ${applicationId} not found`);
+    }
+
+    if (application.status === ApplicationStatus.APPROVED || application.allotment) {
+      throw new BadRequestException(
+        'Cannot permanently delete an approved water application with an active allotment or financial billing records. Use application cancellation or voiding instead to preserve audit integrity.',
+      );
+    }
+
+    await this.prisma.waterApplication.delete({
+      where: { application_id: applicationId },
+    });
+
+    await this.auditService.log({
+      userId,
+      action: AuditAction.DELETE_VOID,
+      entityType: 'WaterApplication',
+      entityId: applicationId,
+      oldValues: application,
+      reason: `Permanently deleted water application #${applicationId.slice(0, 8)} (Status: ${application.status})`,
+      ipAddress,
+    });
+
+    return {
+      success: true,
+      message: `Water application #${applicationId.slice(0, 8)} was permanently deleted.`,
+    };
+  }
+
+  /**
+   * Cancel or Void Water Application with audit trail.
+   */
+  async cancelApplication(applicationId: string, reason?: string, userId?: string, ipAddress?: string) {
+    const application = await this.prisma.waterApplication.findUnique({
+      where: { application_id: applicationId },
+      include: {
+        allotment: {
+          include: {
+            developmentBill: {
+              include: { installments: { include: { payments: true } } },
+            },
+          },
+        },
+      },
+    });
+
+    if (!application) {
+      throw new NotFoundException(`Water application ${applicationId} not found`);
+    }
+
+    if (application.status === 'CANCELLED' || application.status === 'VOIDED') {
+      throw new BadRequestException(`Application is already in status '${application.status}'`);
+    }
+
+    // Check if any payment was recorded
+    const payments = application.allotment?.developmentBill?.installments?.flatMap((i) => i.payments) || [];
+    if (payments.length > 0) {
+      throw new BadRequestException(
+        'Cannot cancel an application with recorded payment receipts. Financial reversal workflow is required.',
+      );
+    }
+
+    const newStatus = application.status === ApplicationStatus.APPROVED ? 'VOIDED' : 'CANCELLED';
+
+    const updated = await this.prisma.waterApplication.update({
+      where: { application_id: applicationId },
+      data: { status: newStatus },
+    });
+
+    await this.auditService.log({
+      userId,
+      action: AuditAction.REJECT,
+      entityType: 'WaterApplication',
+      entityId: applicationId,
+      oldValues: { status: application.status },
+      newValues: { status: newStatus },
+      reason: reason || `Cancelled water application #${applicationId.slice(0, 8)}`,
+      ipAddress,
+    });
+
+    return updated;
+  }
 }
+

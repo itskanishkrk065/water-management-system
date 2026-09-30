@@ -159,6 +159,89 @@ export default function LocationsPage() {
     },
   });
 
+  // Toggle District Active
+  const toggleDistrictMutation = useMutation({
+    mutationFn: async (districtId: string) => {
+      await apiClient.patch(`/locations/districts/${districtId}/toggle-active`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['districts'] });
+    },
+    onError: (err: any) => {
+      setError(err.response?.data?.message || 'Failed to toggle district status');
+    },
+  });
+
+  // Delete District
+  const deleteDistrictMutation = useMutation({
+    mutationFn: async (districtId: string) => {
+      await apiClient.delete(`/locations/districts/${districtId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['districts'] });
+      setError(null);
+    },
+    onError: (err: any) => {
+      setError(err.response?.data?.message || 'Cannot delete this district because it is referenced by existing records.');
+    },
+  });
+
+  // Toggle Block Active
+  const toggleBlockMutation = useMutation({
+    mutationFn: async (blockId: string) => {
+      await apiClient.patch(`/locations/blocks/${blockId}/toggle-active`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['blocks'] });
+    },
+    onError: (err: any) => {
+      setError(err.response?.data?.message || 'Failed to toggle block status');
+    },
+  });
+
+  // Delete Block
+  const deleteBlockMutation = useMutation({
+    mutationFn: async (blockId: string) => {
+      await apiClient.delete(`/locations/blocks/${blockId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['blocks'] });
+      setError(null);
+    },
+    onError: (err: any) => {
+      setError(err.response?.data?.message || 'Cannot delete this block because it is referenced by existing records.');
+    },
+  });
+
+  // Toggle Village Active
+  const toggleVillageMutation = useMutation({
+    mutationFn: async (villageId: string) => {
+      await apiClient.patch(`/locations/villages/${villageId}/toggle-active`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['villages-admin'] });
+      queryClient.invalidateQueries({ queryKey: ['villages'] });
+    },
+    onError: (err: any) => {
+      setError(err.response?.data?.message || 'Failed to toggle village status');
+    },
+  });
+
+  // Delete Village
+  const deleteVillageMutation = useMutation({
+    mutationFn: async (villageId: string) => {
+      await apiClient.delete(`/locations/villages/${villageId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['villages-admin'] });
+      queryClient.invalidateQueries({ queryKey: ['villages'] });
+      setError(null);
+    },
+    onError: (err: any) => {
+      setError(err.response?.data?.message || 'Cannot delete this village because it is referenced by existing records.');
+    },
+  });
+
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
       {/* Header */}
@@ -314,15 +397,41 @@ export default function LocationsPage() {
                         </span>
                       </td>
                       <td className="p-3 text-right">
-                        <button
-                          onClick={() => {
-                            setSelectedDistrictId(d.district_id);
-                            setActiveTab('blocks');
-                          }}
-                          className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-xs font-semibold"
-                        >
-                          View Blocks &rarr;
-                        </button>
+                        <div className="flex items-center justify-end space-x-2">
+                          <button
+                            onClick={() => {
+                              setSelectedDistrictId(d.district_id);
+                              setActiveTab('blocks');
+                            }}
+                            className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-xs font-semibold"
+                          >
+                            View Blocks &rarr;
+                          </button>
+                          {user?.role === 'ADMIN' && (
+                            <>
+                              <button
+                                onClick={() => toggleDistrictMutation.mutate(d.district_id)}
+                                className={`px-2 py-1 rounded text-xs font-semibold ${
+                                  d.is_active ? 'bg-amber-50 text-amber-700 hover:bg-amber-100' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                                }`}
+                                title={d.is_active ? 'Deactivate district' : 'Activate district'}
+                              >
+                                {d.is_active ? 'Deactivate' : 'Activate'}
+                              </button>
+                              <button
+                                onClick={() => {
+                                  if (confirm(`Delete district "${d.name}"? If referenced by blocks or beneficiaries, deletion will be blocked.`)) {
+                                    deleteDistrictMutation.mutate(d.district_id);
+                                  }
+                                }}
+                                className="px-2 py-1 bg-rose-50 text-rose-700 hover:bg-rose-100 rounded text-xs font-semibold"
+                                title="Delete district"
+                              >
+                                Delete
+                              </button>
+                            </>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -408,15 +517,41 @@ export default function LocationsPage() {
                         </span>
                       </td>
                       <td className="p-3 text-right">
-                        <button
-                          onClick={() => {
-                            setSelectedBlockId(b.block_id);
-                            setActiveTab('villages');
-                          }}
-                          className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-xs font-semibold"
-                        >
-                          View Villages &rarr;
-                        </button>
+                        <div className="flex items-center justify-end space-x-2">
+                          <button
+                            onClick={() => {
+                              setSelectedBlockId(b.block_id);
+                              setActiveTab('villages');
+                            }}
+                            className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-xs font-semibold"
+                          >
+                            View Villages &rarr;
+                          </button>
+                          {user?.role === 'ADMIN' && (
+                            <>
+                              <button
+                                onClick={() => toggleBlockMutation.mutate(b.block_id)}
+                                className={`px-2 py-1 rounded text-xs font-semibold ${
+                                  b.is_active ? 'bg-amber-50 text-amber-700 hover:bg-amber-100' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                                }`}
+                                title={b.is_active ? 'Deactivate block' : 'Activate block'}
+                              >
+                                {b.is_active ? 'Deactivate' : 'Activate'}
+                              </button>
+                              <button
+                                onClick={() => {
+                                  if (confirm(`Delete block "${b.name}"? If referenced by villages or beneficiaries, deletion will be blocked.`)) {
+                                    deleteBlockMutation.mutate(b.block_id);
+                                  }
+                                }}
+                                className="px-2 py-1 bg-rose-50 text-rose-700 hover:bg-rose-100 rounded text-xs font-semibold"
+                                title="Delete block"
+                              >
+                                Delete
+                              </button>
+                            </>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -482,12 +617,13 @@ export default function LocationsPage() {
                   <th className="p-3">Parent District</th>
                   <th className="p-3">Beneficiaries</th>
                   <th className="p-3">Status</th>
+                  <th className="p-3 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-sans">
                 {villagesLoading ? (
                   <tr>
-                    <td colSpan={6} className="p-8 text-center text-slate-400">Loading villages...</td>
+                    <td colSpan={7} className="p-8 text-center text-slate-400">Loading villages...</td>
                   </tr>
                 ) : villages && villages.length > 0 ? (
                   villages.map((v: any) => (
@@ -508,11 +644,37 @@ export default function LocationsPage() {
                           {v.is_active ? 'ACTIVE' : 'INACTIVE'}
                         </span>
                       </td>
+                      <td className="p-3 text-right">
+                        {user?.role === 'ADMIN' && (
+                          <div className="flex items-center justify-end space-x-2">
+                            <button
+                              onClick={() => toggleVillageMutation.mutate(v.village_id)}
+                              className={`px-2 py-1 rounded text-xs font-semibold ${
+                                v.is_active ? 'bg-amber-50 text-amber-700 hover:bg-amber-100' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                              }`}
+                              title={v.is_active ? 'Deactivate village' : 'Activate village'}
+                            >
+                              {v.is_active ? 'Deactivate' : 'Activate'}
+                            </button>
+                            <button
+                              onClick={() => {
+                                if (confirm(`Delete village "${v.name}"? If referenced by beneficiaries or land records, deletion will be blocked.`)) {
+                                  deleteVillageMutation.mutate(v.village_id);
+                                }
+                              }}
+                              className="px-2 py-1 bg-rose-50 text-rose-700 hover:bg-rose-100 rounded text-xs font-semibold"
+                              title="Delete village"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        )}
+                      </td>
                     </tr>
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={6} className="p-8 text-center text-slate-400">No villages found.</td>
+                    <td colSpan={7} className="p-8 text-center text-slate-400">No villages found.</td>
                   </tr>
                 )}
               </tbody>
