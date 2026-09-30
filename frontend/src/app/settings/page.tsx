@@ -38,6 +38,14 @@ export default function SettingsHubPage() {
       badge: 'Offline WAL Mode',
       color: 'amber',
     },
+    {
+      title: 'Developer Portal & Clean State',
+      description: 'Internal engineering console, SQLite master explorer, SQL query plan runner, duplicate detector, and clean state protocol.',
+      href: '/developer',
+      icon: ShieldCheck,
+      badge: 'Engineering Master Console',
+      color: 'emerald',
+    },
   ];
 
   return (

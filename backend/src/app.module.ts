@@ -21,6 +21,7 @@ import { ReportsModule } from './modules/reports/reports.module';
 import { BackupModule } from './modules/backup/backup.module';
 import { IntegrityModule } from './modules/integrity/integrity.module';
 import { SearchModule } from './modules/search/search.module';
+import { DeveloperModule } from './modules/developer/developer.module';
 
 @Module({
   imports: [
@@ -46,6 +47,7 @@ import { SearchModule } from './modules/search/search.module';
     BackupModule,
     IntegrityModule,
     SearchModule,
+    DeveloperModule,
   ],
 })
 export class AppModule {}

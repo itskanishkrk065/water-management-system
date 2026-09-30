@@ -26,6 +26,7 @@ import {
   Database,
   Briefcase,
   ShieldCheck,
+  Terminal,
 } from 'lucide-react';
 
 interface NavGroup {
@@ -179,6 +180,7 @@ export default function Sidebar() {
         ...((isAdmin || isAccounts) ? [{ label: 'Data Integrity Audit', href: '/admin/integrity', icon: ShieldCheck }] : []),
         { label: 'Audit History', href: '/audit', icon: History },
         ...(isAdmin ? [{ label: 'Backup & Restore', href: '/settings/backup', icon: Database }] : []),
+        ...(isAdmin ? [{ label: 'Developer Portal', href: '/developer', icon: Terminal }] : []),
       ],
     },
   ];
