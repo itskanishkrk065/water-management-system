@@ -965,7 +965,7 @@ function AdminBeneficiaryDetailContent() {
               </div>
 
               <div className="flex flex-wrap items-center gap-4 text-xs text-slate-500 mt-2 font-medium">
-                <div className="flex items-center space-x-1.5 font-mono text-slate-800">
+                <div className="flex items-center space-x-1.5 text-slate-800">
                   <Phone className="w-3.5 h-3.5 text-slate-400" />
                   <span>{b.phone_number}</span>
                 </div>
@@ -1350,7 +1350,7 @@ function AdminBeneficiaryDetailContent() {
                               className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between text-xs"
                             >
                               <div>
-                                <div className="font-mono font-bold text-slate-800">
+                                <div className="font-bold text-slate-800">
                                   SF {p.survey_number}/{p.subdivision_number}
                                 </div>
                                 <div className="text-[11px] text-slate-500 mt-0.5">
@@ -1698,7 +1698,7 @@ function AdminBeneficiaryDetailContent() {
                           <td className="px-4 py-3.5 font-medium text-slate-800">
                             {inst.milestone_name || getMilestoneLabel(inst.installment_number)}
                           </td>
-                          <td className="px-4 py-3.5 text-right font-mono">
+                          <td className="px-4 py-3.5 text-right font-semibold text-slate-700">
                             {inst.percentage}%
                           </td>
                           <td className="px-4 py-3.5 text-right font-bold text-slate-900">

@@ -129,7 +129,7 @@ export default function DashboardPage() {
       cell: (app) => (
         <div>
           <div className="font-semibold text-slate-900">{app.beneficiary?.name}</div>
-          <div className="text-[11px] font-mono text-slate-400">{app.beneficiary?.phone_number}</div>
+          <div className="text-[11px] text-slate-400">{app.beneficiary?.phone_number}</div>
         </div>
       ),
     },
@@ -146,7 +146,7 @@ export default function DashboardPage() {
       header: 'Requested Volume',
       align: 'right',
       cell: (app) => (
-        <span className="font-semibold text-sky-700 text-xs">
+        <span className="font-semibold text-sky-700 text-xs quantity-value">
           {formatLitres(app.required_litres)}
         </span>
       ),
@@ -160,7 +160,7 @@ export default function DashboardPage() {
       header: 'Submitted',
       align: 'right',
       cell: (app) => (
-        <span className="font-mono text-[11px] text-slate-500">
+        <span className="text-[11px] text-slate-500">
           {formatDate(app.application_date || app.created_at)}
         </span>
       ),
@@ -184,7 +184,7 @@ export default function DashboardPage() {
       header: 'Receipt & Beneficiary',
       cell: (p) => (
         <div>
-          <div className="font-mono font-semibold text-slate-900 text-xs">{p.receipt_number || 'REC-PENDING'}</div>
+          <div className="font-semibold text-slate-900 text-xs">{p.receipt_number || 'REC-PENDING'}</div>
           <div className="text-[11px] text-slate-500">{p.developmentBill?.beneficiary?.name || 'Farmer'}</div>
         </div>
       ),
@@ -201,7 +201,7 @@ export default function DashboardPage() {
       header: 'Amount Paid',
       align: 'right',
       cell: (p) => (
-        <span className="font-bold text-emerald-700 text-xs">
+        <span className="font-bold text-emerald-700 text-xs currency-value">
           {formatCurrency(p.amount)}
         </span>
       ),
@@ -210,7 +210,7 @@ export default function DashboardPage() {
       header: 'Mode',
       align: 'center',
       cell: (p) => (
-        <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-100 text-slate-700 font-semibold uppercase">
+        <span className="text-[10px] px-2 py-0.5 rounded bg-slate-100 text-slate-700 font-semibold uppercase">
           {p.payment_mode || 'OFFLINE'}
         </span>
       ),
@@ -219,7 +219,7 @@ export default function DashboardPage() {
       header: 'Date',
       align: 'right',
       cell: (p) => (
-        <span className="font-mono text-[11px] text-slate-500">
+        <span className="text-[11px] text-slate-500">
           {formatDate(p.payment_date || p.created_at)}
         </span>
       ),

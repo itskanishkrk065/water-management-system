@@ -151,7 +151,7 @@ export default function LandHoldingDetailPage() {
                 <th className="py-3 px-4 text-center">Status</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 font-mono">
+            <tbody className="divide-y divide-slate-100">
               {holding.parcels?.map((p: any, idx: number) => (
                 <tr key={p.parcel_id} className="hover:bg-slate-50 transition">
                   <td className="py-3 px-4 text-slate-400">{idx + 1}</td>

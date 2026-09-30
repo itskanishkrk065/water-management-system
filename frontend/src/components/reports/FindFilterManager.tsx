@@ -1469,7 +1469,7 @@ export function FindFilterManager() {
                   const rowNumber = (meta.page - 1) * meta.limit + idx + 1;
                   return (
                     <tr key={record.beneficiaryId} className="hover:bg-sky-50/50 transition">
-                      <td className="py-3.5 px-4 font-mono text-slate-400">{rowNumber}</td>
+                      <td className="py-3.5 px-4 text-slate-400">{rowNumber}</td>
                       <td className="py-3.5 px-4">
                         <Link
                           href={`/beneficiaries/${record.beneficiaryId}`}
@@ -1478,25 +1478,25 @@ export function FindFilterManager() {
                           <span>{record.name}</span>
                           <ExternalLink className="w-3 h-3 opacity-0 group-hover:opacity-100 transition text-sky-500" />
                         </Link>
-                        <div className="text-[11px] text-slate-500 font-mono mt-0.5">{record.phoneNumber}</div>
+                        <div className="text-[11px] text-slate-500 mt-0.5">{record.phoneNumber}</div>
                       </td>
                       <td className="py-3.5 px-4">
                         <div className="font-semibold text-slate-800">{record.villageName}</div>
                         <div className="text-[11px] text-slate-500">{record.blockName}, {record.districtName}</div>
                       </td>
-                      <td className="py-3.5 px-4 text-right font-mono font-semibold text-emerald-700">
+                      <td className="py-3.5 px-4 text-right font-semibold text-emerald-700">
                         {record.totalLandAcres}
                       </td>
-                      <td className="py-3.5 px-4 text-right font-mono font-semibold text-cyan-700">
+                      <td className="py-3.5 px-4 text-right font-semibold text-sky-700 quantity-value">
                         {parseFloat(record.approvedLitres).toLocaleString()} L
                       </td>
-                      <td className="py-3.5 px-4 text-right font-mono text-slate-900">
+                      <td className="py-3.5 px-4 text-right text-slate-900 currency-value">
                         ₹{parseFloat(record.developmentCost).toLocaleString()}
                       </td>
-                      <td className="py-3.5 px-4 text-right font-mono font-semibold text-emerald-600">
+                      <td className="py-3.5 px-4 text-right font-semibold text-emerald-600 currency-value">
                         ₹{parseFloat(record.amountPaid).toLocaleString()}
                       </td>
-                      <td className="py-3.5 px-4 text-right font-mono font-semibold text-red-600">
+                      <td className="py-3.5 px-4 text-right font-semibold text-rose-600 currency-value">
                         ₹{parseFloat(record.pendingBalance).toLocaleString()}
                       </td>
                       <td className="py-3.5 px-4 text-center">

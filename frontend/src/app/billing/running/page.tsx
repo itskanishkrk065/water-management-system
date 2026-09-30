@@ -72,8 +72,8 @@ export default function RunningBillsPage() {
     {
       header: 'Bill ID / Period',
       cell: (rb) => (
-        <div className="font-mono text-xs">
-          <div className="font-bold text-slate-800">{rb.running_bill_id.slice(0, 8)}...</div>
+        <div className="text-xs">
+          <div className="font-bold font-mono text-slate-800">{rb.running_bill_id.slice(0, 8)}...</div>
           <div className="text-sky-700 font-semibold">{rb.billing_period}</div>
         </div>
       ),
@@ -83,7 +83,7 @@ export default function RunningBillsPage() {
       cell: (rb) => (
         <div>
           <div className="font-semibold text-slate-900">{rb.beneficiary?.name}</div>
-          <div className="text-slate-400 font-mono text-[11px]">{rb.beneficiary?.phone_number}</div>
+          <div className="text-slate-400 text-[11px]">{rb.beneficiary?.phone_number}</div>
         </div>
       ),
     },
@@ -91,7 +91,7 @@ export default function RunningBillsPage() {
       header: 'Allotted Litres',
       align: 'right',
       cell: (rb) => (
-        <span className="font-semibold text-sky-700 font-mono">
+        <span className="font-semibold text-sky-700 quantity-value">
           {formatLitres(rb.approved_litres_snapshot)}
         </span>
       ),
@@ -100,7 +100,7 @@ export default function RunningBillsPage() {
       header: 'Tariff Rate',
       align: 'right',
       cell: (rb) => (
-        <span className="text-slate-600 font-mono">
+        <span className="text-slate-600">
           ₹{Number(rb.running_cost_per_litre_snapshot).toFixed(2)} / L
         </span>
       ),
@@ -109,12 +109,12 @@ export default function RunningBillsPage() {
       header: 'Amount Due',
       align: 'right',
       cell: (rb) => (
-        <span className="font-bold text-slate-900 font-mono">{formatCurrency(rb.amount_due)}</span>
+        <span className="font-bold text-slate-900 currency-value">{formatCurrency(rb.amount_due)}</span>
       ),
     },
     {
       header: 'Due Date',
-      cell: (rb) => <span className="font-mono text-xs text-slate-600">{formatDate(rb.due_date)}</span>,
+      cell: (rb) => <span className="text-xs text-slate-600">{formatDate(rb.due_date)}</span>,
     },
     {
       header: 'Status',

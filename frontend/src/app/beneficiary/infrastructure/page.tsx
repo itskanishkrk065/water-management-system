@@ -158,28 +158,28 @@ export default function BeneficiaryInfrastructurePage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs">
             <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
               <span className="text-slate-500 font-semibold uppercase">1. Planned Date</span>
-              <div className="text-sm font-bold font-mono text-slate-900 mt-1">
+              <div className="text-sm font-bold text-slate-900 mt-1">
                 {formatDate(infra.planned_date)}
               </div>
             </div>
 
             <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
               <span className="text-slate-500 font-semibold uppercase">2. Construction Start</span>
-              <div className="text-sm font-bold font-mono text-slate-900 mt-1">
+              <div className="text-sm font-bold text-slate-900 mt-1">
                 {formatDate(infra.construction_start_date)}
               </div>
             </div>
 
             <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
               <span className="text-slate-500 font-semibold uppercase">3. Completion Date</span>
-              <div className="text-sm font-bold font-mono text-slate-900 mt-1">
+              <div className="text-sm font-bold text-slate-900 mt-1">
                 {formatDate(infra.completion_date)}
               </div>
             </div>
 
             <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
               <span className="text-slate-500 font-semibold uppercase">4. Commissioned Date</span>
-              <div className="text-sm font-bold font-mono text-emerald-700 mt-1">
+              <div className="text-sm font-bold text-emerald-700 mt-1">
                 {formatDate(infra.commissioned_date)}
               </div>
             </div>

@@ -177,7 +177,7 @@ export default function BeneficiaryLandPage() {
                           <span className="text-slate-500 ml-1">/ {p.subdivision_number}</span>
                         )}
                       </div>
-                      <span className="font-mono font-bold text-amber-800">
+                      <span className="font-bold text-amber-800">
                         {formatAcres(p.area)}
                       </span>
                     </div>

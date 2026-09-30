@@ -30,9 +30,9 @@ export default function WaterApplicationsPage() {
     {
       header: 'Submitted Date',
       cell: (app) => (
-        <div className="font-mono text-xs">
+        <div className="text-xs">
           <div className="text-slate-900 font-semibold">{formatDate(app.application_date)}</div>
-          <div className="text-slate-400 text-[11px]">{app.application_id.slice(0, 8)}...</div>
+          <div className="text-slate-400 text-[11px] font-mono">{app.application_id.slice(0, 8)}...</div>
         </div>
       ),
     },
@@ -41,7 +41,7 @@ export default function WaterApplicationsPage() {
       cell: (app) => (
         <div>
           <div className="font-semibold text-slate-900">{app.beneficiary?.name}</div>
-          <div className="text-slate-400 font-mono text-[11px]">{app.beneficiary?.phone_number}</div>
+          <div className="text-slate-400 text-[11px]">{app.beneficiary?.phone_number}</div>
         </div>
       ),
     },
@@ -55,7 +55,7 @@ export default function WaterApplicationsPage() {
       header: 'Required Litres',
       align: 'right',
       cell: (app) => (
-        <span className="font-bold text-sky-700 font-mono">
+        <span className="font-bold text-sky-700 quantity-value">
           {formatLitres(app.required_litres)}
         </span>
       ),
@@ -64,7 +64,7 @@ export default function WaterApplicationsPage() {
       header: 'Approved Litres',
       align: 'right',
       cell: (app) => (
-        <span className="font-bold text-indigo-700 font-mono">
+        <span className="font-bold text-indigo-700 quantity-value">
           {app.allotment ? formatLitres(app.allotment.approved_litres) : '—'}
         </span>
       ),

@@ -204,10 +204,10 @@ export default function WaterApprovalsPage() {
 
                   return (
                     <tr key={app.application_id} className="hover:bg-slate-50/70 transition">
-                      <td className="py-3.5 px-4 font-mono text-xs text-slate-600">{formatDate(app.application_date)}</td>
+                      <td className="py-3.5 px-4 text-xs text-slate-600">{formatDate(app.application_date)}</td>
                       <td className="py-3.5 px-4">
                         <div className="font-semibold text-slate-900">{app.beneficiary?.name}</div>
-                        <div className="text-slate-500 text-xs font-mono">{app.beneficiary?.phone_number}</div>
+                        <div className="text-slate-500 text-xs">{app.beneficiary?.phone_number}</div>
                         <div className="text-slate-400 text-xs">
                           {app.beneficiary?.village?.name}, {app.beneficiary?.district?.name}
                         </div>

@@ -127,12 +127,12 @@ export default function ApplyWaterPage() {
           <div className="text-xs text-sky-200 font-semibold uppercase tracking-wider mb-2">
             Standard Statutory Formula
           </div>
-          <div className="text-lg sm:text-xl font-mono font-bold tracking-tight text-white">
+          <div className="text-lg sm:text-xl font-bold tracking-tight text-white quantity-value">
             Total Land ({formatAcres(preview?.totalLandAcres)}) &times; Quota Rate ({formatLitres(preview?.litresPerAcre)}/acre)
           </div>
           <div className="text-sm font-bold text-amber-300 mt-2 flex items-center space-x-2">
             <span>= Calculated Allocation:</span>
-            <span className="text-xl font-mono text-white underline decoration-amber-400">
+            <span className="text-xl font-bold text-white underline decoration-amber-400 quantity-value">
               {formatLitres(preview?.calculatedAllottedLitres)}
             </span>
           </div>
@@ -208,7 +208,7 @@ export default function ApplyWaterPage() {
               value={requiredLitres}
               onChange={(e) => setRequiredLitres(e.target.value)}
               placeholder="e.g. 35000"
-              className="w-full pl-11 pr-4 py-2.5 border border-slate-300 rounded-xl text-base font-mono font-bold text-slate-900 focus:ring-2 focus:ring-sky-500 focus:border-sky-500 transition"
+              className="w-full pl-11 pr-4 py-2.5 border border-slate-300 rounded-xl text-base font-bold text-slate-900 focus:ring-2 focus:ring-sky-500 focus:border-sky-500 transition"
             />
           </div>
           <p className="text-xs text-slate-500 mt-1.5">
@@ -220,7 +220,7 @@ export default function ApplyWaterPage() {
         <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
           <div className="flex justify-between items-center text-xs">
             <span className="text-slate-500">Estimated Development Cost:</span>
-            <span className="text-sm font-bold text-slate-900 font-mono">
+            <span className="text-sm font-bold text-slate-900 currency-value">
               {formatCurrency(estimatedBill)}
             </span>
           </div>
@@ -265,7 +265,7 @@ export default function ApplyWaterPage() {
             <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 text-xs space-y-2">
               <div className="flex justify-between">
                 <span className="text-slate-500">Requested Volume:</span>
-                <span className="font-bold text-sky-700">{formatLitres(parsedReq)}</span>
+                <span className="font-bold text-sky-700 quantity-value">{formatLitres(parsedReq)}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-500">Land Holding Baseline:</span>
@@ -273,11 +273,11 @@ export default function ApplyWaterPage() {
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-500">Calculated Statutory Quota:</span>
-                <span className="font-semibold text-slate-800">{formatLitres(preview?.calculatedAllottedLitres)}</span>
+                <span className="font-semibold text-slate-800 quantity-value">{formatLitres(preview?.calculatedAllottedLitres)}</span>
               </div>
               <div className="flex justify-between pt-2 border-t border-slate-200">
                 <span className="font-semibold text-slate-700">Estimated Development Cost:</span>
-                <span className="font-bold text-slate-900 font-mono">{formatCurrency(estimatedBill)}</span>
+                <span className="font-bold text-slate-900 currency-value">{formatCurrency(estimatedBill)}</span>
               </div>
             </div>
 

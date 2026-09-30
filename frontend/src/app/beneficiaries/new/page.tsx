@@ -596,7 +596,7 @@ export default function NewBeneficiaryPage() {
                     setHasSearched(false);
                     setLookupResult(null);
                   }}
-                  className="w-full pl-10 pr-4 py-2.5 border border-slate-200 rounded-xl text-xs font-mono focus:ring-2 focus:ring-sky-500 focus:outline-none"
+                  className="w-full pl-10 pr-4 py-2.5 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-sky-500 focus:outline-none"
                 />
               </div>
               <button
@@ -625,7 +625,7 @@ export default function NewBeneficiaryPage() {
                     <h3 className="text-base font-bold text-slate-900 mt-1">
                       {lookupResult.beneficiary.name}
                     </h3>
-                    <p className="text-xs text-slate-600 font-mono">
+                    <p className="text-xs text-slate-600">
                       UUID: {lookupResult.beneficiary.beneficiary_id}
                     </p>
                   </div>
@@ -701,7 +701,7 @@ export default function NewBeneficiaryPage() {
             <div>
               <h2 className="text-sm font-bold text-slate-900">Step 2: Beneficiary Details & Location Hierarchy</h2>
               <p className="text-xs text-slate-500">
-                Phone <span className="font-mono font-bold text-slate-800">{phoneNumber}</span> is available for new registration
+                Phone <span className="font-bold text-slate-800">{phoneNumber}</span> is available for new registration
               </p>
             </div>
           </div>
@@ -838,7 +838,7 @@ export default function NewBeneficiaryPage() {
                 value={pincode}
                 onChange={(e) => setPincode(e.target.value)}
                 placeholder="642001"
-                className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs font-mono focus:ring-2 focus:ring-sky-500 focus:outline-none"
+                className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-sky-500 focus:outline-none"
               />
             </div>
 
@@ -1024,7 +1024,7 @@ export default function NewBeneficiaryPage() {
                       placeholder="e.g. 5.70"
                       value={h.declaredTotalArea}
                       onChange={(e) => updateHolding(hIdx, 'declaredTotalArea', e.target.value)}
-                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-mono text-sm"
+                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm"
                     />
                   </div>
                 </div>
@@ -1104,7 +1104,7 @@ export default function NewBeneficiaryPage() {
                                 placeholder="Area (ac)"
                                 value={p.area}
                                 onChange={(e) => updateParcel(hIdx, pIdx, 'area', e.target.value)}
-                                className="w-full p-2 bg-white border border-slate-200 rounded-lg text-xs font-mono"
+                                className="w-full p-2 bg-white border border-slate-200 rounded-lg text-xs"
                               />
                             </div>
                             <div className="sm:col-span-1 text-center">
@@ -1238,7 +1238,7 @@ export default function NewBeneficiaryPage() {
                           placeholder="e.g. 10000"
                           value={w.requiredLitres}
                           onChange={(e) => updateWaterApp(hIdx, 'requiredLitres', e.target.value)}
-                          className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-mono text-sm"
+                          className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm"
                         />
                       </div>
 
@@ -1312,7 +1312,7 @@ export default function NewBeneficiaryPage() {
                 </div>
                 <div>
                   <span className="text-slate-400 text-[11px]">Phone Number:</span>
-                  <div className="font-bold text-slate-900 text-sm mt-0.5 font-mono">{phoneNumber}</div>
+                  <div className="font-bold text-slate-900 text-sm mt-0.5">{phoneNumber}</div>
                 </div>
                 <div>
                   <span className="text-slate-400 text-[11px]">Email:</span>

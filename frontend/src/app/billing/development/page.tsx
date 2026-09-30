@@ -28,8 +28,8 @@ export default function DevelopmentBillsPage() {
     {
       header: 'Bill ID / Created',
       cell: (b) => (
-        <div className="font-mono text-xs">
-          <div className="font-bold text-slate-800">{b.bill_id.slice(0, 8)}...</div>
+        <div className="text-xs">
+          <div className="font-bold font-mono text-slate-800">{b.bill_id.slice(0, 8)}...</div>
           <div className="text-slate-400 text-[11px]">{formatDate(b.created_at)}</div>
         </div>
       ),
@@ -39,7 +39,7 @@ export default function DevelopmentBillsPage() {
       cell: (b) => (
         <div>
           <div className="font-semibold text-slate-900">{b.beneficiary?.name}</div>
-          <div className="text-slate-400 font-mono text-[11px]">{b.beneficiary?.phone_number}</div>
+          <div className="text-slate-400 text-[11px]">{b.beneficiary?.phone_number}</div>
         </div>
       ),
     },
@@ -47,7 +47,7 @@ export default function DevelopmentBillsPage() {
       header: 'Approved Litres',
       align: 'right',
       cell: (b) => (
-        <span className="font-semibold text-sky-700 font-mono">
+        <span className="font-semibold text-sky-700 quantity-value">
           {formatLitres(b.approved_litres_snapshot)}
         </span>
       ),
@@ -56,7 +56,7 @@ export default function DevelopmentBillsPage() {
       header: 'Total Amount',
       align: 'right',
       cell: (b) => (
-        <span className="font-bold text-slate-900 font-mono">
+        <span className="font-bold text-slate-900 currency-value">
           {formatCurrency(b.total_amount)}
         </span>
       ),
@@ -65,7 +65,7 @@ export default function DevelopmentBillsPage() {
       header: 'Amount Paid',
       align: 'right',
       cell: (b) => (
-        <span className="font-semibold text-emerald-700 font-mono">
+        <span className="font-semibold text-emerald-700 currency-value">
           {formatCurrency(b.amount_paid)}
         </span>
       ),
@@ -74,7 +74,7 @@ export default function DevelopmentBillsPage() {
       header: 'Pending Balance',
       align: 'right',
       cell: (b) => (
-        <span className="font-bold text-rose-600 font-mono">
+        <span className="font-bold text-rose-600 currency-value">
           {formatCurrency(b.pending_amount)}
         </span>
       ),

@@ -80,15 +80,15 @@ export default function BeneficiaryWaterPage() {
                     APPROVED &amp; ACTIVE
                   </span>
                 </div>
-                <div className="text-xs text-slate-500 font-mono mt-0.5">
-                  Allotment ID: {activeAllotment.allotment_id} &bull; Approved on {formatDate(activeAllotment.approved_at)}
+                <div className="text-xs text-slate-500 mt-0.5">
+                  Allotment ID: <span className="font-mono">{activeAllotment.allotment_id.slice(0, 8)}...</span> &bull; Approved on {formatDate(activeAllotment.approved_at)}
                 </div>
               </div>
             </div>
 
             <div className="text-right">
               <span className="text-xs font-semibold text-slate-500 uppercase">Approved Quota</span>
-              <div className="text-3xl font-extrabold text-sky-700">
+              <div className="text-3xl font-extrabold text-sky-700 quantity-value">
                 {formatLitres(activeAllotment.approved_litres)}
               </div>
             </div>
@@ -108,7 +108,7 @@ export default function BeneficiaryWaterPage() {
 
             <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
               <div className="text-slate-500 font-semibold uppercase tracking-wider">Total Development Cost</div>
-              <div className="text-sm font-bold text-slate-900 mt-1">
+              <div className="text-sm font-bold text-slate-900 mt-1 currency-value">
                 {formatCurrency(activeAllotment.developmentBill?.total_amount ?? 0)}
               </div>
               <p className="text-[11px] text-slate-400 mt-1">
@@ -182,7 +182,7 @@ export default function BeneficiaryWaterPage() {
                   <th className="py-3 px-4 text-center">Status</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 font-mono">
+              <tbody className="divide-y divide-slate-100">
                 {applications.map((app: any) => (
                   <tr key={app.application_id} className="hover:bg-slate-50 transition">
                     <td className="py-3 px-4 font-bold text-slate-800">

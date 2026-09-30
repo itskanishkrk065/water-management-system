@@ -105,13 +105,17 @@ export default function ExtensionsPage() {
               ) : data?.items?.length > 0 ? (
                 data.items.map((ext: any) => (
                   <tr key={ext.extension_id} className="hover:bg-slate-50/50 transition">
-                    <td className="px-5 py-4 font-mono text-slate-600">{formatDate(ext.requested_at)}</td>
+                    <td className="px-5 py-4 text-slate-600">{formatDate(ext.requested_at)}</td>
                     <td className="px-5 py-4 font-medium text-slate-900">
                       <div>{ext.beneficiary?.name}</div>
-                      <div className="text-slate-400 font-mono text-[11px]">{ext.beneficiary?.phone_number}</div>
+                      <div className="text-slate-400 text-[11px]">{ext.beneficiary?.phone_number}</div>
                     </td>
-                    <td className="px-5 py-4 font-mono text-slate-600">
-                      {ext.originalAllotment ? `${ext.originalAllotment.allotment_id.slice(0, 8)}... (${formatLitres(ext.originalAllotment.approved_litres)})` : '—'}
+                    <td className="px-5 py-4 text-slate-600">
+                      {ext.originalAllotment ? (
+                        <span>
+                          <span className="font-mono">{ext.originalAllotment.allotment_id.slice(0, 8)}...</span> ({formatLitres(ext.originalAllotment.approved_litres)})
+                        </span>
+                      ) : '—'}
                     </td>
                     <td className="px-5 py-4">
                       <div className="font-semibold text-slate-800">{formatAcres(ext.requested_additional_area)}</div>

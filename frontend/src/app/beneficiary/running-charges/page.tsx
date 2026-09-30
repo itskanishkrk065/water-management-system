@@ -62,7 +62,7 @@ export default function BeneficiaryRunningChargesPage() {
                 <h2 className="text-lg font-bold text-amber-950">
                   Commissioning Gate Notice &bull; Charges Inactive
                 </h2>
-                <span className="text-xs px-2.5 py-0.5 rounded-full font-mono font-bold bg-amber-200 text-amber-900">
+                <span className="text-xs px-2.5 py-0.5 rounded-full font-bold bg-amber-200 text-amber-900">
                   STATUS: {infraStatus}
                 </span>
               </div>
@@ -90,7 +90,7 @@ export default function BeneficiaryRunningChargesPage() {
           <div>
             <div className="text-base font-bold text-emerald-950 flex items-center space-x-2">
               <span>Infrastructure Commissioned &bull; Running Charges Active</span>
-              <span className="text-xs bg-emerald-200 text-emerald-900 px-2 py-0.5 rounded-full font-mono">
+              <span className="text-xs bg-emerald-200 text-emerald-900 px-2 py-0.5 rounded-full">
                 {formatDate(commissionedAt)}
               </span>
             </div>
@@ -125,7 +125,7 @@ export default function BeneficiaryRunningChargesPage() {
                   <th className="py-3 px-4 text-center">Status</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 font-mono">
+              <tbody className="divide-y divide-slate-100">
                 {bills.map((bill: any) => (
                   <tr key={bill.running_bill_id} className="hover:bg-slate-50 transition">
                     <td className="py-3 px-4 font-bold text-slate-900 font-sans">

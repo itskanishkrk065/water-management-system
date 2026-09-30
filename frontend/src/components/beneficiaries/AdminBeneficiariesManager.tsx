@@ -434,8 +434,8 @@ export default function AdminBeneficiariesManager() {
               </span>
             )}
           </div>
-          <div className="text-slate-500 text-[11px] font-mono">
-            Server-Side Filtered & Paginated
+          <div className="text-slate-500 text-[11px]">
+            Server-Side Filtered &amp; Paginated
           </div>
         </div>
 
@@ -444,7 +444,7 @@ export default function AdminBeneficiariesManager() {
           <table className="w-full text-left text-xs">
             <thead className="bg-slate-100/70 border-b border-slate-200 font-semibold text-slate-600 uppercase tracking-wider text-[11px]">
               <tr>
-                <th className="px-5 py-3.5">Beneficiary ID & Farmer</th>
+                <th className="px-5 py-3.5">Beneficiary ID &amp; Farmer</th>
                 <th className="px-4 py-3.5">Contact</th>
                 <th className="px-4 py-3.5">Administrative Location</th>
                 <th className="px-4 py-3.5 text-right">Total Land</th>
@@ -505,7 +505,7 @@ export default function AdminBeneficiariesManager() {
 
                       {/* Phone & Contact */}
                       <td className="px-4 py-4 text-slate-700">
-                        <div className="flex items-center space-x-1 font-mono text-xs font-semibold">
+                        <div className="flex items-center space-x-1 text-xs font-semibold">
                           <Phone className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                           <span>{b.phone_number}</span>
                         </div>

@@ -139,17 +139,17 @@ export default function InfrastructureGridPage() {
                   <tr key={infra.infrastructure_id} className="hover:bg-slate-50/50 transition">
                     <td className="px-5 py-4 font-medium text-slate-900">
                       <div>{infra.beneficiary?.name}</div>
-                      <div className="text-slate-400 font-mono text-[11px]">{infra.beneficiary?.phone_number}</div>
+                      <div className="text-slate-400 text-[11px]">{infra.beneficiary?.phone_number}</div>
                     </td>
                     <td className="px-5 py-4">
                       <span className={`px-2.5 py-1 text-[11px] font-bold rounded-full border ${getStatusBadgeClass(infra.status)}`}>
                         {infra.status}
                       </span>
                     </td>
-                    <td className="px-5 py-4 font-mono text-slate-600">{formatDate(infra.planned_date)}</td>
-                    <td className="px-5 py-4 font-mono text-slate-600">{formatDate(infra.construction_start_date)}</td>
-                    <td className="px-5 py-4 font-mono text-slate-600">{formatDate(infra.completion_date)}</td>
-                    <td className="px-5 py-4 font-mono font-bold text-emerald-700">
+                    <td className="px-5 py-4 text-slate-600">{formatDate(infra.planned_date)}</td>
+                    <td className="px-5 py-4 text-slate-600">{formatDate(infra.construction_start_date)}</td>
+                    <td className="px-5 py-4 text-slate-600">{formatDate(infra.completion_date)}</td>
+                    <td className="px-5 py-4 font-bold text-emerald-700">
                       {formatDate(infra.commissioned_date)}
                     </td>
                     <td className="px-5 py-4 text-right">

@@ -215,7 +215,7 @@ export default function NewLandHoldingPage() {
                 value={declaredArea}
                 onChange={(e) => setDeclaredArea(e.target.value)}
                 placeholder="e.g. 3.5000"
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono font-bold text-slate-900 focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition"
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-bold text-slate-900 focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition"
               />
               <p className="text-xs text-slate-400 mt-1">
                 Total land area as recorded on revenue patta / deed.
@@ -278,7 +278,7 @@ export default function NewLandHoldingPage() {
                         value={row.surveyNumber}
                         onChange={(e) => handleParcelChange(idx, 'surveyNumber', e.target.value)}
                         placeholder="e.g. 104/1A"
-                        className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white font-mono focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition"
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition"
                       />
                     </div>
 
@@ -291,7 +291,7 @@ export default function NewLandHoldingPage() {
                         value={row.subdivisionNumber}
                         onChange={(e) => handleParcelChange(idx, 'subdivisionNumber', e.target.value)}
                         placeholder="e.g. 1B"
-                        className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white font-mono focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition"
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition"
                       />
                     </div>
 
@@ -307,7 +307,7 @@ export default function NewLandHoldingPage() {
                         value={row.areaAcres}
                         onChange={(e) => handleParcelChange(idx, 'areaAcres', e.target.value)}
                         placeholder="e.g. 1.7500"
-                        className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white font-mono font-bold text-slate-900 focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition"
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white font-bold text-slate-900 focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition"
                       />
                     </div>
 

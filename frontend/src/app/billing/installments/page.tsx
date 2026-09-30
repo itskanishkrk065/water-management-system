@@ -38,7 +38,7 @@ export default function InstallmentsPage() {
       cell: (inst) => (
         <div>
           <div className="font-semibold text-slate-900">{inst.bill?.beneficiary?.name}</div>
-          <div className="text-slate-400 font-mono text-[11px]">
+          <div className="text-slate-400 text-[11px]">
             {inst.bill?.beneficiary?.phone_number}
           </div>
         </div>
@@ -47,31 +47,31 @@ export default function InstallmentsPage() {
     {
       header: 'Share (%)',
       align: 'right',
-      cell: (inst) => <span className="font-semibold text-slate-700 font-mono">{inst.percentage}%</span>,
+      cell: (inst) => <span className="font-semibold text-slate-700">{inst.percentage}%</span>,
     },
     {
       header: 'Due Date',
-      cell: (inst) => <span className="font-mono text-xs text-slate-600">{formatDate(inst.due_date)}</span>,
+      cell: (inst) => <span className="text-xs text-slate-600">{formatDate(inst.due_date)}</span>,
     },
     {
       header: 'Amount Due',
       align: 'right',
       cell: (inst) => (
-        <span className="font-bold text-slate-900 font-mono">{formatCurrency(inst.amount_due)}</span>
+        <span className="font-bold text-slate-900 currency-value">{formatCurrency(inst.amount_due)}</span>
       ),
     },
     {
       header: 'Amount Paid',
       align: 'right',
       cell: (inst) => (
-        <span className="font-semibold text-emerald-700 font-mono">{formatCurrency(inst.amount_paid)}</span>
+        <span className="font-semibold text-emerald-700 currency-value">{formatCurrency(inst.amount_paid)}</span>
       ),
     },
     {
       header: 'Pending Balance',
       align: 'right',
       cell: (inst) => (
-        <span className="font-bold text-rose-600 font-mono">{formatCurrency(inst.pending_amount)}</span>
+        <span className="font-bold text-rose-600 currency-value">{formatCurrency(inst.pending_amount)}</span>
       ),
     },
     {

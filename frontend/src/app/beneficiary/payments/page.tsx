@@ -124,7 +124,7 @@ export default function BeneficiaryPaymentsPage() {
         <div>
           <div className="flex justify-between text-xs font-semibold text-slate-600 mb-1.5">
             <span>Overall Capital Contribution Progress</span>
-            <span className="font-mono">{percentPaid}%</span>
+            <span className="font-bold">{percentPaid}%</span>
           </div>
           <div className="w-full bg-slate-100 rounded-full h-3 overflow-hidden">
             <div
@@ -168,7 +168,7 @@ export default function BeneficiaryPaymentsPage() {
                   <div className="space-y-3">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center space-x-2">
-                        <span className="h-6 w-6 rounded-full bg-slate-900 text-white text-xs font-bold flex items-center justify-center font-mono">
+                        <span className="h-6 w-6 rounded-full bg-slate-900 text-white text-xs font-bold flex items-center justify-center">
                           {inst.installment_number}
                         </span>
                         <span className="text-xs font-bold text-slate-700">
@@ -199,7 +199,7 @@ export default function BeneficiaryPaymentsPage() {
                       </div>
                       <div className="flex justify-between pt-1 border-t border-slate-100">
                         <span className="text-slate-500">Pending:</span>
-                        <span className="font-bold text-rose-700 font-mono">
+                        <span className="font-bold text-rose-700 currency-value">
                           {formatCurrency(inst.pending_amount)}
                         </span>
                       </div>
@@ -259,7 +259,7 @@ export default function BeneficiaryPaymentsPage() {
                   <th className="py-3 px-4 text-center">Receipt</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 font-mono">
+              <tbody className="divide-y divide-slate-100">
                 {payments.map((pay: any) => (
                   <tr key={pay.payment_id} className="hover:bg-slate-50 transition">
                     <td className="py-3 px-4 font-bold text-slate-900">
@@ -383,7 +383,7 @@ export default function BeneficiaryPaymentsPage() {
                   </div>
                   <div className="flex justify-between items-center pt-2 border-t border-emerald-200">
                     <span className="text-sm font-bold text-emerald-900">Total Amount Received:</span>
-                    <span className="text-2xl font-extrabold font-mono text-emerald-700">
+                    <span className="text-2xl font-extrabold text-emerald-700 currency-value">
                       {formatCurrency(receipt.amount)}
                     </span>
                   </div>
@@ -444,7 +444,7 @@ export default function BeneficiaryPaymentsPage() {
 
             <div className="text-center p-4 bg-slate-50 rounded-xl border border-slate-200">
               <div className="text-xs text-slate-500 uppercase font-semibold">Installment Balance Due</div>
-              <div className="text-2xl font-bold font-mono text-slate-900 mt-1">
+              <div className="text-2xl font-bold text-slate-900 mt-1 currency-value">
                 {formatCurrency(payingInstallment.pending_amount)}
               </div>
               <div className="text-[11px] text-slate-500 mt-1">

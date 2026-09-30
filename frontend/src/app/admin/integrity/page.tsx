@@ -210,7 +210,7 @@ export default function DataIntegrityPage() {
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-bold text-slate-900 text-sm">{finding.title}</span>
                       <span
-                        className={`text-[10px] font-mono px-2 py-0.5 rounded font-semibold uppercase ${
+                        className={`text-[10px] px-2 py-0.5 rounded font-semibold uppercase ${
                           isPass
                             ? 'bg-emerald-100 text-emerald-800'
                             : isWarn
@@ -220,7 +220,7 @@ export default function DataIntegrityPage() {
                       >
                         {finding.severity}
                       </span>
-                      <span className="text-[11px] text-slate-500 bg-slate-100 px-2 py-0.5 rounded font-mono">
+                      <span className="text-[11px] text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
                         {finding.category}
                       </span>
                     </div>

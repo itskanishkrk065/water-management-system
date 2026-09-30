@@ -99,14 +99,14 @@ export default function PaymentsMasterPage() {
       cell: (p) => (
         <div>
           <div className="font-semibold text-slate-900">{p.beneficiary?.name}</div>
-          <div className="text-slate-400 font-mono text-[11px]">{p.beneficiary?.phone_number}</div>
+          <div className="text-slate-400 text-[11px]">{p.beneficiary?.phone_number}</div>
         </div>
       ),
     },
     {
       header: 'Mode',
       cell: (p) => (
-        <span className="text-xs font-semibold px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 font-mono">
+        <span className="text-xs font-semibold px-2 py-0.5 rounded-md bg-slate-100 text-slate-700">
           {p.payment_mode}
         </span>
       ),
@@ -115,14 +115,14 @@ export default function PaymentsMasterPage() {
       header: 'Amount Paid',
       align: 'right',
       cell: (p) => (
-        <span className={`font-bold font-mono text-sm ${p.is_reversal ? 'text-rose-600 line-through' : 'text-emerald-700'}`}>
+        <span className={`font-bold text-sm currency-value ${p.is_reversal ? 'text-rose-600 line-through' : 'text-emerald-700'}`}>
           {formatCurrency(p.amount)}
         </span>
       ),
     },
     {
       header: 'Recorded Date',
-      cell: (p) => <span className="font-mono text-xs text-slate-600">{formatDate(p.payment_date || p.created_at)}</span>,
+      cell: (p) => <span className="text-xs text-slate-600">{formatDate(p.payment_date || p.created_at)}</span>,
     },
     {
       header: 'Status',

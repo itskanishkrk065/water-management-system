@@ -70,7 +70,7 @@ export default function BeneficiaryDashboardPage() {
               Vanakkam, {b?.name || 'Beneficiary'}
             </h1>
             <p className="text-slate-300 text-sm mt-1 max-w-2xl">
-              Village: <span className="font-semibold text-white">{b?.village || 'Not specified'}</span> &bull; Mobile: <span className="font-mono text-white">{b?.phone || '—'}</span>
+              Village: <span className="font-semibold text-white">{b?.village || 'Not specified'}</span> &bull; Mobile: <span className="text-white font-medium">{b?.phone || '—'}</span>
             </p>
           </div>
 
@@ -97,7 +97,7 @@ export default function BeneficiaryDashboardPage() {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
             <div className="text-xs font-semibold text-slate-300 flex items-center space-x-2">
               <span>Onboarding &amp; Profile Completion</span>
-              <span className="font-mono text-amber-400 font-bold">{completion}%</span>
+              <span className="text-amber-400 font-bold">{completion}%</span>
             </div>
             {completion < 100 && (
               <Link

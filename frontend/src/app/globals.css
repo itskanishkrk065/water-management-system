@@ -72,3 +72,21 @@ body {
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
   background: rgba(100, 116, 139, 0.7);
 }
+
+/* Universal Numeric Typography Normalization */
+.numeric-value,
+.metric-value,
+.currency-value,
+.quantity-value,
+.stat-value {
+  font-family: inherit;
+  font-feature-settings: normal;
+  letter-spacing: -0.01em;
+}
+
+/* Tabular numbers reserved strictly for column-aligned financial tables */
+.tabular-value {
+  font-family: inherit;
+  font-variant-numeric: tabular-nums;
+}
+
