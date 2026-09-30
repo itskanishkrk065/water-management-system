@@ -34,7 +34,7 @@ export default function LoginPage() {
           </div>
           <div>
             <h2 className="text-xl font-bold text-slate-900 tracking-tight">
-              Water Management System
+              WaterGrid V1
             </h2>
             <p className="mt-1 text-xs text-slate-500">
               Sign in to access your administrative control console
