@@ -3,7 +3,7 @@ import { LocationImportService } from './location-import.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { BadRequestException, ConflictException } from '@nestjs/common';
-import { LocationImportStatus } from '@prisma/client';
+import { LocationImportStatus } from '../common/enums';
 import * as xlsx from 'xlsx';
 
 describe('LocationImportService', () => {

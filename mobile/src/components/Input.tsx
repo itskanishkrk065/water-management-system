@@ -1,68 +1,126 @@
-import React from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View,
-  Text,
   TextInput,
+  Text,
   StyleSheet,
-  TextInputProps,
   ViewStyle,
+  TextStyle,
+  TextInputProps,
+  TouchableOpacity,
+  Pressable,
 } from 'react-native';
-import { Colors } from '../constants/colors';
+import { colors, spacing, borderRadius, typography, layout } from '../constants/theme';
+import { Feather } from './Icon';
 
 interface InputProps extends TextInputProps {
-  label: string;
+  label?: string;
   error?: string;
-  helper?: string;
+  hint?: string;
   containerStyle?: ViewStyle;
-  leftIcon?: React.ReactNode;
-  rightIcon?: React.ReactNode;
-  required?: boolean;
+  inputStyle?: TextStyle;
+  icon?: React.ReactNode;
+  trailingIcon?: React.ReactNode;
+  onClear?: () => void;
+  showClearButton?: boolean;
 }
 
 export const Input: React.FC<InputProps> = ({
   label,
   error,
-  helper,
+  hint,
   containerStyle,
-  leftIcon,
-  rightIcon,
-  required,
-  style,
-  ...rest
+  inputStyle,
+  icon,
+  trailingIcon,
+  value,
+  onClear,
+  showClearButton = false,
+  onFocus,
+  onBlur,
+  secureTextEntry,
+  ...props
 }) => {
+  const [isFocused, setIsFocused] = useState(false);
+  const [isPasswordVisible, setIsPasswordVisible] = useState(false);
+  const inputRef = useRef<TextInput>(null);
+
+  const handleFocus = (e: any) => {
+    setIsFocused(true);
+    onFocus?.(e);
+  };
+
+  const handleBlur = (e: any) => {
+    setIsFocused(false);
+    onBlur?.(e);
+  };
+
+  const handleContainerPress = () => {
+    inputRef.current?.focus();
+  };
+
+  const isSecure = secureTextEntry && !isPasswordVisible;
+
   return (
     <View style={[styles.container, containerStyle]}>
-      <View style={styles.labelRow}>
-        <Text style={styles.label}>
-          {label} {required && <Text style={styles.requiredStar}>*</Text>}
+      {label && (
+        <Text style={[styles.label, isFocused && styles.labelFocused, !!error && styles.labelError]}>
+          {label}
         </Text>
-      </View>
-
-      <View
+      )}
+      <Pressable
+        onPress={handleContainerPress}
         style={[
-          styles.inputWrapper,
-          error ? styles.inputError : null,
-          rest.editable === false ? styles.inputDisabled : null,
+          styles.inputContainer,
+          isFocused && styles.focusedInput,
+          !!error && styles.errorInput,
+          props.editable === false && styles.disabledInput,
         ]}
       >
-        {leftIcon && <View style={styles.leftIconContainer}>{leftIcon}</View>}
+        {icon && <View style={styles.iconContainer}>{icon}</View>}
         <TextInput
-          placeholderTextColor={Colors.neutral[400]}
-          style={[
-            styles.input,
-            leftIcon ? { paddingLeft: 0 } : null,
-            rightIcon ? { paddingRight: 0 } : null,
-            style,
-          ]}
-          {...rest}
+          ref={inputRef}
+          style={[styles.input, inputStyle]}
+          placeholderTextColor={colors.textMuted}
+          value={value}
+          onFocus={handleFocus}
+          onBlur={handleBlur}
+          secureTextEntry={isSecure}
+          accessible={true}
+          accessibilityLabel={label || props.placeholder}
+          {...props}
         />
-        {rightIcon && <View style={styles.rightIconContainer}>{rightIcon}</View>}
-      </View>
-
+        {secureTextEntry && (
+          <TouchableOpacity
+            onPress={() => setIsPasswordVisible(!isPasswordVisible)}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            style={styles.actionButton}
+          >
+            <Feather
+              name={isPasswordVisible ? 'eye-off' : 'eye'}
+              size={18}
+              color={colors.textSecondary}
+            />
+          </TouchableOpacity>
+        )}
+        {showClearButton && !!value && onClear && (
+          <TouchableOpacity
+            onPress={onClear}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            style={styles.actionButton}
+          >
+            <Feather name="x-circle" size={16} color={colors.textMuted} />
+          </TouchableOpacity>
+        )}
+        {trailingIcon && <View style={styles.trailingContainer}>{trailingIcon}</View>}
+      </Pressable>
       {error ? (
-        <Text style={styles.errorText}>{error}</Text>
-      ) : helper ? (
-        <Text style={styles.helperText}>{helper}</Text>
+        <View style={styles.feedbackContainer}>
+          <Feather name="alert-circle" size={12} color={colors.danger} style={styles.feedbackIcon} />
+          <Text style={styles.errorText}>{error}</Text>
+        </View>
+      ) : hint ? (
+        <Text style={styles.hintText}>{hint}</Text>
       ) : null}
     </View>
   );
@@ -70,60 +128,93 @@ export const Input: React.FC<InputProps> = ({
 
 const styles = StyleSheet.create({
   container: {
-    marginBottom: 16,
-  },
-  labelRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 6,
+    marginBottom: spacing.md,
+    width: '100%',
   },
   label: {
-    fontSize: 13,
+    fontSize: typography.fontSize.caption,
     fontWeight: '600',
-    color: Colors.neutral[700],
+    color: colors.textSecondary,
+    marginBottom: spacing.xs + 2,
+    fontFamily: typography.fontFamily.medium,
   },
-  requiredStar: {
-    color: Colors.status.dangerText,
+  labelFocused: {
+    color: colors.primary,
   },
-  inputWrapper: {
+  labelError: {
+    color: colors.danger,
+  },
+  inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1.5,
-    borderColor: Colors.neutral[300],
-    borderRadius: 10,
-    minHeight: 48,
-    paddingHorizontal: 12,
+    backgroundColor: colors.surface,
+    borderWidth: 1.2,
+    borderColor: colors.border,
+    borderRadius: borderRadius.lg,
+    paddingHorizontal: spacing.md,
+    minHeight: layout.minTouchTarget,
+    width: '100%',
   },
-  inputError: {
-    borderColor: Colors.status.dangerBorder,
-    backgroundColor: '#FFF5F5',
+  focusedInput: {
+    borderColor: colors.primary,
+    backgroundColor: colors.surface,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.12,
+    shadowRadius: 4,
+    elevation: 2,
   },
-  inputDisabled: {
-    backgroundColor: Colors.neutral[100],
-    borderColor: Colors.neutral[200],
+  errorInput: {
+    borderColor: colors.danger,
+    backgroundColor: colors.dangerLight,
   },
-  leftIconContainer: {
-    marginRight: 10,
+  disabledInput: {
+    backgroundColor: colors.surfaceSubtle,
+    borderColor: colors.border,
   },
-  rightIconContainer: {
-    marginLeft: 10,
+  iconContainer: {
+    marginRight: spacing.sm,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  trailingContainer: {
+    marginLeft: spacing.sm,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  actionButton: {
+    padding: spacing.xs,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: spacing.xs,
   },
   input: {
     flex: 1,
-    fontSize: 15,
-    color: Colors.neutral[900],
-    paddingVertical: 10,
+    fontSize: typography.fontSize.body,
+    color: colors.textPrimary,
+    paddingVertical: spacing.sm,
+    height: '100%',
+    minHeight: layout.minTouchTarget - 4,
+    fontFamily: typography.fontFamily.regular,
+  },
+  feedbackContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: spacing.xs,
+  },
+  feedbackIcon: {
+    marginRight: spacing.xs,
   },
   errorText: {
-    fontSize: 12,
-    color: Colors.status.dangerText,
-    marginTop: 4,
+    fontSize: typography.fontSize.tiny,
+    color: colors.danger,
     fontWeight: '500',
+    fontFamily: typography.fontFamily.medium,
   },
-  helperText: {
-    fontSize: 12,
-    color: Colors.neutral[500],
-    marginTop: 4,
+  hintText: {
+    fontSize: typography.fontSize.tiny,
+    color: colors.textSecondary,
+    marginTop: spacing.xs,
+    fontFamily: typography.fontFamily.regular,
   },
 });

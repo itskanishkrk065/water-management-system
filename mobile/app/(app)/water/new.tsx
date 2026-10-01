@@ -5,28 +5,24 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Alert,
+  SafeAreaView,
+  StatusBar,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Header } from '../../../src/components/Header';
 import { Input } from '../../../src/components/Input';
 import { Button } from '../../../src/components/Button';
-import { Colors } from '../../../src/constants/colors';
+import { BottomSheet } from '../../../src/components/BottomSheet';
+import { ListItem } from '../../../src/components/ListItem';
+import { StatusBadge } from '../../../src/components/StatusBadge';
+import { useToast } from '../../../src/components/Toast';
+import { colors, spacing, borderRadius, typography, shadows } from '../../../src/constants/theme';
 import { BeneficiaryRepository } from '../../../src/repositories/BeneficiaryRepository';
 import { LandRepository } from '../../../src/repositories/LandRepository';
 import { WaterRepository } from '../../../src/repositories/WaterRepository';
 import { Beneficiary, LandHolding, RateTariff } from '../../../src/types/domain';
 import { calculateWaterQuota } from '../../../src/services/calculationService';
-import {
-  ArrowLeft,
-  User,
-  Layers,
-  Droplets,
-  Lock,
-  CheckCircle2,
-  AlertCircle,
-} from 'lucide-react-native';
+import { Feather } from '../../../src/components/Icon';
 
 const beneficiaryRepo = new BeneficiaryRepository();
 const landRepo = new LandRepository();
@@ -34,10 +30,13 @@ const waterRepo = new WaterRepository();
 
 export default function NewWaterApplicationScreen() {
   const router = useRouter();
+  const { showToast } = useToast();
   const { beneficiaryId } = useLocalSearchParams<{ beneficiaryId?: string }>();
 
   const [beneficiaries, setBeneficiaries] = useState<Beneficiary[]>([]);
-  const [selectedBeneficiaryId, setSelectedBeneficiaryId] = useState(beneficiaryId || '');
+  const [selectedBen, setSelectedBen] = useState<Beneficiary | null>(null);
+  const [showBenPicker, setShowBenPicker] = useState(false);
+
   const [holdings, setHoldings] = useState<LandHolding[]>([]);
   const [selectedHoldingId, setSelectedHoldingId] = useState('');
   const [tariff, setTariff] = useState<RateTariff | null>(null);
@@ -46,7 +45,6 @@ export default function NewWaterApplicationScreen() {
   const [remarks, setRemarks] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  // Load beneficiaries
   useEffect(() => {
     async function loadData() {
       const bens = await beneficiaryRepo.getAll();
@@ -56,22 +54,21 @@ export default function NewWaterApplicationScreen() {
       setTariff(defaultTariff);
 
       if (beneficiaryId) {
-        setSelectedBeneficiaryId(beneficiaryId);
+        const matching = bens.find((b) => b.beneficiary_id === beneficiaryId);
+        if (matching) setSelectedBen(matching);
       } else if (bens.length > 0) {
-        setSelectedBeneficiaryId(bens[0].beneficiary_id);
+        setSelectedBen(bens[0]);
       }
     }
     loadData();
   }, [beneficiaryId]);
 
-  // Load holdings for selected beneficiary
   useEffect(() => {
     async function loadHoldings() {
-      if (!selectedBeneficiaryId) return;
-      const hList = await landRepo.getByBeneficiaryId(selectedBeneficiaryId);
+      if (!selectedBen) return;
+      const hList = await landRepo.getByBeneficiaryId(selectedBen.beneficiary_id);
       setHoldings(hList);
 
-      // Auto-select first eligible holding
       const firstEligible = hList.find((h) => !h.has_active_allotment && h.status === 'ACTIVE');
       if (firstEligible) {
         setSelectedHoldingId(firstEligible.holding_id);
@@ -85,7 +82,7 @@ export default function NewWaterApplicationScreen() {
       }
     }
     loadHoldings();
-  }, [selectedBeneficiaryId, tariff]);
+  }, [selectedBen, tariff]);
 
   const selectedHolding = holdings.find((h) => h.holding_id === selectedHoldingId);
   const calculatedAllocation =
@@ -94,78 +91,69 @@ export default function NewWaterApplicationScreen() {
       : 0;
 
   const handleSubmit = async () => {
-    if (!selectedBeneficiaryId) {
-      Alert.alert('Selection Error', 'Please select a beneficiary.');
+    if (!selectedBen) {
+      showToast({ message: 'Please select a beneficiary', type: 'warning' });
       return;
     }
     if (!selectedHoldingId) {
-      Alert.alert('Selection Error', 'Please select an eligible land holding.');
+      showToast({ message: 'Please select an eligible land holding', type: 'warning' });
       return;
     }
     if (!requiredLitres || parseFloat(requiredLitres) <= 0) {
-      Alert.alert('Input Error', 'Please enter required litres.');
+      showToast({ message: 'Please enter required water quantity', type: 'warning' });
       return;
     }
 
     setSubmitting(true);
     try {
       await waterRepo.createApplication({
-        beneficiary_id: selectedBeneficiaryId,
+        beneficiary_id: selectedBen.beneficiary_id,
         holding_id: selectedHoldingId,
         project_id: selectedHolding?.project_id || 'prj-csii',
         required_litres: parseFloat(requiredLitres),
         remarks: remarks || undefined,
       });
 
-      Alert.alert('Application Submitted', 'Water application saved to device and queued for sync.', [
-        {
-          text: 'View Applications',
-          onPress: () => router.replace('/(app)/water'),
-        },
-      ]);
+      showToast({ message: '✓ Water application recorded and queued for sync', type: 'success' });
+      router.replace('/(app)/water');
     } catch (err: any) {
-      Alert.alert('Failed to Submit', err.message || 'Error creating water application.');
+      showToast({ message: err.message || 'Submission failed', type: 'error' });
     } finally {
       setSubmitting(false);
     }
   };
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top']}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <ArrowLeft size={20} color={Colors.neutral[800]} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>New Water Application</Text>
-      </View>
+    <SafeAreaView style={styles.safeArea}>
+      <StatusBar barStyle="dark-content" backgroundColor={colors.surface} />
+      <Header title="New Water Application" subtitle="Quota requirement submission" showBack />
 
-      <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
+      <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {/* Step 1: Beneficiary Selector */}
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>1. Select Beneficiary</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.pillList}>
-            {beneficiaries.map((b) => {
-              const isSelected = b.beneficiary_id === selectedBeneficiaryId;
-              return (
-                <TouchableOpacity
-                  key={b.beneficiary_id}
-                  style={[styles.benPill, isSelected && styles.benPillSelected]}
-                  onPress={() => setSelectedBeneficiaryId(b.beneficiary_id)}
-                >
-                  <Text style={[styles.benPillText, isSelected && styles.benPillTextSelected]}>
-                    {b.name} ({b.phone_number.slice(-4)})
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
+        <View style={styles.card}>
+          <Text style={styles.sectionHeaderTitle}>1. Target Beneficiary</Text>
+          <TouchableOpacity
+            style={styles.selectorButton}
+            onPress={() => setShowBenPicker(true)}
+            activeOpacity={0.7}
+          >
+            <View style={styles.selectorLeft}>
+              <Feather name="user" size={16} color={colors.primary} />
+              <View>
+                <Text style={styles.selectorTitle}>{selectedBen?.name || 'Select Beneficiary'}</Text>
+                <Text style={styles.selectorSub}>
+                  {selectedBen?.phone_number || 'Tap to choose farmer'}
+                </Text>
+              </View>
+            </View>
+            <Feather name="chevron-down" size={16} color={colors.textSecondary} />
+          </TouchableOpacity>
         </View>
 
-        {/* Step 2: Eligible Land Holdings Selector */}
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>2. Select Eligible Land Holding</Text>
-          <Text style={styles.sectionSubtext}>
+        {/* Step 2: Eligible Land Holding Selector */}
+        <View style={styles.card}>
+          <Text style={styles.sectionHeaderTitle}>2. Select Eligible Land Holding</Text>
+          <Text style={styles.sectionSubtitle}>
             Holdings with active approved allotments are locked and ineligible for reapplication.
           </Text>
 
@@ -199,30 +187,25 @@ export default function NewWaterApplicationScreen() {
                       setRequiredLitres(String(quota));
                     }
                   }}
+                  activeOpacity={0.7}
                 >
                   <View style={styles.holdingTop}>
                     <View style={styles.holdingLeft}>
-                      {isLocked ? (
-                        <Lock size={16} color={Colors.accent.amber} />
-                      ) : isSelected ? (
-                        <CheckCircle2 size={16} color={Colors.primary[600]} />
-                      ) : (
-                        <Layers size={16} color={Colors.neutral[400]} />
-                      )}
+                      <Feather
+                        name={isLocked ? 'lock' : isSelected ? 'check-circle' : 'layers'}
+                        size={16}
+                        color={isLocked ? colors.warning : isSelected ? colors.primary : colors.textSecondary}
+                      />
                       <Text style={[styles.holdingName, isLocked && styles.holdingNameLocked]}>
                         Holding #{idx + 1} ({h.declared_total_area.toFixed(2)} Acres)
                       </Text>
                     </View>
 
-                    {isLocked ? (
-                      <View style={styles.lockedTag}>
-                        <Text style={styles.lockedTagText}>🔒 Already Allotted</Text>
-                      </View>
-                    ) : (
-                      <View style={styles.availableTag}>
-                        <Text style={styles.availableTagText}>✓ Available</Text>
-                      </View>
-                    )}
+                    <StatusBadge
+                      status={isLocked ? 'ACTIVE' : 'DRAFT'}
+                      label={isLocked ? '🔒 Allotted' : '✓ Available'}
+                      size="sm"
+                    />
                   </View>
 
                   <Text style={styles.parcelsBreakdown}>
@@ -236,20 +219,18 @@ export default function NewWaterApplicationScreen() {
           )}
         </View>
 
-        {/* Step 3: Calculation & Litres Entry */}
+        {/* Step 3: Quota Calculation & Required Litres Entry */}
         {selectedHolding && (
-          <View style={styles.section}>
-            <Text style={styles.sectionLabel}>3. Water Quota & Calculation</Text>
+          <View style={styles.card}>
+            <Text style={styles.sectionHeaderTitle}>3. Water Quota & Calculation</Text>
 
             <View style={styles.calcCard}>
               <View style={styles.calcRow}>
                 <Text style={styles.calcLabel}>Land Area:</Text>
-                <Text style={styles.calcValue}>
-                  {selectedHolding.declared_total_area.toFixed(2)} Acres
-                </Text>
+                <Text style={styles.calcValue}>{selectedHolding.declared_total_area.toFixed(2)} Acres</Text>
               </View>
               <View style={styles.calcRow}>
-                <Text style={styles.calcLabel}>Applicable Tariff Rate:</Text>
+                <Text style={styles.calcLabel}>Tariff Rate:</Text>
                 <Text style={styles.calcValue}>
                   {tariff?.litres_per_acre.toLocaleString() || '5,000'} L / Acre
                 </Text>
@@ -268,13 +249,12 @@ export default function NewWaterApplicationScreen() {
               keyboardType="number-pad"
               value={requiredLitres}
               onChangeText={setRequiredLitres}
-              required
-              leftIcon={<Droplets size={18} color={Colors.accent.emerald} />}
+              icon={<Feather name="droplet" size={16} color={colors.primary} />}
             />
 
             <Input
-              label="Remarks / Justification"
-              placeholder="e.g. Drip irrigation for organic orchard"
+              label="Remarks / Irrigation Justification"
+              placeholder="e.g. Drip irrigation for organic coconut grove"
               value={remarks}
               onChangeText={setRemarks}
             />
@@ -283,12 +263,34 @@ export default function NewWaterApplicationScreen() {
               title="Submit Water Application"
               onPress={handleSubmit}
               loading={submitting}
-              size="large"
-              style={styles.submitBtn}
+              size="lg"
+              fullWidth
+              style={{ marginTop: 8 }}
             />
           </View>
         )}
       </ScrollView>
+
+      {/* Beneficiary Picker Bottom Sheet */}
+      <BottomSheet
+        visible={showBenPicker}
+        onClose={() => setShowBenPicker(false)}
+        title="Select Beneficiary"
+        subtitle="Directory farmers"
+      >
+        {beneficiaries.map((b) => (
+          <ListItem
+            key={b.beneficiary_id}
+            title={b.name}
+            subtitle={`${b.phone_number} • ${b.village_name || 'Village'}`}
+            avatarName={b.name}
+            onPress={() => {
+              setSelectedBen(b);
+              setShowBenPicker(false);
+            }}
+          />
+        ))}
+      </BottomSheet>
     </SafeAreaView>
   );
 }
@@ -296,101 +298,86 @@ export default function NewWaterApplicationScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.neutral[200],
-    backgroundColor: '#FFFFFF',
-  },
-  backBtn: {
-    marginRight: 12,
-    padding: 4,
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: Colors.neutral[900],
+    backgroundColor: colors.surface,
   },
   container: {
     flex: 1,
-    backgroundColor: Colors.neutral[50],
+    backgroundColor: colors.background,
   },
   scrollContent: {
-    padding: 16,
-    paddingBottom: 40,
+    padding: spacing.lg,
+    paddingBottom: spacing.xxxl,
   },
-  section: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 14,
-    padding: 16,
-    marginBottom: 16,
+  card: {
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.xl,
+    padding: spacing.lg,
     borderWidth: 1,
-    borderColor: Colors.neutral[200],
+    borderColor: colors.border,
+    marginBottom: spacing.md,
+    ...shadows.subtle,
   },
-  sectionLabel: {
-    fontSize: 15,
+  sectionHeaderTitle: {
+    fontSize: typography.fontSize.bodySecondary,
     fontWeight: '700',
-    color: Colors.neutral[900],
-    marginBottom: 4,
+    color: colors.textPrimary,
+    fontFamily: typography.fontFamily.bold,
+    marginBottom: spacing.xs,
   },
-  sectionSubtext: {
-    fontSize: 12,
-    color: Colors.neutral[500],
-    marginBottom: 12,
+  sectionSubtitle: {
+    fontSize: typography.fontSize.tiny,
+    color: colors.textSecondary,
+    marginBottom: spacing.md,
   },
-  pillList: {
+  selectorButton: {
     flexDirection: 'row',
-    marginTop: 8,
-  },
-  benPill: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: Colors.neutral[100],
-    marginRight: 8,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.surfaceSubtle,
+    borderRadius: borderRadius.lg,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
     borderWidth: 1,
-    borderColor: Colors.neutral[200],
+    borderColor: colors.border,
   },
-  benPillSelected: {
-    backgroundColor: Colors.primary[600],
-    borderColor: Colors.primary[600],
+  selectorLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    flex: 1,
   },
-  benPillText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: Colors.neutral[700],
+  selectorTitle: {
+    fontSize: typography.fontSize.bodySecondary,
+    fontWeight: '700',
+    color: colors.textPrimary,
   },
-  benPillTextSelected: {
-    color: '#FFFFFF',
+  selectorSub: {
+    fontSize: typography.fontSize.tiny,
+    color: colors.textSecondary,
+    marginTop: 1,
   },
   emptyHoldings: {
-    padding: 16,
+    padding: spacing.md,
     alignItems: 'center',
   },
   emptyHoldingsText: {
-    fontSize: 13,
-    color: Colors.neutral[400],
+    fontSize: typography.fontSize.caption,
+    color: colors.textMuted,
   },
   holdingSelectCard: {
-    backgroundColor: Colors.neutral[50],
-    borderRadius: 10,
-    padding: 12,
-    marginBottom: 8,
+    backgroundColor: colors.surfaceSubtle,
+    borderRadius: borderRadius.lg,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
     borderWidth: 1.5,
-    borderColor: Colors.neutral[200],
+    borderColor: colors.border,
   },
   holdingCardSelected: {
-    borderColor: Colors.primary[600],
-    backgroundColor: Colors.primary[50] + '40',
+    borderColor: colors.primary,
+    backgroundColor: colors.primaryLight,
   },
   holdingCardLocked: {
     opacity: 0.6,
-    backgroundColor: Colors.neutral[100],
   },
   holdingTop: {
     flexDirection: 'row',
@@ -401,50 +388,28 @@ const styles = StyleSheet.create({
   holdingLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: spacing.sm,
   },
   holdingName: {
-    fontSize: 14,
+    fontSize: typography.fontSize.bodySecondary,
     fontWeight: '700',
-    color: Colors.neutral[900],
+    color: colors.textPrimary,
   },
   holdingNameLocked: {
-    color: Colors.neutral[500],
-  },
-  lockedTag: {
-    backgroundColor: Colors.accent.amber + '20',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  lockedTagText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: Colors.accent.amber,
-  },
-  availableTag: {
-    backgroundColor: Colors.status.successBg,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  availableTagText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: Colors.status.successText,
+    color: colors.textSecondary,
   },
   parcelsBreakdown: {
-    fontSize: 12,
-    color: Colors.neutral[500],
+    fontSize: typography.fontSize.tiny,
+    color: colors.textSecondary,
     marginLeft: 24,
   },
   calcCard: {
-    backgroundColor: Colors.primary[50],
-    borderRadius: 10,
-    padding: 12,
-    marginBottom: 16,
+    backgroundColor: colors.primaryLight,
+    borderRadius: borderRadius.lg,
+    padding: spacing.md,
+    marginBottom: spacing.md,
     borderWidth: 1,
-    borderColor: Colors.primary[200],
+    borderColor: colors.primaryBorder,
   },
   calcRow: {
     flexDirection: 'row',
@@ -452,33 +417,28 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   calcLabel: {
-    fontSize: 13,
-    color: Colors.neutral[600],
+    fontSize: typography.fontSize.caption,
+    color: colors.textSecondary,
   },
   calcValue: {
-    fontSize: 13,
+    fontSize: typography.fontSize.caption,
     fontWeight: '600',
-    color: Colors.neutral[800],
-    fontVariant: ['tabular-nums'],
+    color: colors.textPrimary,
   },
   calcRowTotal: {
-    borderTopWidth: 1,
-    borderColor: Colors.primary[200],
-    paddingTop: 6,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.primaryBorder,
+    paddingTop: 8,
     marginTop: 4,
   },
   calcLabelTotal: {
-    fontSize: 13,
+    fontSize: typography.fontSize.subheading,
     fontWeight: '700',
-    color: Colors.primary[900],
+    color: colors.primary,
   },
   calcValueTotal: {
-    fontSize: 15,
+    fontSize: typography.fontSize.subheading,
     fontWeight: '800',
-    color: Colors.primary[700],
-    fontVariant: ['tabular-nums'],
-  },
-  submitBtn: {
-    marginTop: 8,
+    color: colors.primary,
   },
 });

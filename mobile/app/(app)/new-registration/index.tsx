@@ -4,18 +4,21 @@ import {
   Text,
   StyleSheet,
   ScrollView,
-  Alert,
   TouchableOpacity,
   KeyboardAvoidingView,
   Platform,
+  SafeAreaView,
+  StatusBar,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Header } from '../../../src/components/Header';
-import { Stepper, StepItem } from '../../../src/components/Stepper';
 import { Input } from '../../../src/components/Input';
 import { Button } from '../../../src/components/Button';
-import { Colors } from '../../../src/constants/colors';
+import { BottomSheet } from '../../../src/components/BottomSheet';
+import { ListItem } from '../../../src/components/ListItem';
+import { StatusBadge } from '../../../src/components/StatusBadge';
+import { useToast } from '../../../src/components/Toast';
+import { colors, spacing, borderRadius, typography, shadows, layout } from '../../../src/constants/theme';
 import { BeneficiaryRepository } from '../../../src/repositories/BeneficiaryRepository';
 import { LandRepository } from '../../../src/repositories/LandRepository';
 import { WaterRepository } from '../../../src/repositories/WaterRepository';
@@ -26,18 +29,8 @@ import {
   checkParcelDuplicateInMemory,
   calculateWaterQuota,
 } from '../../../src/services/calculationService';
-import { District, Block, Village, ProjectScheme, RateTariff } from '../../../src/types/domain';
-import {
-  Phone,
-  User,
-  MapPin,
-  Layers,
-  Droplets,
-  CheckCircle,
-  Plus,
-  Trash2,
-  AlertCircle,
-} from 'lucide-react-native';
+import { District, Block, Panchayat, Village, ProjectScheme, RateTariff } from '../../../src/types/domain';
+import { Feather } from '../../../src/components/Icon';
 
 const beneficiaryRepo = new BeneficiaryRepository();
 const landRepo = new LandRepository();
@@ -45,13 +38,13 @@ const waterRepo = new WaterRepository();
 const locationRepo = new LocationRepository();
 const draftRepo = new DraftRepository();
 
-const STEPS: StepItem[] = [
-  { title: 'Phone Lookup' },
-  { title: 'Personal Info' },
-  { title: 'Location' },
-  { title: 'Land & Parcels' },
-  { title: 'Water Quota' },
-  { title: 'Review & Save' },
+const STEPS = [
+  { step: 1, title: 'Phone Lookup', sub: 'Verify if farmer exists' },
+  { step: 2, title: 'Personal Details', sub: 'Identity and postal address' },
+  { step: 3, title: 'Location', sub: 'District, Panchayat, Village' },
+  { step: 4, title: 'Land & Parcels', sub: 'Survey numbers and acreage' },
+  { step: 5, title: 'Water Quota', sub: 'Calculate allocation demand' },
+  { step: 6, title: 'Review & Submit', sub: 'Final verification' },
 ];
 
 interface ParcelFormState {
@@ -63,19 +56,21 @@ interface ParcelFormState {
 
 interface HoldingFormState {
   declaredArea: string;
+  projectId: string;
   parcels: ParcelFormState[];
 }
 
 export default function NewRegistrationScreen() {
   const router = useRouter();
+  const { showToast } = useToast();
 
-  // Multi-step state
   const [currentStep, setCurrentStep] = useState(1);
   const [saving, setSaving] = useState(false);
 
   // Master data
   const [districts, setDistricts] = useState<District[]>([]);
   const [blocks, setBlocks] = useState<Block[]>([]);
+  const [panchayats, setPanchayats] = useState<Panchayat[]>([]);
   const [villages, setVillages] = useState<Village[]>([]);
   const [projects, setProjects] = useState<ProjectScheme[]>([]);
   const [activeTariff, setActiveTariff] = useState<RateTariff | null>(null);
@@ -88,18 +83,26 @@ export default function NewRegistrationScreen() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [address1, setAddress1] = useState('');
-  const [pincode, setPincode] = useState('642104');
+  const [address2, setAddress2] = useState('');
+  const [pincode, setPincode] = useState('641402');
+  const [direction, setDirection] = useState<'NORTH' | 'SOUTH' | 'EAST' | 'WEST'>('NORTH');
+  const [description, setDescription] = useState('');
 
-  // Step 3: Location
+  // Step 3: Location (LGD Hierarchy)
   const [selectedDistrict, setSelectedDistrict] = useState('dist-cbe');
   const [selectedBlock, setSelectedBlock] = useState('blk-pol-s');
+  const [selectedPanchayat, setSelectedPanchayat] = useState('pan-anm');
   const [selectedVillage, setSelectedVillage] = useState('vil-anm');
   const [selectedProject, setSelectedProject] = useState('prj-csii');
+
+  // Location Picker Bottom Sheet States
+  const [showLocationSheet, setShowLocationSheet] = useState<'DISTRICT' | 'PANCHAYAT' | 'VILLAGE' | 'SCHEME' | null>(null);
 
   // Step 4: Land & Survey Parcels
   const [holdings, setHoldings] = useState<HoldingFormState[]>([
     {
       declaredArea: '5.00',
+      projectId: 'prj-csii',
       parcels: [
         { surveyNumber: '101', subdivisionNumber: '1A', area: '2.50' },
         { surveyNumber: '101', subdivisionNumber: '1B', area: '2.50' },
@@ -120,6 +123,9 @@ export default function NewRegistrationScreen() {
         const blks = await locationRepo.getBlocksByDistrict('dist-cbe');
         setBlocks(blks);
 
+        const pans = await locationRepo.getPanchayatsByDistrict('dist-cbe');
+        setPanchayats(pans);
+
         const vils = await locationRepo.getVillagesByBlock('blk-pol-s');
         setVillages(vils);
 
@@ -137,7 +143,16 @@ export default function NewRegistrationScreen() {
     loadMasterData();
   }, []);
 
-  // Progressive Draft Saving Helper
+  const handlePanchayatSelect = async (panId: string) => {
+    setSelectedPanchayat(panId);
+    setShowLocationSheet(null);
+    const vils = await locationRepo.getVillagesByBlock(selectedBlock);
+    setVillages(vils);
+    if (vils.length > 0) {
+      setSelectedVillage(vils[0].village_id);
+    }
+  };
+
   const persistCurrentDraft = async (stepNum: number) => {
     if (!phoneNumber) return;
     try {
@@ -147,10 +162,14 @@ export default function NewRegistrationScreen() {
         name,
         email,
         address_line1: address1,
+        address_line2: address2,
         district_id: selectedDistrict,
         block_id: selectedBlock,
+        panchayat_id: selectedPanchayat,
         village_id: selectedVillage,
         pincode,
+        location_direction: direction,
+        location_description: description,
         holdings_json: JSON.stringify(holdings),
         water_required_litres: Number(waterRequiredLitres) || 0,
         project_id: selectedProject,
@@ -160,38 +179,30 @@ export default function NewRegistrationScreen() {
     }
   };
 
-  // Step 1: Phone validation and check
   const handlePhoneLookup = async () => {
     if (!phoneNumber || phoneNumber.length < 10) {
-      setPhoneError('Please enter a valid 10-digit mobile number');
+      setPhoneError('Please enter a valid 10-digit phone number');
       return;
     }
     setPhoneError('');
 
-    // Check if beneficiary already exists
     const existing = await beneficiaryRepo.findByPhone(phoneNumber);
     if (existing) {
-      Alert.alert(
-        'Beneficiary Found',
-        `A beneficiary named "${existing.name}" is already registered with this phone number.`,
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'View Beneficiary',
-            onPress: () => router.push(`/(app)/beneficiaries/${existing.beneficiary_id}`),
-          },
-        ]
-      );
+      showToast({
+        message: `Farmer "${existing.name}" is already registered. Opening dossier...`,
+        type: 'info',
+      });
+      router.push(`/(app)/beneficiaries/${existing.beneficiary_id}`);
       return;
     }
 
-    // Check if draft exists
     const draft = await draftRepo.findByPhone(phoneNumber);
     if (draft) {
       setName(draft.name || '');
       setEmail(draft.email || '');
       setAddress1(draft.address_line1 || '');
-      setPincode(draft.pincode || '642104');
+      setAddress2(draft.address_line2 || '');
+      setPincode(draft.pincode || '641402');
       if (draft.holdings_json) {
         try {
           setHoldings(JSON.parse(draft.holdings_json));
@@ -200,24 +211,22 @@ export default function NewRegistrationScreen() {
       if (draft.water_required_litres) {
         setWaterRequiredLitres(String(draft.water_required_litres));
       }
+      showToast({ message: 'Loaded existing draft for this number', type: 'info' });
     }
 
     await persistCurrentDraft(2);
     setCurrentStep(2);
   };
 
-  // Total declared acres across all holdings
   const totalLandAcres = holdings.reduce(
     (sum, h) => sum + (parseFloat(h.declaredArea) || 0),
     0
   );
 
-  // Quota calculation
   const calculatedQuota = activeTariff
     ? calculateWaterQuota(activeTariff.litres_per_acre, totalLandAcres)
     : totalLandAcres * 5000;
 
-  // Real-time parcel modification with immediate composite uniqueness check
   const handleParcelChange = (
     holdingIdx: number,
     parcelIdx: number,
@@ -228,7 +237,6 @@ export default function NewRegistrationScreen() {
     const holding = updatedHoldings[holdingIdx];
     const parcel = { ...holding.parcels[parcelIdx], [field]: value };
 
-    // Check duplicate survey + subdivision combination
     const isDuplicate = checkParcelDuplicateInMemory(
       holding.parcels.map((p, idx) => {
         const item = idx === parcelIdx ? parcel : p;
@@ -240,7 +248,7 @@ export default function NewRegistrationScreen() {
     );
 
     if (isDuplicate && parcel.surveyNumber && parcel.subdivisionNumber) {
-      parcel.error = `Duplicate parcel: ${parcel.surveyNumber}/${parcel.subdivisionNumber} already exists in this holding!`;
+      parcel.error = `Duplicate parcel: Survey ${parcel.surveyNumber} / Sub ${parcel.subdivisionNumber} already exists in this holding!`;
     } else {
       parcel.error = undefined;
     }
@@ -262,7 +270,7 @@ export default function NewRegistrationScreen() {
   const removeParcel = (holdingIdx: number, parcelIdx: number) => {
     const updated = [...holdings];
     if (updated[holdingIdx].parcels.length <= 1) {
-      Alert.alert('Holdings must contain at least 1 parcel');
+      showToast({ message: 'Holdings must contain at least 1 parcel', type: 'warning' });
       return;
     }
     updated[holdingIdx].parcels.splice(parcelIdx, 1);
@@ -274,53 +282,47 @@ export default function NewRegistrationScreen() {
       ...holdings,
       {
         declaredArea: '1.00',
+        projectId: selectedProject,
         parcels: [{ surveyNumber: '', subdivisionNumber: '', area: '1.00' }],
       },
     ]);
   };
 
-  // Step 4 Validation
   const validateLandAndParcels = () => {
     for (let hIdx = 0; hIdx < holdings.length; hIdx++) {
       const h = holdings[hIdx];
       const declared = parseFloat(h.declaredArea) || 0;
       if (declared <= 0) {
-        Alert.alert('Validation Error', `Holding #${hIdx + 1} declared area must be greater than 0.`);
+        showToast({ message: `Holding #${hIdx + 1} declared area must be > 0`, type: 'warning' });
         return false;
       }
 
-      // Check errors on parcels
       for (const p of h.parcels) {
         if (!p.surveyNumber.trim() || !p.subdivisionNumber.trim()) {
-          Alert.alert(
-            'Validation Error',
-            `Every parcel must have both a Survey Number and Subdivision Number.`
-          );
+          showToast({ message: 'Survey # and Subdivision # are required for all parcels', type: 'warning' });
           return false;
         }
         if (p.error) {
-          Alert.alert('Duplicate Parcel', p.error);
+          showToast({ message: p.error, type: 'error' });
           return false;
         }
       }
 
-      // Check reconciliation
       const recon = reconcileHoldingArea(
         declared,
         h.parcels.map((p) => parseFloat(p.area) || 0)
       );
       if (!recon.isMatch) {
-        Alert.alert(
-          'Area Mismatch',
-          `Holding #${hIdx + 1}: Declared area (${declared} ac) must exactly match the sum of parcels (${recon.parcelTotal} ac).`
-        );
+        showToast({
+          message: `Holding #${hIdx + 1} mismatch: Declared ${declared} ac vs Parcels ${recon.parcelTotal} ac`,
+          type: 'error',
+        });
         return false;
       }
     }
     return true;
   };
 
-  // Final Submit & Atomic Save
   const handleFinalSave = async () => {
     setSaving(true);
     try {
@@ -330,10 +332,14 @@ export default function NewRegistrationScreen() {
         phone_number: phoneNumber,
         email: email || undefined,
         address_line1: address1 || undefined,
+        address_line2: address2 || undefined,
         district_id: selectedDistrict,
         block_id: selectedBlock,
+        panchayat_id: selectedPanchayat,
         village_id: selectedVillage,
         pincode,
+        location_direction: direction,
+        location_description: description || undefined,
         total_land_acres: totalLandAcres,
       });
 
@@ -342,7 +348,7 @@ export default function NewRegistrationScreen() {
       for (const h of holdings) {
         const createdHolding = await landRepo.createHolding({
           beneficiary_id: newBeneficiary.beneficiary_id,
-          project_id: selectedProject,
+          project_id: h.projectId || selectedProject,
           declared_total_area: parseFloat(h.declaredArea),
           parcels: h.parcels.map((p) => ({
             survey_number: p.surveyNumber.trim(),
@@ -362,210 +368,243 @@ export default function NewRegistrationScreen() {
           holding_id: firstHoldingId,
           project_id: selectedProject,
           required_litres: parseFloat(waterRequiredLitres),
-          remarks: 'Registered via Field Officer Mobile App',
+          remarks: 'Registered via offline mobile wizard',
         });
       }
 
-      // 4. Delete temporary draft
+      // 4. Delete draft
       await draftRepo.deleteDraft(`draft-${phoneNumber}`);
 
-      Alert.alert(
-        'Registration Complete',
-        `Beneficiary "${name}" and land records have been saved to the device and queued for sync.`,
-        [
-          {
-            text: 'View Beneficiary Dossier',
-            onPress: () => router.replace(`/(app)/beneficiaries/${newBeneficiary.beneficiary_id}`),
-          },
-        ]
-      );
+      showToast({
+        message: `✓ Beneficiary "${name}" registered successfully`,
+        type: 'success',
+      });
+      router.replace(`/(app)/beneficiaries/${newBeneficiary.beneficiary_id}`);
     } catch (err: any) {
       console.error('Error saving registration:', err);
-      Alert.alert('Save Failed', err.message || 'An unexpected error occurred.');
+      showToast({ message: err.message || 'Save failed', type: 'error' });
     } finally {
       setSaving(false);
     }
   };
 
+  const getPanchayatName = () => {
+    const p = panchayats.find((item) => item.panchayat_id === selectedPanchayat);
+    return p?.panchayat_name || 'Anaimalai Town Panchayat';
+  };
+
+  const getVillageName = () => {
+    const v = villages.find((item) => item.village_id === selectedVillage);
+    return v?.village_name || 'Anaimalai';
+  };
+
+  const getProjectName = () => {
+    const prj = projects.find((p) => p.project_id === selectedProject);
+    return prj?.project_name || 'CSII-2026 Irrigation Scheme';
+  };
+
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top']}>
+    <SafeAreaView style={styles.safeArea}>
+      <StatusBar barStyle="dark-content" backgroundColor={colors.surface} />
       <Header
         title="New Registration"
         subtitle={`Step ${currentStep} of 6: ${STEPS[currentStep - 1].title}`}
+        showBack={currentStep > 1}
+        onBack={() => setCurrentStep((prev) => Math.max(1, prev - 1))}
       />
 
-      <Stepper
-        steps={STEPS}
-        currentStep={currentStep}
-        onSelectStep={(step) => {
-          if (step < currentStep) setCurrentStep(step);
-        }}
-      />
+      {/* Modern Progress Indicator */}
+      <View style={styles.progressContainer}>
+        <View style={styles.progressBarBackground}>
+          <View style={[styles.progressBarFill, { width: `${(currentStep / 6) * 100}%` }]} />
+        </View>
+        <View style={styles.progressLabelRow}>
+          <Text style={styles.progressStepCount}>Step {currentStep} of 6</Text>
+          <Text style={styles.progressStepName}>{STEPS[currentStep - 1].title}</Text>
+        </View>
+      </View>
 
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.keyboardView}
       >
-        <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
+        <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
           {/* STEP 1: Phone Lookup */}
           {currentStep === 1 && (
             <View style={styles.stepContainer}>
-              <Text style={styles.stepHeader}>Beneficiary Phone Lookup</Text>
-              <Text style={styles.stepSubtext}>
-                Check if the farmer is already registered or has a pending registration draft.
-              </Text>
+              <View style={styles.stepHero}>
+                <View style={styles.stepHeroIcon}>
+                  <Feather name="phone-call" size={24} color={colors.primary} />
+                </View>
+                <Text style={styles.stepTitle}>Farmer Phone Lookup</Text>
+                <Text style={styles.stepSubtitle}>
+                  Enter the 10-digit mobile number to check existing records or restore incomplete drafts.
+                </Text>
+              </View>
 
-              <Input
-                label="Primary Phone Number"
-                placeholder="e.g. 9876543210"
-                keyboardType="phone-pad"
-                maxLength={10}
-                value={phoneNumber}
-                onChangeText={(text) => {
-                  setPhoneNumber(text);
-                  setPhoneError('');
-                }}
-                error={phoneError}
-                required
-                leftIcon={<Phone size={18} color={Colors.neutral[400]} />}
-              />
-
-              <Button
-                title="Continue to Personal Details"
-                onPress={handlePhoneLookup}
-                size="large"
-                style={styles.nextBtn}
-              />
+              <View style={styles.formCard}>
+                <Input
+                  label="Primary Mobile Number"
+                  placeholder="e.g. 9876543210"
+                  keyboardType="phone-pad"
+                  maxLength={10}
+                  value={phoneNumber}
+                  onChangeText={(text) => {
+                    setPhoneNumber(text);
+                    setPhoneError('');
+                  }}
+                  error={phoneError}
+                  icon={<Feather name="phone" size={16} color={colors.textSecondary} />}
+                />
+              </View>
             </View>
           )}
 
           {/* STEP 2: Personal Details */}
           {currentStep === 2 && (
             <View style={styles.stepContainer}>
-              <Text style={styles.stepHeader}>Personal Details</Text>
-              <Text style={styles.stepSubtext}>Enter farmer identity and postal address.</Text>
+              <View style={styles.stepHero}>
+                <View style={styles.stepHeroIcon}>
+                  <Feather name="user" size={24} color={colors.primary} />
+                </View>
+                <Text style={styles.stepTitle}>Personal Details & Address</Text>
+                <Text style={styles.stepSubtitle}>
+                  Enter beneficiary identity, postal address, and farm boundary notes.
+                </Text>
+              </View>
 
-              <Input
-                label="Full Name"
-                placeholder="e.g. Kanishk Ravikumar"
-                value={name}
-                onChangeText={setName}
-                required
-                leftIcon={<User size={18} color={Colors.neutral[400]} />}
-              />
-
-              <Input
-                label="Email Address (Optional)"
-                placeholder="e.g. farmer@example.com"
-                keyboardType="email-address"
-                value={email}
-                onChangeText={setEmail}
-              />
-
-              <Input
-                label="Street Address / House No"
-                placeholder="e.g. 42 Green Valley Road"
-                value={address1}
-                onChangeText={setAddress1}
-              />
-
-              <Input
-                label="PIN Code"
-                placeholder="642104"
-                keyboardType="number-pad"
-                maxLength={6}
-                value={pincode}
-                onChangeText={setPincode}
-                required
-              />
-
-              <View style={styles.btnRow}>
-                <Button
-                  title="Back"
-                  variant="outline"
-                  onPress={() => setCurrentStep(1)}
-                  style={styles.halfBtn}
+              <View style={styles.formCard}>
+                <Input
+                  label="Full Legal Name"
+                  placeholder="e.g. Kanishk Ravikumar"
+                  value={name}
+                  onChangeText={setName}
+                  icon={<Feather name="user" size={16} color={colors.textSecondary} />}
                 />
-                <Button
-                  title="Next: Location"
-                  onPress={async () => {
-                    if (!name.trim()) {
-                      Alert.alert('Name Required', 'Please enter the beneficiary name.');
-                      return;
-                    }
-                    await persistCurrentDraft(3);
-                    setCurrentStep(3);
-                  }}
-                  style={styles.halfBtn}
+
+                <Input
+                  label="Email Address (Optional)"
+                  placeholder="e.g. farmer@example.com"
+                  keyboardType="email-address"
+                  value={email}
+                  onChangeText={setEmail}
+                  icon={<Feather name="mail" size={16} color={colors.textSecondary} />}
+                />
+
+                <Input
+                  label="Address Line 1 (Street / Farm Name)"
+                  placeholder="e.g. 42 Green Valley Coconut Grove"
+                  value={address1}
+                  onChangeText={setAddress1}
+                />
+
+                <Input
+                  label="Address Line 2 (Area / Landmark)"
+                  placeholder="e.g. Near TNEB Substation"
+                  value={address2}
+                  onChangeText={setAddress2}
+                />
+
+                <Input
+                  label="PIN Code"
+                  placeholder="641402"
+                  keyboardType="number-pad"
+                  maxLength={6}
+                  value={pincode}
+                  onChangeText={setPincode}
+                />
+
+                <Text style={styles.fieldLabel}>Farm Boundary Direction</Text>
+                <View style={styles.directionRow}>
+                  {(['NORTH', 'SOUTH', 'EAST', 'WEST'] as const).map((d) => (
+                    <TouchableOpacity
+                      key={d}
+                      style={[styles.dirChip, direction === d && styles.dirChipActive]}
+                      onPress={() => setDirection(d)}
+                    >
+                      <Text style={[styles.dirChipText, direction === d && styles.dirChipTextActive]}>
+                        {d}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                <Input
+                  label="Location Description / Notes"
+                  placeholder="e.g. Bordering canal junction north of milestone 14"
+                  value={description}
+                  onChangeText={setDescription}
+                  style={{ marginTop: 12 }}
                 />
               </View>
             </View>
           )}
 
-          {/* STEP 3: Location (LGD Hierarchy) */}
+          {/* STEP 3: Location Hierarchy */}
           {currentStep === 3 && (
             <View style={styles.stepContainer}>
-              <Text style={styles.stepHeader}>Location & Jurisdiction</Text>
-              <Text style={styles.stepSubtext}>
-                Select the administrative jurisdiction and project scheme.
-              </Text>
-
-              <View style={styles.formGroup}>
-                <Text style={styles.groupLabel}>District</Text>
-                <View style={styles.dropdownPicker}>
-                  <Text style={styles.pickerValue}>Coimbatore (CBE)</Text>
+              <View style={styles.stepHero}>
+                <View style={styles.stepHeroIcon}>
+                  <Feather name="map-pin" size={24} color={colors.primary} />
                 </View>
+                <Text style={styles.stepTitle}>Location & Jurisdiction</Text>
+                <Text style={styles.stepSubtitle}>
+                  Select administrative jurisdiction (District $\rightarrow$ Panchayat $\rightarrow$ Village)
+                </Text>
               </View>
 
-              <View style={styles.formGroup}>
-                <Text style={styles.groupLabel}>Block / Taluk</Text>
-                <View style={styles.dropdownPicker}>
-                  <Text style={styles.pickerValue}>Pollachi South</Text>
+              <View style={styles.formCard}>
+                <Text style={styles.fieldLabel}>District</Text>
+                <View style={styles.readonlySelector}>
+                  <Text style={styles.selectorValueText}>Coimbatore (Dist Code: 3312)</Text>
+                  <Feather name="check" size={16} color={colors.success} />
                 </View>
-              </View>
 
-              <View style={styles.formGroup}>
-                <Text style={styles.groupLabel}>Village</Text>
-                <View style={styles.dropdownPicker}>
-                  <Text style={styles.pickerValue}>Anaimalai</Text>
-                </View>
-              </View>
+                <Text style={styles.fieldLabel}>Panchayat (LGD Block)</Text>
+                <TouchableOpacity
+                  style={styles.actionSelector}
+                  onPress={() => setShowLocationSheet('PANCHAYAT')}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.selectorValueText}>{getPanchayatName()}</Text>
+                  <Feather name="chevron-down" size={16} color={colors.textSecondary} />
+                </TouchableOpacity>
 
-              <View style={styles.formGroup}>
-                <Text style={styles.groupLabel}>Project Scheme</Text>
-                <View style={styles.dropdownPicker}>
-                  <Text style={styles.pickerValue}>
-                    Coimbatore South Irrigation Initiative (CSII-2026)
-                  </Text>
-                </View>
-              </View>
+                <Text style={styles.fieldLabel}>Village (LGD Code)</Text>
+                <TouchableOpacity
+                  style={styles.actionSelector}
+                  onPress={() => setShowLocationSheet('VILLAGE')}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.selectorValueText}>{getVillageName()}</Text>
+                  <Feather name="chevron-down" size={16} color={colors.textSecondary} />
+                </TouchableOpacity>
 
-              <View style={styles.btnRow}>
-                <Button
-                  title="Back"
-                  variant="outline"
-                  onPress={() => setCurrentStep(2)}
-                  style={styles.halfBtn}
-                />
-                <Button
-                  title="Next: Land"
-                  onPress={async () => {
-                    await persistCurrentDraft(4);
-                    setCurrentStep(4);
-                  }}
-                  style={styles.halfBtn}
-                />
+                <Text style={styles.fieldLabel}>Project Scheme</Text>
+                <TouchableOpacity
+                  style={styles.actionSelector}
+                  onPress={() => setShowLocationSheet('SCHEME')}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.selectorValueText}>{getProjectName()}</Text>
+                  <Feather name="chevron-down" size={16} color={colors.textSecondary} />
+                </TouchableOpacity>
               </View>
             </View>
           )}
 
-          {/* STEP 4: Land Holdings & Survey Parcels */}
+          {/* STEP 4: Land Holdings & Parcels */}
           {currentStep === 4 && (
             <View style={styles.stepContainer}>
-              <Text style={styles.stepHeader}>Land Holdings & Survey Parcels</Text>
-              <Text style={styles.stepSubtext}>
-                Enter declared acreage and exact survey/subdivision parcels with live reconciliation.
-              </Text>
+              <View style={styles.stepHero}>
+                <View style={styles.stepHeroIcon}>
+                  <Feather name="layers" size={24} color={colors.primary} />
+                </View>
+                <Text style={styles.stepTitle}>Land Holdings & Survey Parcels</Text>
+                <Text style={styles.stepSubtitle}>
+                  Enter declared holding acreage and exact survey/subdivision parcels with decimal reconciliation.
+                </Text>
+              </View>
 
               {holdings.map((h, hIdx) => {
                 const declared = parseFloat(h.declaredArea) || 0;
@@ -575,9 +614,9 @@ export default function NewRegistrationScreen() {
                 );
 
                 return (
-                  <View key={hIdx} style={styles.holdingBlock}>
-                    <View style={styles.holdingHeader}>
-                      <Text style={styles.holdingLabel}>Holding #{hIdx + 1}</Text>
+                  <View key={hIdx} style={styles.formCard}>
+                    <View style={styles.cardHeaderRow}>
+                      <Text style={styles.holdingHeaderTitle}>Holding #{hIdx + 1}</Text>
                       {holdings.length > 1 && (
                         <TouchableOpacity
                           onPress={() => {
@@ -586,7 +625,7 @@ export default function NewRegistrationScreen() {
                             setHoldings(upd);
                           }}
                         >
-                          <Trash2 size={16} color={Colors.status.dangerText} />
+                          <Feather name="trash-2" size={16} color={colors.danger} />
                         </TouchableOpacity>
                       )}
                     </View>
@@ -601,56 +640,47 @@ export default function NewRegistrationScreen() {
                         upd[hIdx].declaredArea = val;
                         setHoldings(upd);
                       }}
-                      required
                     />
 
-                    {/* Parcels List */}
-                    <Text style={styles.parcelsSectionTitle}>Survey & Subdivision Parcels</Text>
+                    <Text style={styles.parcelsHeaderLabel}>Survey & Subdivision Parcels</Text>
 
                     {h.parcels.map((p, pIdx) => (
-                      <View key={pIdx} style={styles.parcelFormCard}>
-                        <View style={styles.parcelTopRow}>
-                          <Text style={styles.parcelCardNumber}>Parcel #{pIdx + 1}</Text>
+                      <View key={pIdx} style={styles.parcelCard}>
+                        <View style={styles.parcelCardHeader}>
+                          <Text style={styles.parcelCardIndex}>Parcel #{pIdx + 1}</Text>
                           <TouchableOpacity onPress={() => removeParcel(hIdx, pIdx)}>
-                            <Trash2 size={14} color={Colors.neutral[400]} />
+                            <Feather name="x" size={16} color={colors.textMuted} />
                           </TouchableOpacity>
                         </View>
 
-                        <View style={styles.parcelInputRow}>
+                        <View style={styles.parcelRowInputs}>
                           <Input
                             label="Survey #"
                             placeholder="101"
                             value={p.surveyNumber}
-                            onChangeText={(val) =>
-                              handleParcelChange(hIdx, pIdx, 'surveyNumber', val)
-                            }
-                            containerStyle={styles.parcelThirdInput}
-                            required
+                            onChangeText={(val) => handleParcelChange(hIdx, pIdx, 'surveyNumber', val)}
+                            containerStyle={{ flex: 1 }}
                           />
                           <Input
                             label="Subdivision #"
                             placeholder="1A"
                             value={p.subdivisionNumber}
-                            onChangeText={(val) =>
-                              handleParcelChange(hIdx, pIdx, 'subdivisionNumber', val)
-                            }
-                            containerStyle={styles.parcelThirdInput}
-                            required
+                            onChangeText={(val) => handleParcelChange(hIdx, pIdx, 'subdivisionNumber', val)}
+                            containerStyle={{ flex: 1 }}
                           />
                           <Input
-                            label="Area (Acres)"
+                            label="Area (Ac)"
                             placeholder="2.50"
                             keyboardType="decimal-pad"
                             value={p.area}
                             onChangeText={(val) => handleParcelChange(hIdx, pIdx, 'area', val)}
-                            containerStyle={styles.parcelThirdInput}
-                            required
+                            containerStyle={{ flex: 1 }}
                           />
                         </View>
 
                         {p.error && (
                           <View style={styles.parcelErrorRow}>
-                            <AlertCircle size={13} color={Colors.status.dangerText} />
+                            <Feather name="alert-triangle" size={12} color={colors.danger} />
                             <Text style={styles.parcelErrorText}>{p.error}</Text>
                           </View>
                         )}
@@ -658,29 +688,27 @@ export default function NewRegistrationScreen() {
                     ))}
 
                     <Button
-                      title="+ Add Another Parcel"
-                      variant="outline"
-                      size="small"
+                      title="+ Add Parcel"
+                      variant="secondary"
+                      size="sm"
                       onPress={() => addParcel(hIdx)}
-                      style={styles.addParcelBtn}
+                      style={{ marginTop: 8 }}
                     />
 
-                    {/* Live Area Reconciliation Banner */}
+                    {/* Area Reconciliation Banner */}
                     <View
                       style={[
                         styles.reconBanner,
-                        recon.isMatch ? styles.reconBannerMatch : styles.reconBannerMismatch,
+                        recon.isMatch ? styles.reconMatch : styles.reconMismatch,
                       ]}
                     >
-                      <View style={styles.reconRow}>
-                        <Text style={styles.reconLabel}>Declared: {declared.toFixed(2)} ac</Text>
-                        <Text style={styles.reconLabel}>
-                          Parcels: {recon.parcelTotal.toFixed(2)} ac
-                        </Text>
+                      <View style={styles.reconSummaryRow}>
+                        <Text style={styles.reconText}>Declared: {declared.toFixed(2)} ac</Text>
+                        <Text style={styles.reconText}>Parcels: {recon.parcelTotal.toFixed(2)} ac</Text>
                       </View>
                       <Text
                         style={[
-                          styles.reconStatus,
+                          styles.reconStatusText,
                           recon.isMatch ? styles.reconStatusMatch : styles.reconStatusMismatch,
                         ]}
                       >
@@ -695,147 +723,262 @@ export default function NewRegistrationScreen() {
                 title="+ Add Another Land Holding"
                 variant="outline"
                 onPress={addHolding}
-                style={styles.addHoldingBtn}
+                style={{ marginTop: 4, marginBottom: 12 }}
               />
-
-              <View style={styles.btnRow}>
-                <Button
-                  title="Back"
-                  variant="outline"
-                  onPress={() => setCurrentStep(3)}
-                  style={styles.halfBtn}
-                />
-                <Button
-                  title="Next: Water"
-                  onPress={async () => {
-                    if (validateLandAndParcels()) {
-                      await persistCurrentDraft(5);
-                      setCurrentStep(5);
-                    }
-                  }}
-                  style={styles.halfBtn}
-                />
-              </View>
             </View>
           )}
 
-          {/* STEP 5: Water Requirement */}
+          {/* STEP 5: Water Quota */}
           {currentStep === 5 && (
             <View style={styles.stepContainer}>
-              <Text style={styles.stepHeader}>Water Requirement Calculation</Text>
-              <Text style={styles.stepSubtext}>
-                Quota calculated dynamically from land area and active tariff rate.
-              </Text>
-
-              {/* Calculation Breakdown Card */}
-              <View style={styles.calcCard}>
-                <View style={styles.calcRow}>
-                  <Text style={styles.calcLabel}>Total Declared Land:</Text>
-                  <Text style={styles.calcValue}>{totalLandAcres.toFixed(2)} Acres</Text>
+              <View style={styles.stepHero}>
+                <View style={styles.stepHeroIcon}>
+                  <Feather name="droplet" size={24} color={colors.primary} />
                 </View>
-                <View style={styles.calcRow}>
-                  <Text style={styles.calcLabel}>Applicable Tariff Allocation:</Text>
-                  <Text style={styles.calcValue}>
-                    {activeTariff?.litres_per_acre.toLocaleString() || '5,000'} L / Acre
-                  </Text>
-                </View>
-                <View style={[styles.calcRow, styles.calcRowTotal]}>
-                  <Text style={styles.calcLabelTotal}>Calculated Allocation:</Text>
-                  <Text style={styles.calcValueTotal}>
-                    {calculatedQuota.toLocaleString()} Litres
-                  </Text>
-                </View>
+                <Text style={styles.stepTitle}>Water Requirement & Quota</Text>
+                <Text style={styles.stepSubtitle}>
+                  Calculated based on declared holding area and applicable project scheme tariff.
+                </Text>
               </View>
 
-              <Input
-                label="Required Water (Litres)"
-                placeholder="e.g. 25000"
-                keyboardType="number-pad"
-                value={waterRequiredLitres}
-                onChangeText={setWaterRequiredLitres}
-                required
-                leftIcon={<Droplets size={18} color={Colors.accent.emerald} />}
-                helper="Approved water allotment is subject to review and verification."
-              />
+              <View style={styles.formCard}>
+                <View style={styles.calcSummaryCard}>
+                  <View style={styles.calcRow}>
+                    <Text style={styles.calcLabel}>Total Declared Land:</Text>
+                    <Text style={styles.calcValue}>{totalLandAcres.toFixed(2)} Acres</Text>
+                  </View>
+                  <View style={styles.calcRow}>
+                    <Text style={styles.calcLabel}>Tariff Scheme:</Text>
+                    <Text style={styles.calcValue}>{getProjectName()}</Text>
+                  </View>
+                  <View style={styles.calcRow}>
+                    <Text style={styles.calcLabel}>Rate Tariff:</Text>
+                    <Text style={styles.calcValue}>
+                      {activeTariff ? `${activeTariff.litres_per_acre.toLocaleString()} L / Acre` : '5,000 L / Acre'}
+                    </Text>
+                  </View>
+                  <View style={[styles.calcRow, styles.calcRowTotal]}>
+                    <Text style={styles.calcTotalLabel}>Calculated Quota:</Text>
+                    <Text style={styles.calcTotalValue}>{calculatedQuota.toLocaleString()} L</Text>
+                  </View>
+                </View>
 
-              <View style={styles.btnRow}>
-                <Button
-                  title="Back"
-                  variant="outline"
-                  onPress={() => setCurrentStep(4)}
-                  style={styles.halfBtn}
-                />
-                <Button
-                  title="Next: Review"
-                  onPress={async () => {
-                    await persistCurrentDraft(6);
-                    setCurrentStep(6);
-                  }}
-                  style={styles.halfBtn}
+                <Input
+                  label="Required Water Quantity (Litres)"
+                  placeholder="25000"
+                  keyboardType="numeric"
+                  value={waterRequiredLitres}
+                  onChangeText={setWaterRequiredLitres}
+                  hint="Farmer requested requirement (max approved during administrative review)"
+                  style={{ marginTop: 12 }}
                 />
               </View>
             </View>
           )}
 
-          {/* STEP 6: Review & Final Save */}
+          {/* STEP 6: Review & Submit */}
           {currentStep === 6 && (
             <View style={styles.stepContainer}>
-              <Text style={styles.stepHeader}>Review & Local Save</Text>
-              <Text style={styles.stepSubtext}>
-                Verify all registration details before committing to device SQLite.
-              </Text>
-
-              <View style={styles.reviewCard}>
-                <Text style={styles.reviewSectionTitle}>Beneficiary Identity</Text>
-                <Text style={styles.reviewLine}>Name: {name}</Text>
-                <Text style={styles.reviewLine}>Phone: {phoneNumber}</Text>
-                <Text style={styles.reviewLine}>
-                  Location: Pollachi South, Coimbatore - {pincode}
-                </Text>
-
-                <Text style={[styles.reviewSectionTitle, { marginTop: 12 }]}>
-                  Land & Parcels Summary
-                </Text>
-                <Text style={styles.reviewLine}>
-                  Total Land: {totalLandAcres.toFixed(2)} Acres ({holdings.length} Holdings)
-                </Text>
-                {holdings.map((h, idx) => (
-                  <Text key={idx} style={styles.reviewSubline}>
-                    • Holding #{idx + 1}: {h.declaredArea} ac (
-                    {h.parcels.map((p) => `${p.surveyNumber}/${p.subdivisionNumber}`).join(', ')})
-                  </Text>
-                ))}
-
-                <Text style={[styles.reviewSectionTitle, { marginTop: 12 }]}>
-                  Water Application
-                </Text>
-                <Text style={styles.reviewLine}>
-                  Required: {Number(waterRequiredLitres).toLocaleString()} Litres
-                </Text>
-                <Text style={styles.reviewLine}>
-                  Calculated Quota: {calculatedQuota.toLocaleString()} Litres
+              <View style={styles.stepHero}>
+                <View style={styles.stepHeroIcon}>
+                  <Feather name="check-circle" size={24} color={colors.success} />
+                </View>
+                <Text style={styles.stepTitle}>Review & Save Offline</Text>
+                <Text style={styles.stepSubtitle}>
+                  Verify beneficiary details before saving to encrypted local SQLite.
                 </Text>
               </View>
 
-              <Button
-                title="Complete & Save to Device"
-                onPress={handleFinalSave}
-                loading={saving}
-                size="large"
-                icon={<CheckCircle size={18} color="#FFFFFF" />}
-                style={styles.saveBtn}
-              />
-
-              <Button
-                title="Back to Edit"
-                variant="outline"
-                onPress={() => setCurrentStep(5)}
-                style={styles.backBtn}
-              />
+              <View style={styles.formCard}>
+                <ListItem title="Beneficiary Name" subtitle={name} showChevron={false} />
+                <ListItem title="Phone Number" subtitle={phoneNumber} showChevron={false} />
+                <ListItem
+                  title="Jurisdiction"
+                  subtitle={`Coimbatore • ${getPanchayatName()} • ${getVillageName()}`}
+                  showChevron={false}
+                />
+                <ListItem
+                  title="Land Holdings"
+                  subtitle={`${holdings.length} Holdings • ${totalLandAcres.toFixed(2)} Total Acres`}
+                  showChevron={false}
+                />
+                <ListItem
+                  title="Water Demand"
+                  subtitle={`Required: ${Number(waterRequiredLitres).toLocaleString()} L (Calc: ${calculatedQuota.toLocaleString()} L)`}
+                  showChevron={false}
+                  borderBottom={false}
+                />
+              </View>
             </View>
           )}
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* Sticky Bottom Actions */}
+      <View style={styles.stickyFooter}>
+        {currentStep === 1 && (
+          <Button
+            title="Continue to Personal Details"
+            onPress={handlePhoneLookup}
+            fullWidth
+            size="lg"
+          />
+        )}
+
+        {currentStep === 2 && (
+          <View style={styles.footerBtnRow}>
+            <Button
+              title="Back"
+              variant="secondary"
+              onPress={() => setCurrentStep(1)}
+              style={{ flex: 1 }}
+            />
+            <Button
+              title="Next: Location"
+              onPress={async () => {
+                if (!name.trim()) {
+                  showToast({ message: 'Please enter farmer legal name', type: 'warning' });
+                  return;
+                }
+                await persistCurrentDraft(3);
+                setCurrentStep(3);
+              }}
+              style={{ flex: 1.5 }}
+            />
+          </View>
+        )}
+
+        {currentStep === 3 && (
+          <View style={styles.footerBtnRow}>
+            <Button
+              title="Back"
+              variant="secondary"
+              onPress={() => setCurrentStep(2)}
+              style={{ flex: 1 }}
+            />
+            <Button
+              title="Next: Land & Parcels"
+              onPress={async () => {
+                await persistCurrentDraft(4);
+                setCurrentStep(4);
+              }}
+              style={{ flex: 1.5 }}
+            />
+          </View>
+        )}
+
+        {currentStep === 4 && (
+          <View style={styles.footerBtnRow}>
+            <Button
+              title="Back"
+              variant="secondary"
+              onPress={() => setCurrentStep(3)}
+              style={{ flex: 1 }}
+            />
+            <Button
+              title="Next: Water Quota"
+              onPress={async () => {
+                if (validateLandAndParcels()) {
+                  await persistCurrentDraft(5);
+                  setCurrentStep(5);
+                }
+              }}
+              style={{ flex: 1.5 }}
+            />
+          </View>
+        )}
+
+        {currentStep === 5 && (
+          <View style={styles.footerBtnRow}>
+            <Button
+              title="Back"
+              variant="secondary"
+              onPress={() => setCurrentStep(4)}
+              style={{ flex: 1 }}
+            />
+            <Button
+              title="Review & Verify"
+              onPress={async () => {
+                await persistCurrentDraft(6);
+                setCurrentStep(6);
+              }}
+              style={{ flex: 1.5 }}
+            />
+          </View>
+        )}
+
+        {currentStep === 6 && (
+          <View style={styles.footerBtnRow}>
+            <Button
+              title="Back"
+              variant="secondary"
+              onPress={() => setCurrentStep(5)}
+              style={{ flex: 1 }}
+            />
+            <Button
+              title="Save Registration Offline"
+              loading={saving}
+              onPress={handleFinalSave}
+              style={{ flex: 2 }}
+            />
+          </View>
+        )}
+      </View>
+
+      {/* Location Picker Bottom Sheets */}
+      <BottomSheet
+        visible={showLocationSheet === 'PANCHAYAT'}
+        onClose={() => setShowLocationSheet(null)}
+        title="Select Panchayat"
+        subtitle="Coimbatore District"
+      >
+        {panchayats.map((p) => (
+          <ListItem
+            key={p.panchayat_id}
+            title={p.panchayat_name || p.name || 'Panchayat'}
+            subtitle={`LGD Block Code: ${p.block_code || ''}`}
+            onPress={() => handlePanchayatSelect(p.panchayat_id)}
+          />
+        ))}
+      </BottomSheet>
+
+      <BottomSheet
+        visible={showLocationSheet === 'VILLAGE'}
+        onClose={() => setShowLocationSheet(null)}
+        title="Select Village"
+        subtitle="LGD Village Master"
+      >
+        {villages.map((v) => (
+          <ListItem
+            key={v.village_id}
+            title={v.village_name || v.name || 'Village'}
+            subtitle={`LGD Village Code: ${v.village_code || ''}`}
+            onPress={() => {
+              setSelectedVillage(v.village_id);
+              setShowLocationSheet(null);
+            }}
+          />
+        ))}
+      </BottomSheet>
+
+      <BottomSheet
+        visible={showLocationSheet === 'SCHEME'}
+        onClose={() => setShowLocationSheet(null)}
+        title="Select Project Scheme"
+        subtitle="Irrigation Master Schemes"
+      >
+        {projects.map((p) => (
+          <ListItem
+            key={p.project_id}
+            title={p.project_name}
+            subtitle={p.description || 'Active irrigation project'}
+            onPress={() => {
+              setSelectedProject(p.project_id);
+              setShowLocationSheet(null);
+            }}
+          />
+        ))}
+      </BottomSheet>
     </SafeAreaView>
   );
 }
@@ -843,253 +986,284 @@ export default function NewRegistrationScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
+  },
+  container: {
+    flex: 1,
+    backgroundColor: colors.background,
   },
   keyboardView: {
     flex: 1,
   },
-  container: {
-    flex: 1,
-    backgroundColor: Colors.neutral[50],
-  },
   scrollContent: {
-    padding: 16,
-    paddingBottom: 40,
+    padding: spacing.lg,
+    paddingBottom: 100,
+  },
+  progressContainer: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    backgroundColor: colors.surface,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+  },
+  progressBarBackground: {
+    height: 4,
+    backgroundColor: colors.surfaceSubtle,
+    borderRadius: borderRadius.full,
+    overflow: 'hidden',
+  },
+  progressBarFill: {
+    height: '100%',
+    backgroundColor: colors.primary,
+    borderRadius: borderRadius.full,
+  },
+  progressLabelRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 6,
+  },
+  progressStepCount: {
+    fontSize: typography.fontSize.tiny,
+    fontWeight: '700',
+    color: colors.primary,
+    fontFamily: typography.fontFamily.bold,
+  },
+  progressStepName: {
+    fontSize: typography.fontSize.tiny,
+    color: colors.textSecondary,
+    fontFamily: typography.fontFamily.medium,
   },
   stepContainer: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 16,
+    gap: spacing.md,
+  },
+  stepHero: {
+    marginBottom: spacing.xs,
+  },
+  stepHeroIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: borderRadius.lg,
+    backgroundColor: colors.primaryLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.sm,
+  },
+  stepTitle: {
+    fontSize: typography.fontSize.heading,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    fontFamily: typography.fontFamily.bold,
+  },
+  stepSubtitle: {
+    fontSize: typography.fontSize.caption,
+    color: colors.textSecondary,
+    marginTop: 2,
+    fontFamily: typography.fontFamily.regular,
+  },
+  formCard: {
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.xl,
+    padding: spacing.lg,
     borderWidth: 1,
-    borderColor: Colors.neutral[200],
+    borderColor: colors.border,
+    ...shadows.subtle,
   },
-  stepHeader: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: Colors.neutral[900],
-    marginBottom: 4,
-  },
-  stepSubtext: {
-    fontSize: 13,
-    color: Colors.neutral[500],
-    marginBottom: 16,
-    lineHeight: 18,
-  },
-  nextBtn: {
-    marginTop: 8,
-  },
-  btnRow: {
+  cardHeaderRow: {
     flexDirection: 'row',
-    gap: 12,
-    marginTop: 8,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.sm,
   },
-  halfBtn: {
-    flex: 1,
+  holdingHeaderTitle: {
+    fontSize: typography.fontSize.bodySecondary,
+    fontWeight: '700',
+    color: colors.textPrimary,
   },
-  formGroup: {
-    marginBottom: 14,
-  },
-  groupLabel: {
-    fontSize: 13,
+  fieldLabel: {
+    fontSize: typography.fontSize.caption,
     fontWeight: '600',
-    color: Colors.neutral[700],
-    marginBottom: 6,
+    color: colors.textSecondary,
+    marginTop: spacing.sm,
+    marginBottom: spacing.xs,
+    fontFamily: typography.fontFamily.medium,
   },
-  dropdownPicker: {
-    backgroundColor: Colors.neutral[50],
-    borderWidth: 1,
-    borderColor: Colors.neutral[200],
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-  },
-  pickerValue: {
-    fontSize: 14,
-    color: Colors.neutral[800],
-    fontWeight: '500',
-  },
-  holdingBlock: {
-    backgroundColor: Colors.neutral[50],
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: Colors.neutral[200],
-  },
-  holdingHeader: {
+  directionRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 10,
+    gap: spacing.xs,
+    marginBottom: spacing.xs,
   },
-  holdingLabel: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: Colors.neutral[900],
-  },
-  parcelsSectionTitle: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: Colors.neutral[600],
-    textTransform: 'uppercase',
-    marginBottom: 8,
-  },
-  parcelFormCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 10,
-    padding: 10,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: Colors.neutral[200],
-  },
-  parcelTopRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 6,
-  },
-  parcelCardNumber: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: Colors.neutral[400],
-    textTransform: 'uppercase',
-  },
-  parcelInputRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  parcelThirdInput: {
+  dirChip: {
     flex: 1,
-    marginBottom: 0,
+    paddingVertical: spacing.sm,
+    borderRadius: borderRadius.md,
+    borderWidth: 1.2,
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceSubtle,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dirChipActive: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primaryLight,
+  },
+  dirChipText: {
+    fontSize: typography.fontSize.tiny,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  dirChipTextActive: {
+    color: colors.primary,
+    fontWeight: '700',
+  },
+  readonlySelector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.surfaceSubtle,
+    borderRadius: borderRadius.lg,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  actionSelector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.lg,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    borderWidth: 1.2,
+    borderColor: colors.border,
+  },
+  selectorValueText: {
+    fontSize: typography.fontSize.bodySecondary,
+    fontWeight: '600',
+    color: colors.textPrimary,
+  },
+  parcelsHeaderLabel: {
+    fontSize: typography.fontSize.caption,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    marginTop: spacing.sm,
+    marginBottom: spacing.xs,
+  },
+  parcelCard: {
+    backgroundColor: colors.surfaceSubtle,
+    borderRadius: borderRadius.lg,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  parcelCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.xs,
+  },
+  parcelCardIndex: {
+    fontSize: typography.fontSize.tiny,
+    fontWeight: '700',
+    color: colors.textSecondary,
+  },
+  parcelRowInputs: {
+    flexDirection: 'row',
+    gap: spacing.xs,
   },
   parcelErrorRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    marginTop: 6,
-    backgroundColor: '#FFF5F5',
-    padding: 6,
-    borderRadius: 6,
+    marginTop: 4,
   },
   parcelErrorText: {
-    fontSize: 11,
+    fontSize: typography.fontSize.micro,
+    color: colors.danger,
     fontWeight: '600',
-    color: Colors.status.dangerText,
-    flex: 1,
-  },
-  addParcelBtn: {
-    marginVertical: 8,
   },
   reconBanner: {
-    borderRadius: 8,
-    padding: 10,
-    marginTop: 8,
+    padding: spacing.md,
+    borderRadius: borderRadius.lg,
+    marginTop: spacing.md,
     borderWidth: 1,
   },
-  reconBannerMatch: {
-    backgroundColor: Colors.status.successBg,
-    borderColor: Colors.status.successBorder,
+  reconMatch: {
+    backgroundColor: colors.successLight,
+    borderColor: colors.successBorder,
   },
-  reconBannerMismatch: {
-    backgroundColor: Colors.status.warningBg,
-    borderColor: Colors.status.warningBorder,
+  reconMismatch: {
+    backgroundColor: colors.dangerLight,
+    borderColor: colors.dangerBorder,
   },
-  reconRow: {
+  reconSummaryRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 4,
   },
-  reconLabel: {
-    fontSize: 12,
+  reconText: {
+    fontSize: typography.fontSize.caption,
     fontWeight: '600',
-    color: Colors.neutral[700],
-    fontVariant: ['tabular-nums'],
+    color: colors.textPrimary,
   },
-  reconStatus: {
-    fontSize: 12,
+  reconStatusText: {
+    fontSize: typography.fontSize.tiny,
     fontWeight: '700',
-    textAlign: 'center',
+    marginTop: 4,
   },
   reconStatusMatch: {
-    color: Colors.status.successText,
+    color: colors.success,
   },
   reconStatusMismatch: {
-    color: Colors.status.warningText,
+    color: colors.danger,
   },
-  addHoldingBtn: {
-    marginBottom: 16,
-  },
-  calcCard: {
-    backgroundColor: Colors.primary[50],
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: Colors.primary[200],
+  calcSummaryCard: {
+    backgroundColor: colors.surfaceSubtle,
+    borderRadius: borderRadius.lg,
+    padding: spacing.md,
+    marginBottom: spacing.md,
   },
   calcRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 6,
+    paddingVertical: 4,
   },
   calcLabel: {
-    fontSize: 13,
-    color: Colors.neutral[600],
+    fontSize: typography.fontSize.caption,
+    color: colors.textSecondary,
   },
   calcValue: {
-    fontSize: 13,
+    fontSize: typography.fontSize.caption,
     fontWeight: '600',
-    color: Colors.neutral[800],
-    fontVariant: ['tabular-nums'],
+    color: colors.textPrimary,
   },
   calcRowTotal: {
-    borderTopWidth: 1,
-    borderColor: Colors.primary[200],
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
     paddingTop: 8,
     marginTop: 4,
   },
-  calcLabelTotal: {
-    fontSize: 14,
+  calcTotalLabel: {
+    fontSize: typography.fontSize.subheading,
     fontWeight: '700',
-    color: Colors.primary[900],
+    color: colors.textPrimary,
   },
-  calcValueTotal: {
-    fontSize: 16,
+  calcTotalValue: {
+    fontSize: typography.fontSize.subheading,
     fontWeight: '800',
-    color: Colors.primary[700],
-    fontVariant: ['tabular-nums'],
+    color: colors.primary,
   },
-  reviewCard: {
-    backgroundColor: Colors.neutral[50],
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: Colors.neutral[200],
+  stickyFooter: {
+    backgroundColor: colors.surface,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    ...shadows.sheet,
   },
-  reviewSectionTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: Colors.neutral[900],
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 4,
-  },
-  reviewLine: {
-    fontSize: 13,
-    color: Colors.neutral[700],
-    marginBottom: 2,
-  },
-  reviewSubline: {
-    fontSize: 12,
-    color: Colors.neutral[600],
-    marginLeft: 8,
-    fontVariant: ['tabular-nums'],
-  },
-  saveBtn: {
-    marginBottom: 8,
-  },
-  backBtn: {
-    marginTop: 4,
+  footerBtnRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
   },
 });

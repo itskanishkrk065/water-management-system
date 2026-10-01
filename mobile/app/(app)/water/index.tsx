@@ -6,34 +6,54 @@ import {
   FlatList,
   TouchableOpacity,
   RefreshControl,
+  SafeAreaView,
+  StatusBar,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Header } from '../../../src/components/Header';
 import { StatusBadge } from '../../../src/components/StatusBadge';
 import { Button } from '../../../src/components/Button';
 import { EmptyState } from '../../../src/components/EmptyState';
-import { Colors } from '../../../src/constants/colors';
+import { Tabs, TabItem } from '../../../src/components/Tabs';
+import { BottomSheet } from '../../../src/components/BottomSheet';
+import { ListItem } from '../../../src/components/ListItem';
+import { Input } from '../../../src/components/Input';
+import { useToast } from '../../../src/components/Toast';
+import { useAuth } from '../../../src/auth/AuthContext';
+import { colors, spacing, borderRadius, typography, shadows } from '../../../src/constants/theme';
 import { WaterRepository } from '../../../src/repositories/WaterRepository';
 import { WaterApplication } from '../../../src/types/domain';
-import { Droplets, User, Calendar, Plus, ChevronRight, CheckCircle2 } from 'lucide-react-native';
+import { Feather } from '../../../src/components/Icon';
 
 const waterRepo = new WaterRepository();
 
 export default function WaterApplicationsScreen() {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<'ACTIVE' | 'HISTORY'>('ACTIVE');
+  const { isAdmin } = useAuth();
+  const { showToast } = useToast();
+
+  const [activeTab, setActiveTab] = useState<string>('PENDING');
   const [applications, setApplications] = useState<WaterApplication[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  const loadApplications = async (tab: 'ACTIVE' | 'HISTORY' = activeTab) => {
+  // Admin Review Sheet
+  const [selectedApp, setSelectedApp] = useState<WaterApplication | null>(null);
+  const [approvedLitresInput, setApprovedLitresInput] = useState('');
+  const [reviewing, setReviewing] = useState(false);
+
+  const loadApplications = async () => {
     try {
       let data: WaterApplication[] = [];
-      if (tab === 'ACTIVE') {
-        data = await waterRepo.getActiveApplications();
-      } else {
+      if (activeTab === 'HISTORY') {
         data = await waterRepo.getHistoricalApplications();
+      } else {
+        data = await waterRepo.getActiveApplications();
+        if (activeTab === 'PENDING') {
+          data = data.filter((a) => a.status === 'DRAFT' || a.status === 'UNDER_REVIEW');
+        } else if (activeTab === 'APPROVED') {
+          data = data.filter((a) => a.status === 'APPROVED');
+        }
       }
       setApplications(data);
     } catch (err) {
@@ -46,120 +66,209 @@ export default function WaterApplicationsScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      loadApplications(activeTab);
+      loadApplications();
     }, [activeTab])
   );
 
-  const handleTabChange = (tab: 'ACTIVE' | 'HISTORY') => {
-    setActiveTab(tab);
-    setLoading(true);
-    loadApplications(tab);
+  const [rejectionReason, setRejectionReason] = useState('');
+
+  const handleApprove = async () => {
+    if (!selectedApp) return;
+    setReviewing(true);
+    try {
+      const litresToApprove = parseFloat(approvedLitresInput) || selectedApp.calculated_litres;
+      await waterRepo.approveApplication(selectedApp.application_id, litresToApprove, 'Approved via mobile review');
+      showToast({ message: `✓ Quota of ${litresToApprove.toLocaleString()} L approved`, type: 'success' });
+      setSelectedApp(null);
+      await loadApplications();
+    } catch (err: any) {
+      showToast({ message: err.message || 'Approval failed', type: 'error' });
+    } finally {
+      setReviewing(false);
+    }
   };
 
+  const handleReject = async () => {
+    if (!selectedApp) return;
+    if (!rejectionReason.trim()) {
+      showToast({ message: 'Please provide a rejection reason', type: 'warning' });
+      return;
+    }
+    setReviewing(true);
+    try {
+      await waterRepo.rejectApplication(selectedApp.application_id, rejectionReason.trim());
+      showToast({ message: 'Water application rejected', type: 'info' });
+      setSelectedApp(null);
+      setRejectionReason('');
+      await loadApplications();
+    } catch (err: any) {
+      showToast({ message: err.message || 'Rejection failed', type: 'error' });
+    } finally {
+      setReviewing(false);
+    }
+  };
+
+  const tabs: TabItem[] = [
+    { id: 'PENDING', label: 'Pending Review' },
+    { id: 'APPROVED', label: 'Approved' },
+    { id: 'ALL', label: 'All Active' },
+    { id: 'HISTORY', label: 'Closed / History' },
+  ];
+
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top']}>
+    <SafeAreaView style={styles.safeArea}>
+      <StatusBar barStyle="dark-content" backgroundColor={colors.surface} />
       <Header
-        title="Water Applications"
-        subtitle={`${activeTab === 'ACTIVE' ? 'Operational' : 'Archived'} records`}
+        title="Water Quotas"
+        subtitle={`${applications.length} applications in local queue`}
         rightAction={
-          <Button
-            title="+ Apply"
-            size="small"
-            variant="primary"
-            onPress={() => router.push('/(app)/water/new')}
-          />
+          !isAdmin
+            ? {
+                icon: 'plus',
+                onPress: () => router.push('/(app)/water/new'),
+                accessibilityLabel: 'New Water Application',
+              }
+            : undefined
         }
       />
 
-      {/* Tabs for Active vs History */}
-      <View style={styles.tabContainer}>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'ACTIVE' && styles.activeTab]}
-          onPress={() => handleTabChange('ACTIVE')}
-        >
-          <Text style={[styles.tabText, activeTab === 'ACTIVE' && styles.activeTabText]}>
-            Active Applications
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'HISTORY' && styles.activeTab]}
-          onPress={() => handleTabChange('HISTORY')}
-        >
-          <Text style={[styles.tabText, activeTab === 'HISTORY' && styles.activeTabText]}>
-            History & Closed
-          </Text>
-        </TouchableOpacity>
-      </View>
+      <Tabs tabs={tabs} activeTab={activeTab} onChangeTab={setActiveTab} />
 
       <FlatList
         data={applications}
         keyExtractor={(item) => item.application_id}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={() => loadApplications(activeTab)} />
+          <RefreshControl refreshing={refreshing} onRefresh={loadApplications} colors={[colors.primary]} />
         }
         contentContainerStyle={styles.listContent}
         renderItem={({ item }) => (
           <TouchableOpacity
             style={styles.card}
             activeOpacity={0.7}
-            onPress={() => router.push(`/(app)/beneficiaries/${item.beneficiary_id}`)}
+            onPress={() => {
+              if (isAdmin && (item.status === 'DRAFT' || item.status === 'UNDER_REVIEW')) {
+                setSelectedApp(item);
+                setApprovedLitresInput(String(item.calculated_litres));
+              } else {
+                router.push(`/(app)/beneficiaries/${item.beneficiary_id}`);
+              }
+            }}
           >
-            <View style={styles.cardHeader}>
+            <View style={styles.cardHeaderRow}>
               <View>
-                <Text style={styles.appId}>App #{item.application_id}</Text>
-                <View style={styles.userRow}>
-                  <User size={13} color={Colors.neutral[500]} />
-                  <Text style={styles.beneficiaryName}>{item.beneficiary_name}</Text>
-                </View>
+                <Text style={styles.cardTitle}>App #{item.application_id.slice(-6)}</Text>
+                <Text style={styles.cardBeneficiary}>{item.beneficiary_name || 'Beneficiary'}</Text>
               </View>
-              <StatusBadge status={item.status} size="small" />
+              <StatusBadge status={item.status} size="sm" />
             </View>
 
-            <View style={styles.statsRow}>
-              <View style={styles.statItem}>
-                <Text style={styles.statLabel}>Required Water</Text>
-                <Text style={styles.statValue}>{item.required_litres.toLocaleString()} L</Text>
+            <View style={styles.quotasGrid}>
+              <View style={styles.quotaTile}>
+                <Text style={styles.quotaLabel}>Required</Text>
+                <Text style={styles.quotaValue}>{item.required_litres.toLocaleString()} L</Text>
               </View>
-              <View style={styles.statItem}>
-                <Text style={styles.statLabel}>Calculated Quota</Text>
-                <Text style={styles.statValue}>{item.calculated_litres.toLocaleString()} L</Text>
+              <View style={styles.quotaTile}>
+                <Text style={styles.quotaLabel}>Calculated</Text>
+                <Text style={styles.quotaValue}>{item.calculated_litres.toLocaleString()} L</Text>
               </View>
-            </View>
-
-            {item.remarks && (
-              <Text style={styles.remarksText} numberOfLines={2}>
-                Remarks: {item.remarks}
-              </Text>
-            )}
-
-            <View style={styles.cardFooter}>
-              <View style={styles.dateRow}>
-                <Calendar size={12} color={Colors.neutral[400]} />
-                <Text style={styles.dateText}>
-                  {new Date(item.application_date).toLocaleDateString()}
+              <View style={styles.quotaTile}>
+                <Text style={styles.quotaLabel}>Approved</Text>
+                <Text style={[styles.quotaValue, item.allotment ? styles.approvedVal : styles.pendingVal]}>
+                  {item.allotment ? `${item.allotment.approved_litres.toLocaleString()} L` : 'Pending'}
                 </Text>
               </View>
-              <ChevronRight size={16} color={Colors.neutral[400]} />
+            </View>
+
+            {item.remarks ? (
+              <Text style={styles.remarksText} numberOfLines={2}>
+                Notes: {item.remarks}
+              </Text>
+            ) : null}
+
+            <View style={styles.cardFooter}>
+              <Text style={styles.dateText}>
+                Date: {new Date(item.application_date).toLocaleDateString()}
+              </Text>
+              {isAdmin && (item.status === 'DRAFT' || item.status === 'UNDER_REVIEW') ? (
+                <Text style={styles.reviewCtaText}>Review & Approve →</Text>
+              ) : (
+                <Feather name="chevron-right" size={16} color={colors.textMuted} />
+              )}
             </View>
           </TouchableOpacity>
         )}
         ListEmptyComponent={
           !loading ? (
             <EmptyState
-              icon={<Droplets size={32} color={Colors.accent.emerald} />}
-              title={activeTab === 'ACTIVE' ? 'No Active Applications' : 'No Historical Records'}
+              icon={<Feather name="droplet" size={32} color={colors.primary} />}
+              title={activeTab === 'PENDING' ? 'No Pending Approvals' : 'No Applications Found'}
               description={
-                activeTab === 'ACTIVE'
-                  ? 'There are no active water applications in progress on this device.'
-                  : 'There are no rejected, cancelled or voided water applications.'
+                activeTab === 'PENDING'
+                  ? 'All water applications on this device have been reviewed and processed.'
+                  : 'No water applications match the current tab filter.'
               }
-              actionTitle={activeTab === 'ACTIVE' ? '+ Create Application' : undefined}
-              onAction={activeTab === 'ACTIVE' ? () => router.push('/(app)/water/new') : undefined}
             />
           ) : null
         }
       />
+
+      {/* Admin Approval Bottom Sheet */}
+      <BottomSheet
+        visible={!!selectedApp}
+        onClose={() => setSelectedApp(null)}
+        title="Review Water Application"
+        subtitle={`App #${selectedApp?.application_id.slice(-6)} • ${selectedApp?.beneficiary_name}`}
+      >
+        {selectedApp && (
+          <View style={styles.reviewSheet}>
+            <View style={styles.reviewMetrics}>
+              <ListItem
+                title="Required by Beneficiary"
+                subtitle={`${selectedApp.required_litres.toLocaleString()} Litres`}
+                showChevron={false}
+              />
+              <ListItem
+                title="Calculated Standard Quota"
+                subtitle={`${selectedApp.calculated_litres.toLocaleString()} Litres`}
+                showChevron={false}
+              />
+            </View>
+
+            <View style={styles.reviewForm}>
+              <Text style={styles.fieldLabel}>Approved Quantity (Litres)</Text>
+              <Input
+                value={approvedLitresInput}
+                onChangeText={setApprovedLitresInput}
+                keyboardType="numeric"
+                hint="Defaults to calculated standard quota"
+              />
+              <Input
+                label="Rejection Reason (if rejecting)"
+                value={rejectionReason}
+                onChangeText={setRejectionReason}
+                placeholder="e.g. Ineligible holding / exceeds scheme capacity"
+              />
+            </View>
+
+            <View style={styles.reviewActions}>
+              <Button
+                title="Reject"
+                variant="destructive"
+                loading={reviewing}
+                onPress={handleReject}
+                style={{ flex: 1 }}
+              />
+              <Button
+                title="Approve Quota"
+                variant="primary"
+                loading={reviewing}
+                onPress={handleApprove}
+                style={{ flex: 1.5 }}
+              />
+            </View>
+          </View>
+        )}
+      </BottomSheet>
     </SafeAreaView>
   );
 }
@@ -167,120 +276,111 @@ export default function WaterApplicationsScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
-  },
-  tabContainer: {
-    flexDirection: 'row',
-    backgroundColor: '#FFFFFF',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.neutral[200],
-    gap: 8,
-  },
-  tab: {
-    flex: 1,
-    paddingVertical: 8,
-    alignItems: 'center',
-    borderRadius: 8,
-    backgroundColor: Colors.neutral[100],
-  },
-  activeTab: {
-    backgroundColor: Colors.primary[50],
-    borderWidth: 1,
-    borderColor: Colors.primary[300],
-  },
-  tabText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: Colors.neutral[600],
-  },
-  activeTabText: {
-    color: Colors.primary[700],
-    fontWeight: '700',
+    backgroundColor: colors.surface,
   },
   listContent: {
-    padding: 16,
-    paddingBottom: 32,
+    padding: spacing.lg,
+    backgroundColor: colors.background,
+    paddingBottom: spacing.xxxl,
   },
   card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 14,
-    padding: 16,
-    marginBottom: 12,
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.xl,
+    padding: spacing.lg,
+    marginBottom: spacing.md,
     borderWidth: 1,
-    borderColor: Colors.neutral[200],
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
-    elevation: 1,
+    borderColor: colors.border,
+    ...shadows.subtle,
   },
-  cardHeader: {
+  cardHeaderRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: 10,
+    justifyContent: 'space-between',
+    marginBottom: spacing.sm,
   },
-  appId: {
-    fontSize: 15,
+  cardTitle: {
+    fontSize: typography.fontSize.bodySecondary,
     fontWeight: '700',
-    color: Colors.neutral[900],
+    color: colors.textPrimary,
+    fontFamily: typography.fontFamily.bold,
   },
-  userRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
+  cardBeneficiary: {
+    fontSize: typography.fontSize.caption,
+    color: colors.textSecondary,
     marginTop: 2,
+    fontFamily: typography.fontFamily.regular,
   },
-  beneficiaryName: {
-    fontSize: 13,
-    color: Colors.neutral[600],
-    fontWeight: '500',
-  },
-  statsRow: {
+  quotasGrid: {
     flexDirection: 'row',
-    backgroundColor: Colors.neutral[50],
-    padding: 10,
-    borderRadius: 8,
-    gap: 12,
-    marginBottom: 8,
+    gap: spacing.xs,
+    backgroundColor: colors.surfaceSubtle,
+    borderRadius: borderRadius.lg,
+    padding: spacing.sm,
+    marginVertical: spacing.xs,
   },
-  statItem: {
+  quotaTile: {
     flex: 1,
   },
-  statLabel: {
-    fontSize: 11,
-    color: Colors.neutral[500],
+  quotaLabel: {
+    fontSize: typography.fontSize.micro,
+    color: colors.textSecondary,
     marginBottom: 2,
   },
-  statValue: {
-    fontSize: 15,
+  quotaValue: {
+    fontSize: typography.fontSize.caption,
     fontWeight: '700',
-    color: Colors.neutral[800],
-    fontVariant: ['tabular-nums'],
+    color: colors.textPrimary,
+  },
+  approvedVal: {
+    color: colors.success,
+  },
+  pendingVal: {
+    color: colors.warning,
   },
   remarksText: {
-    fontSize: 12,
-    color: Colors.neutral[500],
+    fontSize: typography.fontSize.tiny,
+    color: colors.textSecondary,
     fontStyle: 'italic',
-    marginBottom: 8,
+    marginTop: 6,
   },
   cardFooter: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    borderTopWidth: 1,
-    borderColor: Colors.neutral[100],
-    paddingTop: 8,
-  },
-  dateRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    paddingTop: spacing.sm,
+    marginTop: spacing.sm,
   },
   dateText: {
-    fontSize: 11,
-    color: Colors.neutral[400],
+    fontSize: typography.fontSize.micro,
+    color: colors.textMuted,
+  },
+  reviewCtaText: {
+    fontSize: typography.fontSize.caption,
+    fontWeight: '700',
+    color: colors.primary,
+  },
+  reviewSheet: {
+    paddingBottom: spacing.lg,
+  },
+  reviewMetrics: {
+    backgroundColor: colors.surfaceSubtle,
+    borderRadius: borderRadius.lg,
+    overflow: 'hidden',
+    marginBottom: spacing.md,
+  },
+  reviewForm: {
+    marginBottom: spacing.lg,
+  },
+  fieldLabel: {
+    fontSize: typography.fontSize.caption,
+    fontWeight: '600',
+    color: colors.textSecondary,
+    marginBottom: spacing.xs,
+  },
+  reviewActions: {
+    flexDirection: 'row',
+    gap: spacing.sm,
   },
 });

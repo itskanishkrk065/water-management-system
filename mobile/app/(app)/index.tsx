@@ -6,26 +6,22 @@ import {
   ScrollView,
   RefreshControl,
   TouchableOpacity,
+  SafeAreaView,
+  StatusBar,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Header } from '../../src/components/Header';
-import { MetricCard } from '../../src/components/MetricCard';
+import { MetricGroup, MetricItem } from '../../src/components/MetricGroup';
 import { Button } from '../../src/components/Button';
 import { StatusBadge } from '../../src/components/StatusBadge';
-import { Colors } from '../../src/constants/colors';
+import { ListItem } from '../../src/components/ListItem';
+import { SectionHeader } from '../../src/components/SectionHeader';
+import { colors, spacing, borderRadius, typography, shadows } from '../../src/constants/theme';
 import { BeneficiaryRepository } from '../../src/repositories/BeneficiaryRepository';
 import { SyncRepository } from '../../src/repositories/SyncRepository';
 import { AuditRepository } from '../../src/repositories/AuditRepository';
-import {
-  UserPlus,
-  Users,
-  Layers,
-  Droplets,
-  RefreshCw,
-  Clock,
-  ArrowRight,
-} from 'lucide-react-native';
+import { useAuth } from '../../src/auth/AuthContext';
+import { Feather } from '../../src/components/Icon';
 
 const beneficiaryRepo = new BeneficiaryRepository();
 const syncRepo = new SyncRepository();
@@ -33,14 +29,23 @@ const auditRepo = new AuditRepository();
 
 export default function HomeScreen() {
   const router = useRouter();
+  const { user, isAdmin } = useAuth();
   const [refreshing, setRefreshing] = useState(false);
   const [stats, setStats] = useState({
     beneficiariesCount: 0,
     landHoldingsCount: 0,
     waterAppsCount: 0,
     pendingSyncCount: 0,
+    totalAllocatedLitres: 0,
   });
   const [recentRecords, setRecentRecords] = useState<any[]>([]);
+
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return 'Good morning';
+    if (hour < 17) return 'Good afternoon';
+    return 'Good evening';
+  };
 
   const loadDashboardData = async () => {
     try {
@@ -61,11 +66,12 @@ export default function HomeScreen() {
         landHoldingsCount: holdingsTotal,
         waterAppsCount: appsTotal,
         pendingSyncCount: syncSummary.pending,
+        totalAllocatedLitres: appsTotal * 5000,
       });
 
       setRecentRecords(recentAudits);
     } catch (err) {
-      console.error('Error loading dashboard:', err);
+      console.error('Error loading dashboard data:', err);
     }
   };
 
@@ -81,122 +87,157 @@ export default function HomeScreen() {
     setRefreshing(false);
   };
 
+  const metrics: MetricItem[] = [
+    {
+      id: 'm1',
+      label: 'Beneficiaries',
+      value: stats.beneficiariesCount,
+      subvalue: 'Local database',
+      color: colors.primary,
+      onPress: () => router.push('/(app)/beneficiaries'),
+    },
+    {
+      id: 'm2',
+      label: 'Land Holdings',
+      value: stats.landHoldingsCount,
+      subvalue: 'Parcels verified',
+      color: colors.secondary,
+    },
+    {
+      id: 'm3',
+      label: 'Water Apps',
+      value: stats.waterAppsCount,
+      subvalue: 'Active quotas',
+      color: colors.accent.indigo,
+      onPress: () => router.push('/(app)/water'),
+    },
+    {
+      id: 'm4',
+      label: 'Pending Sync',
+      value: stats.pendingSyncCount,
+      subvalue: stats.pendingSyncCount > 0 ? 'Needs sync' : 'All synced',
+      color: stats.pendingSyncCount > 0 ? colors.warning : colors.success,
+      onPress: () => router.push('/(app)/sync'),
+    },
+  ];
+
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top']}>
+    <SafeAreaView style={styles.safeArea}>
+      <StatusBar barStyle="dark-content" backgroundColor={colors.surface} />
       <Header
-        title="Field Operations"
-        pendingCount={stats.pendingSyncCount}
+        title="Command Center"
+        subtitle={isAdmin ? 'Administrative Operations' : 'Field Operations'}
+        showRoleBadge
       />
 
       <ScrollView
         style={styles.container}
         contentContainerStyle={styles.scrollContent}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[colors.primary]} />}
+        showsVerticalScrollIndicator={false}
       >
-        {/* Primary Field Action */}
-        <View style={styles.actionCard}>
-          <View style={styles.actionHeader}>
-            <Text style={styles.actionTitle}>New Field Registration</Text>
-            <Text style={styles.actionSubtitle}>
-              Continuous 6-step offline onboarding workflow
-            </Text>
+        {/* User Context & Offline State Bar */}
+        <View style={styles.greetingCard}>
+          <View style={styles.greetingHeader}>
+            <View>
+              <Text style={styles.greetingText}>{getGreeting()},</Text>
+              <Text style={styles.userNameText}>{user?.name || 'Field Officer'}</Text>
+            </View>
+            <View style={styles.offlineStatusTag}>
+              <View style={styles.greenPulseDot} />
+              <Text style={styles.offlineStatusLabel}>Offline Ready</Text>
+            </View>
           </View>
-          <Button
-            title="+ New Beneficiary"
+          <Text style={styles.greetingSubtext}>
+            All actions are saved locally to SQLite and queued for automatic sync.
+          </Text>
+        </View>
+
+        {/* Primary Action Shortcuts */}
+        <View style={styles.quickActionsContainer}>
+          <TouchableOpacity
+            style={[styles.primaryActionPill, { backgroundColor: colors.primary }]}
             onPress={() => router.push('/(app)/new-registration')}
-            variant="primary"
-            size="large"
-            icon={<UserPlus size={18} color="#FFFFFF" />}
-          />
-        </View>
+            activeOpacity={0.88}
+          >
+            <Feather name="user-plus" size={18} color="#FFFFFF" />
+            <Text style={styles.primaryActionPillText}>+ New Registration</Text>
+          </TouchableOpacity>
 
-        {/* Today's Activity Metrics Grid */}
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Today's Activity</Text>
-          <Text style={styles.sectionSubtext}>Local Device Totals</Text>
-        </View>
-
-        <View style={styles.metricsGrid}>
-          <View style={styles.gridRow}>
-            <MetricCard
-              label="Beneficiaries"
-              value={stats.beneficiariesCount}
-              accentColor={Colors.primary[600]}
-              icon={<Users size={18} color={Colors.primary[600]} />}
-              style={styles.gridCard}
-            />
-            <MetricCard
-              label="Land Holdings"
-              value={stats.landHoldingsCount}
-              accentColor={Colors.secondary[600]}
-              icon={<Layers size={18} color={Colors.secondary[600]} />}
-              style={styles.gridCard}
-            />
-          </View>
-
-          <View style={styles.gridRow}>
-            <MetricCard
-              label="Water Apps"
-              value={stats.waterAppsCount}
-              accentColor={Colors.accent.emerald}
-              icon={<Droplets size={18} color={Colors.accent.emerald} />}
-              style={styles.gridCard}
-            />
-            <MetricCard
-              label="Pending Sync"
-              value={stats.pendingSyncCount}
-              accentColor={Colors.accent.amber}
-              icon={<RefreshCw size={18} color={Colors.accent.amber} />}
-              style={styles.gridCard}
-            />
-          </View>
-        </View>
-
-        {/* Quick Operations Links */}
-        <View style={styles.quickLinksRow}>
           <TouchableOpacity
-            style={styles.quickLink}
+            style={styles.secondaryActionPill}
+            onPress={() => router.push('/(app)/beneficiaries')}
+            activeOpacity={0.8}
+          >
+            <Feather name="search" size={16} color={colors.textPrimary} />
+            <Text style={styles.secondaryActionPillText}>Search Directory</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Operational Metrics Group */}
+        <SectionHeader
+          title="Operational Overview"
+          subtitle="Device snapshot and queues"
+          actionText={isAdmin ? 'View Reports' : undefined}
+          onAction={isAdmin ? () => router.push('/(app)/reports') : undefined}
+        />
+        <MetricGroup metrics={metrics} columns={2} />
+
+        {/* Quick Navigation Cards */}
+        <View style={styles.navTilesRow}>
+          <TouchableOpacity
+            style={styles.navTile}
             onPress={() => router.push('/(app)/drafts')}
+            activeOpacity={0.7}
           >
-            <Clock size={16} color={Colors.primary[600]} />
-            <Text style={styles.quickLinkText}>My Drafts</Text>
+            <View style={[styles.navTileIcon, { backgroundColor: colors.primaryLight }]}>
+              <Feather name="file-text" size={18} color={colors.primary} />
+            </View>
+            <Text style={styles.navTileTitle}>Registration Drafts</Text>
+            <Text style={styles.navTileSub}>Continue onboarding</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={styles.quickLink}
-            onPress={() => router.push('/(app)/sync')}
+            style={styles.navTile}
+            onPress={() => router.push('/(app)/billing')}
+            activeOpacity={0.7}
           >
-            <RefreshCw size={16} color={Colors.accent.amber} />
-            <Text style={styles.quickLinkText}>Pending Queue ({stats.pendingSyncCount})</Text>
+            <View style={[styles.navTileIcon, { backgroundColor: colors.secondaryLight }]}>
+              <Feather name="credit-card" size={18} color={colors.secondary} />
+            </View>
+            <Text style={styles.navTileTitle}>5-Stage Billing</Text>
+            <Text style={styles.navTileSub}>Installments & Payments</Text>
           </TouchableOpacity>
         </View>
 
-        {/* Recent Records / Local Mutations */}
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Recent Device Records</Text>
-          <TouchableOpacity onPress={() => router.push('/(app)/beneficiaries')}>
-            <Text style={styles.viewAllText}>View All</Text>
-          </TouchableOpacity>
-        </View>
+        {/* Recent Local Activity Stream */}
+        <SectionHeader
+          title="Recent Activity"
+          subtitle="Latest local mutations on this device"
+          actionText="All Beneficiaries"
+          onAction={() => router.push('/(app)/beneficiaries')}
+        />
 
-        <View style={styles.recentList}>
+        <View style={styles.activityCard}>
           {recentRecords.length === 0 ? (
-            <View style={styles.emptyRecent}>
-              <Text style={styles.emptyText}>No recent local operations.</Text>
+            <View style={styles.emptyActivity}>
+              <Feather name="check-circle" size={24} color={colors.textMuted} />
+              <Text style={styles.emptyActivityText}>No local modifications recorded yet.</Text>
             </View>
           ) : (
-            recentRecords.map((item, idx) => (
-              <View key={item.audit_id || idx} style={styles.recentItem}>
-                <View style={styles.recentLeft}>
-                  <Text style={styles.recentTitle}>
-                    {item.entity_type.replace('_', ' ')}: {item.entity_id}
-                  </Text>
-                  <Text style={styles.recentAction}>
-                    Action: {item.action} • {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </Text>
-                </View>
-                <StatusBadge status={item.sync_status || 'LOCAL_ONLY'} size="small" />
-              </View>
+            recentRecords.map((item, index) => (
+              <ListItem
+                key={item.audit_id || index}
+                title={`${item.entity_type.replace(/_/g, ' ')}: ${item.entity_id}`}
+                subtitle={`Action: ${item.action} • ${new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}
+                rightElement={
+                  <StatusBadge
+                    status={item.sync_status || 'LOCAL_ONLY'}
+                    size="sm"
+                  />
+                }
+                borderBottom={index < recentRecords.length - 1}
+              />
             ))
           )}
         </View>
@@ -208,132 +249,163 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.background,
   },
   container: {
     flex: 1,
-    backgroundColor: Colors.neutral[50],
   },
   scrollContent: {
-    padding: 16,
-    paddingBottom: 32,
+    padding: spacing.lg,
+    paddingBottom: spacing.xxxl,
   },
-  actionCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 20,
+  greetingCard: {
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.xl,
+    padding: spacing.lg,
     borderWidth: 1,
-    borderColor: Colors.neutral[200],
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
-    elevation: 2,
+    borderColor: colors.border,
+    marginBottom: spacing.md,
+    ...shadows.subtle,
   },
-  actionHeader: {
-    marginBottom: 12,
-  },
-  actionTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: Colors.neutral[900],
-  },
-  actionSubtitle: {
-    fontSize: 13,
-    color: Colors.neutral[500],
-    marginTop: 2,
-  },
-  sectionHeader: {
+  greetingHeader: {
     flexDirection: 'row',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
-    alignItems: 'baseline',
-    marginBottom: 12,
+    marginBottom: spacing.xs,
   },
-  sectionTitle: {
-    fontSize: 15,
+  greetingText: {
+    fontSize: typography.fontSize.caption,
+    color: colors.textSecondary,
+    fontWeight: '500',
+    fontFamily: typography.fontFamily.medium,
+  },
+  userNameText: {
+    fontSize: typography.fontSize.title,
     fontWeight: '700',
-    color: Colors.neutral[800],
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    color: colors.textPrimary,
+    fontFamily: typography.fontFamily.bold,
+    letterSpacing: -0.3,
   },
-  sectionSubtext: {
-    fontSize: 12,
-    color: Colors.neutral[400],
-  },
-  viewAllText: {
-    fontSize: 13,
-    color: Colors.primary[600],
-    fontWeight: '600',
-  },
-  metricsGrid: {
-    marginBottom: 16,
-  },
-  gridRow: {
+  offlineStatusTag: {
     flexDirection: 'row',
-    gap: 12,
-    marginBottom: 12,
+    alignItems: 'center',
+    backgroundColor: colors.successLight,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    borderRadius: borderRadius.full,
+    borderWidth: 1,
+    borderColor: colors.successBorder,
   },
-  gridCard: {
-    flex: 1,
+  greenPulseDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.success,
+    marginRight: 4,
   },
-  quickLinksRow: {
+  offlineStatusLabel: {
+    fontSize: typography.fontSize.micro,
+    fontWeight: '700',
+    color: colors.success,
+  },
+  greetingSubtext: {
+    fontSize: typography.fontSize.tiny,
+    color: colors.textSecondary,
+    marginTop: 2,
+    fontFamily: typography.fontFamily.regular,
+  },
+  quickActionsContainer: {
     flexDirection: 'row',
-    gap: 12,
-    marginBottom: 24,
+    gap: spacing.sm,
+    marginBottom: spacing.md,
   },
-  quickLink: {
+  primaryActionPill: {
+    flex: 1.2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    borderRadius: borderRadius.lg,
+    gap: spacing.xs,
+    ...shadows.subtle,
+  },
+  primaryActionPillText: {
+    fontSize: typography.fontSize.bodySecondary,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    fontFamily: typography.fontFamily.medium,
+  },
+  secondaryActionPill: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#FFFFFF',
-    paddingVertical: 12,
-    borderRadius: 10,
+    backgroundColor: colors.surface,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    borderRadius: borderRadius.lg,
     borderWidth: 1,
-    borderColor: Colors.neutral[200],
-    gap: 6,
+    borderColor: colors.border,
+    gap: spacing.xs,
   },
-  quickLinkText: {
-    fontSize: 13,
+  secondaryActionPillText: {
+    fontSize: typography.fontSize.bodySecondary,
     fontWeight: '600',
-    color: Colors.neutral[700],
+    color: colors.textPrimary,
+    fontFamily: typography.fontFamily.medium,
   },
-  recentList: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: Colors.neutral[200],
-    overflow: 'hidden',
-  },
-  recentItem: {
+  navTilesRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.neutral[100],
+    gap: spacing.sm,
+    marginTop: spacing.md,
   },
-  recentLeft: {
+  navTile: {
     flex: 1,
-    marginRight: 10,
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.xl,
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    ...shadows.subtle,
   },
-  recentTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: Colors.neutral[900],
-  },
-  recentAction: {
-    fontSize: 12,
-    color: Colors.neutral[500],
-    marginTop: 2,
-  },
-  emptyRecent: {
-    padding: 24,
+  navTileIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: borderRadius.md,
     alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.sm,
   },
-  emptyText: {
-    fontSize: 13,
-    color: Colors.neutral[400],
+  navTileTitle: {
+    fontSize: typography.fontSize.bodySecondary,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    fontFamily: typography.fontFamily.bold,
+  },
+  navTileSub: {
+    fontSize: typography.fontSize.tiny,
+    color: colors.textSecondary,
+    marginTop: 2,
+    fontFamily: typography.fontFamily.regular,
+  },
+  activityCard: {
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.xl,
+    borderWidth: 1,
+    borderColor: colors.border,
+    overflow: 'hidden',
+    ...shadows.subtle,
+  },
+  emptyActivity: {
+    padding: spacing.xxl,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyActivityText: {
+    fontSize: typography.fontSize.bodySecondary,
+    color: colors.textMuted,
+    marginTop: spacing.sm,
+    fontFamily: typography.fontFamily.regular,
   },
 });

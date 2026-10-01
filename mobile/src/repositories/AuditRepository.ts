@@ -14,6 +14,17 @@ export class AuditRepository {
   }
 
   /**
+   * Get audit events for a specific entity
+   */
+  async getByEntityId(entityType: string, entityId: string): Promise<LocalAuditEvent[]> {
+    const db = await getDatabase();
+    return await db.getAllAsync<LocalAuditEvent>(
+      'SELECT * FROM local_audit_logs WHERE entity_type = ? AND entity_id = ? ORDER BY timestamp DESC;',
+      [entityType, entityId]
+    );
+  }
+
+  /**
    * Record a local audit log
    */
   async log(event: Omit<LocalAuditEvent, 'audit_id' | 'timestamp' | 'sync_status'>): Promise<void> {

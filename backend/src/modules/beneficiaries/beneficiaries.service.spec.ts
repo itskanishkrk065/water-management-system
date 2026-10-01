@@ -2,7 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { BeneficiariesService } from './beneficiaries.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
-import { BeneficiaryStatus, LandStatus } from '@prisma/client';
+import { BeneficiaryStatus, LandStatus } from '../common/enums';
 import { BadRequestException } from '@nestjs/common';
 import { Decimal } from 'decimal.js';
 

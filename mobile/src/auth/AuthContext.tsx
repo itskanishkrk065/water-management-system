@@ -4,6 +4,7 @@ import { getDatabase } from '../db/database';
 
 interface AuthContextType {
   session: UserSession | null;
+  user: User | null;
   isLoading: boolean;
   login: (email: string, role?: UserRole) => Promise<boolean>;
   switchRole: (role: UserRole) => Promise<void>;
@@ -97,6 +98,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     <AuthContext.Provider
       value={{
         session,
+        user: session?.user || null,
         isLoading,
         login,
         switchRole,

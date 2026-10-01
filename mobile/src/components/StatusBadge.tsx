@@ -1,96 +1,132 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
-import { Colors } from '../constants/colors';
+import { View, Text, StyleSheet, ViewStyle, TextStyle } from 'react-native';
+import { colors, spacing, borderRadius, typography } from '../constants/theme';
+import { Feather } from './Icon';
+
+export type StatusType =
+  | 'APPROVED'
+  | 'PENDING'
+  | 'UNDER_REVIEW'
+  | 'REJECTED'
+  | 'CANCELLED'
+  | 'VOIDED'
+  | 'DRAFT'
+  | 'ACTIVE'
+  | 'INACTIVE'
+  | 'ARCHIVED'
+  | 'PAID'
+  | 'PARTIALLY_PAID'
+  | 'UNPAID'
+  | 'OVERDUE'
+  | 'SYNCED'
+  | 'PENDING_SYNC'
+  | 'SYNC_FAILED'
+  | 'CONFLICT'
+  | 'LOCAL_ONLY'
+  | 'PLANNED'
+  | 'UNDER_CONSTRUCTION'
+  | 'COMPLETED'
+  | 'COMMISSIONED';
 
 interface StatusBadgeProps {
-  status?: string;
-  size?: 'small' | 'medium';
+  status: string;
+  label?: string;
+  size?: 'sm' | 'md';
+  style?: ViewStyle;
+  showIcon?: boolean;
 }
 
-export const StatusBadge: React.FC<StatusBadgeProps> = ({ status = 'LOCAL_ONLY', size = 'medium' }) => {
-  const getStyle = () => {
-    switch ((status || 'LOCAL_ONLY').toUpperCase()) {
-      case 'SYNCED':
+export const StatusBadge: React.FC<StatusBadgeProps> = ({
+  status,
+  label,
+  size = 'md',
+  style,
+  showIcon = true,
+}) => {
+  const normalized = (status || '').toUpperCase() as StatusType;
+
+  const getBadgeConfig = () => {
+    switch (normalized) {
       case 'APPROVED':
-      case 'PAID':
       case 'ACTIVE':
-      case 'HEALTHY':
+      case 'PAID':
+      case 'SYNCED':
+      case 'COMMISSIONED':
+      case 'COMPLETED':
         return {
-          bg: Colors.status.successBg,
-          text: Colors.status.successText,
-          border: Colors.status.successBorder,
-          label: status === 'SYNCED' ? '✓ Synced' : status === 'APPROVED' ? '✓ Approved' : status,
+          bg: colors.successLight,
+          border: colors.successBorder,
+          text: colors.success,
+          icon: 'check-circle' as const,
         };
-      case 'PENDING_SYNC':
-        return {
-          bg: Colors.status.warningBg,
-          text: Colors.status.warningText,
-          border: Colors.status.warningBorder,
-          label: '↑ Pending Sync',
-        };
-      case 'LOCAL_ONLY':
-        return {
-          bg: Colors.neutral[100],
-          text: Colors.neutral[700],
-          border: Colors.neutral[300],
-          label: '● Saved to Device',
-        };
-      case 'SUBMITTED':
-      case 'UNDER_REVIEW':
       case 'PENDING':
+      case 'UNDER_REVIEW':
       case 'PARTIALLY_PAID':
+      case 'PENDING_SYNC':
+      case 'UNDER_CONSTRUCTION':
         return {
-          bg: Colors.status.infoBg,
-          text: Colors.status.infoText,
-          border: Colors.status.infoBorder,
-          label: status.replace('_', ' '),
+          bg: colors.warningLight,
+          border: colors.warningBorder,
+          text: colors.warning,
+          icon: 'clock' as const,
         };
       case 'REJECTED':
       case 'CANCELLED':
       case 'VOIDED':
-      case 'FAILED':
-      case 'DEGRADED':
+      case 'OVERDUE':
+      case 'SYNC_FAILED':
+      case 'CONFLICT':
         return {
-          bg: Colors.status.dangerBg,
-          text: Colors.status.dangerText,
-          border: Colors.status.dangerBorder,
-          label: status,
+          bg: colors.dangerLight,
+          border: colors.dangerBorder,
+          text: colors.danger,
+          icon: 'alert-circle' as const,
         };
+      case 'DRAFT':
+      case 'INACTIVE':
+      case 'ARCHIVED':
+      case 'UNPAID':
+      case 'LOCAL_ONLY':
+      case 'PLANNED':
       default:
         return {
-          bg: Colors.neutral[100],
-          text: Colors.neutral[700],
-          border: Colors.neutral[200],
-          label: status,
+          bg: colors.surfaceSubtle,
+          border: colors.border,
+          text: colors.textSecondary,
+          icon: 'minus-circle' as const,
         };
     }
   };
 
-  const styleConfig = getStyle();
-  const isSmall = size === 'small';
+  const config = getBadgeConfig();
+  const displayLabel = label || normalized.replace(/_/g, ' ');
+  const isSmall = size === 'sm';
 
   return (
     <View
       style={[
         styles.badge,
-        {
-          backgroundColor: styleConfig.bg,
-          borderColor: styleConfig.border,
-          paddingVertical: isSmall ? 2 : 4,
-          paddingHorizontal: isSmall ? 6 : 10,
-        },
+        { backgroundColor: config.bg, borderColor: config.border },
+        isSmall && styles.badgeSm,
+        style,
       ]}
     >
+      {showIcon && (
+        <Feather
+          name={config.icon}
+          size={isSmall ? 10 : 12}
+          color={config.text}
+          style={styles.icon}
+        />
+      )}
       <Text
         style={[
           styles.text,
-          {
-            color: styleConfig.text,
-            fontSize: isSmall ? 10 : 12,
-          },
+          { color: config.text },
+          isSmall && styles.textSm,
         ]}
       >
-        {styleConfig.label}
+        {displayLabel}
       </Text>
     </View>
   );
@@ -98,14 +134,28 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({ status = 'LOCAL_ONLY',
 
 const styles = StyleSheet.create({
   badge: {
-    borderRadius: 6,
-    borderWidth: 1,
-    alignSelf: 'flex-start',
     flexDirection: 'row',
     alignItems: 'center',
+    paddingHorizontal: spacing.sm + 2,
+    paddingVertical: spacing.xs,
+    borderRadius: borderRadius.full,
+    borderWidth: 1,
+    alignSelf: 'flex-start',
+  },
+  badgeSm: {
+    paddingHorizontal: spacing.xs + 2,
+    paddingVertical: 2,
+  },
+  icon: {
+    marginRight: spacing.xs,
   },
   text: {
-    fontWeight: '600',
+    fontSize: typography.fontSize.tiny,
+    fontWeight: '700',
+    fontFamily: typography.fontFamily.medium,
     letterSpacing: 0.2,
+  },
+  textSm: {
+    fontSize: typography.fontSize.micro,
   },
 });

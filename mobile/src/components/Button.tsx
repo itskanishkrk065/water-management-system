@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import {
   TouchableOpacity,
   Text,
@@ -6,135 +6,227 @@ import {
   ActivityIndicator,
   ViewStyle,
   TextStyle,
+  Animated,
   View,
 } from 'react-native';
-import { Colors } from '../constants/colors';
+import { colors, spacing, borderRadius, typography, shadows, layout } from '../constants/theme';
+
+export type ButtonVariant = 'primary' | 'secondary' | 'outline' | 'subtle' | 'destructive';
+export type ButtonSize = 'sm' | 'md' | 'lg';
 
 interface ButtonProps {
   title: string;
   onPress: () => void;
-  variant?: 'primary' | 'secondary' | 'outline' | 'danger' | 'ghost';
-  size?: 'small' | 'medium' | 'large';
-  loading?: boolean;
+  variant?: ButtonVariant;
+  size?: ButtonSize;
   disabled?: boolean;
-  icon?: React.ReactNode;
-  iconPosition?: 'left' | 'right';
+  loading?: boolean;
   style?: ViewStyle;
   textStyle?: TextStyle;
+  icon?: React.ReactNode;
+  iconPosition?: 'left' | 'right';
+  fullWidth?: boolean;
 }
 
 export const Button: React.FC<ButtonProps> = ({
   title,
   onPress,
   variant = 'primary',
-  size = 'medium',
-  loading = false,
+  size = 'md',
   disabled = false,
-  icon,
-  iconPosition = 'left',
+  loading = false,
   style,
   textStyle,
+  icon,
+  iconPosition = 'left',
+  fullWidth = false,
 }) => {
-  const isLarge = size === 'large';
-  const isSmall = size === 'small';
+  const scaleAnim = useRef(new Animated.Value(1)).current;
 
-  const getVariantStyles = () => {
+  const handlePressIn = () => {
+    if (disabled || loading) return;
+    Animated.spring(scaleAnim, {
+      toValue: 0.97,
+      useNativeDriver: true,
+      speed: 50,
+      bounciness: 4,
+    }).start();
+  };
+
+  const handlePressOut = () => {
+    Animated.spring(scaleAnim, {
+      toValue: 1,
+      useNativeDriver: true,
+      speed: 40,
+      bounciness: 4,
+    }).start();
+  };
+
+  const getVariantStyles = (): { button: ViewStyle; text: TextStyle } => {
     switch (variant) {
       case 'secondary':
         return {
-          btn: { backgroundColor: Colors.secondary[600] },
-          text: { color: '#FFFFFF' },
+          button: {
+            backgroundColor: colors.surfaceSubtle,
+            borderWidth: 1,
+            borderColor: colors.border,
+          },
+          text: { color: colors.textPrimary },
         };
       case 'outline':
         return {
-          btn: {
+          button: {
             backgroundColor: 'transparent',
             borderWidth: 1.5,
-            borderColor: Colors.neutral[300],
+            borderColor: colors.primary,
           },
-          text: { color: Colors.neutral[800] },
+          text: { color: colors.primary },
         };
-      case 'danger':
+      case 'subtle':
         return {
-          btn: { backgroundColor: Colors.status.dangerText },
+          button: {
+            backgroundColor: colors.primaryLight,
+            borderWidth: 1,
+            borderColor: colors.primaryBorder,
+          },
+          text: { color: colors.primary },
+        };
+      case 'destructive':
+        return {
+          button: {
+            backgroundColor: colors.danger,
+          },
           text: { color: '#FFFFFF' },
-        };
-      case 'ghost':
-        return {
-          btn: { backgroundColor: 'transparent' },
-          text: { color: Colors.primary[600] },
         };
       case 'primary':
       default:
         return {
-          btn: { backgroundColor: Colors.primary[600] },
+          button: {
+            backgroundColor: colors.primary,
+            ...shadows.subtle,
+          },
           text: { color: '#FFFFFF' },
         };
     }
   };
 
-  const vStyles = getVariantStyles();
+  const getSizeStyles = (): { button: ViewStyle; text: TextStyle } => {
+    switch (size) {
+      case 'sm':
+        return {
+          button: {
+            paddingVertical: spacing.xs + 2,
+            paddingHorizontal: spacing.md,
+            minHeight: 38,
+            borderRadius: borderRadius.md,
+          },
+          text: { fontSize: typography.fontSize.caption },
+        };
+      case 'lg':
+        return {
+          button: {
+            paddingVertical: spacing.md + 2,
+            paddingHorizontal: spacing.xxl,
+            minHeight: 52,
+            borderRadius: borderRadius.lg,
+          },
+          text: { fontSize: typography.fontSize.heading },
+        };
+      case 'md':
+      default:
+        return {
+          button: {
+            paddingVertical: spacing.sm + 4,
+            paddingHorizontal: spacing.lg,
+            minHeight: layout.minTouchTarget,
+            borderRadius: borderRadius.lg,
+          },
+          text: { fontSize: typography.fontSize.body },
+        };
+    }
+  };
+
+  const variantStyle = getVariantStyles();
+  const sizeStyle = getSizeStyles();
 
   return (
-    <TouchableOpacity
-      activeOpacity={0.8}
-      onPress={onPress}
-      disabled={disabled || loading}
-      style={[
-        styles.button,
-        vStyles.btn,
-        {
-          paddingVertical: isSmall ? 8 : isLarge ? 16 : 12,
-          paddingHorizontal: isSmall ? 12 : isLarge ? 24 : 18,
-          opacity: disabled ? 0.5 : 1,
-        },
-        style,
-      ]}
-    >
-      {loading ? (
-        <ActivityIndicator color={vStyles.text.color} size="small" />
-      ) : (
-        <View style={styles.contentRow}>
-          {icon && iconPosition === 'left' && <View style={styles.iconLeft}>{icon}</View>}
-          <Text
-            style={[
-              styles.text,
-              vStyles.text,
-              {
-                fontSize: isSmall ? 13 : isLarge ? 16 : 14,
-                fontWeight: '600',
-              },
-              textStyle,
-            ]}
-          >
-            {title}
-          </Text>
-          {icon && iconPosition === 'right' && <View style={styles.iconRight}>{icon}</View>}
-        </View>
-      )}
-    </TouchableOpacity>
+    <Animated.View style={[{ transform: [{ scale: scaleAnim }] }, fullWidth && { width: '100%' }]}>
+      <TouchableOpacity
+        onPress={onPress}
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
+        disabled={disabled || loading}
+        activeOpacity={0.88}
+        style={[
+          styles.baseButton,
+          variantStyle.button,
+          sizeStyle.button,
+          fullWidth && styles.fullWidth,
+          disabled && styles.disabledButton,
+          style,
+        ]}
+      >
+        {loading ? (
+          <ActivityIndicator
+            size="small"
+            color={
+              variant === 'outline' || variant === 'subtle' ? colors.primary : '#FFFFFF'
+            }
+          />
+        ) : (
+          <View style={styles.contentRow}>
+            {icon && iconPosition === 'left' && <View style={styles.iconLeft}>{icon}</View>}
+            <Text
+              style={[
+                styles.baseText,
+                variantStyle.text,
+                sizeStyle.text,
+                disabled && styles.disabledText,
+                textStyle,
+              ]}
+            >
+              {title}
+            </Text>
+            {icon && iconPosition === 'right' && <View style={styles.iconRight}>{icon}</View>}
+          </View>
+        )}
+      </TouchableOpacity>
+    </Animated.View>
   );
 };
 
 const styles = StyleSheet.create({
-  button: {
-    borderRadius: 12,
+  baseButton: {
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    flexDirection: 'row',
+  },
+  fullWidth: {
+    width: '100%',
   },
   contentRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  text: {
-    letterSpacing: 0.1,
-  },
   iconLeft: {
-    marginRight: 8,
+    marginRight: spacing.sm,
   },
   iconRight: {
-    marginLeft: 8,
+    marginLeft: spacing.sm,
+  },
+  baseText: {
+    fontWeight: '600',
+    fontFamily: typography.fontFamily.medium,
+    textAlign: 'center',
+  },
+  disabledButton: {
+    backgroundColor: colors.surfaceMuted,
+    borderColor: colors.border,
+    elevation: 0,
+    shadowOpacity: 0,
+  },
+  disabledText: {
+    color: colors.textMuted,
   },
 });

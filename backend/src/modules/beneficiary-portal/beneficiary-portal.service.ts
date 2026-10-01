@@ -21,7 +21,7 @@ import {
   ExtensionStatus,
   LandStatus,
   BeneficiaryStatus,
-} from '@prisma/client';
+} from '../common/enums';
 
 @Injectable()
 export class BeneficiaryPortalService {
@@ -814,9 +814,19 @@ export class BeneficiaryPortalService {
     });
 
     const isCommissioned = infra?.status === 'COMMISSIONED';
+    const runningStartDate = infra?.running_charge_start_date || infra?.commissioned_date || null;
 
     const bills = await this.prisma.runningBill.findMany({
-      where: { allotment: { beneficiary_id: b.beneficiary_id } },
+      where: {
+        OR: [
+          { beneficiary_id: b.beneficiary_id },
+          { allotment: { beneficiary_id: b.beneficiary_id } },
+        ],
+      },
+      include: {
+        rate: { select: { version_code: true, running_cost_per_litre: true } },
+        payments: { orderBy: { payment_date: 'desc' } },
+      },
       orderBy: { created_at: 'desc' },
     });
 
@@ -824,6 +834,7 @@ export class BeneficiaryPortalService {
       isInfrastructureCommissioned: isCommissioned,
       infrastructureStatus: infra?.status || 'NOT_PLANNED',
       commissionedAt: infra?.commissioned_date || null,
+      runningChargeStartDate: runningStartDate,
       bills,
     };
   }

@@ -6,7 +6,7 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser, RequestUser } from '../common/decorators/current-user.decorator';
-import { RoleName } from '@prisma/client';
+import { RoleName } from '../common/enums';
 
 @ApiTags('Rate Configurations')
 @ApiBearerAuth()
@@ -21,9 +21,25 @@ export class RatesController {
     return this.ratesService.getActiveRate(projectId);
   }
 
+  @Get('timeline')
+  @ApiOperation({ summary: 'Get tariffs timeline categorized into current, future, and historical' })
+  async getTariffTimeline(@Query('projectId') projectId?: string) {
+    return this.ratesService.getTariffTimeline(projectId);
+  }
+
+  @Get('resolve')
+  @ApiOperation({ summary: 'Resolve applicable tariff for a specific calculation date and rate type' })
+  async resolveTariff(
+    @Query('date') date?: string,
+    @Query('rateType') rateType?: string,
+    @Query('projectId') projectId?: string,
+  ) {
+    return this.ratesService.getApplicableTariff(rateType || 'STANDARD', date || new Date(), projectId);
+  }
+
   @Get('history')
   @ApiOperation({ summary: 'Get full historical audit log of rate changes for a project' })
-  async getRateHistory(@Query('projectId') projectId: string) {
+  async getRateHistory(@Query('projectId') projectId?: string) {
     return this.ratesService.getRateHistory(projectId);
   }
 

@@ -252,6 +252,8 @@ model LandParcel {
 model RateConfiguration {
   rate_id                    String    @id @default(uuid())
   project_id                 String
+  rate_type                  String    @default("STANDARD")
+  version_code               String?
   litres_per_acre            Decimal
   development_cost_per_litre Decimal
   running_cost_per_litre     Decimal
@@ -267,6 +269,7 @@ model RateConfiguration {
   extensions      Extension[]
 
   @@index([project_id, effective_from])
+  @@index([project_id, is_active])
   @@map("rate_configurations")
 }
 
@@ -423,40 +426,50 @@ model Payment {
 }
 
 model Infrastructure {
-  infrastructure_id       String    @id @default(uuid())
-  allotment_id            String    @unique
-  beneficiary_id          String
-  status                  String    @default("PLANNED")
-  planned_date            DateTime?
-  construction_start_date DateTime?
-  completion_date         DateTime?
-  commissioned_date       DateTime?
-  remarks                 String?
-  created_at              DateTime  @default(now())
-  updated_at              DateTime  @updatedAt
+  infrastructure_id         String    @id @default(uuid())
+  allotment_id              String    @unique
+  beneficiary_id            String
+  status                    String    @default("PLANNED")
+  planned_date              DateTime?
+  construction_start_date   DateTime?
+  completion_date           DateTime?
+  commissioned_date         DateTime?
+  running_charge_start_date DateTime?
+  remarks                   String?
+  created_at                DateTime  @default(now())
+  updated_at                DateTime  @updatedAt
 
   allotment   WaterAllotment @relation(fields: [allotment_id], references: [allotment_id], onDelete: Restrict)
   beneficiary Beneficiary    @relation(fields: [beneficiary_id], references: [beneficiary_id], onDelete: Restrict)
 
   @@index([beneficiary_id])
   @@index([status])
+  @@index([running_charge_start_date])
   @@map("infrastructure")
 }
 
 model RunningBill {
-  running_bill_id                 String   @id @default(uuid())
-  allotment_id                    String
-  beneficiary_id                  String
-  rate_id                         String
-  billing_period                  String
-  approved_litres_snapshot        Decimal
-  running_cost_per_litre_snapshot Decimal
-  amount_due                      Decimal
-  amount_paid                     Decimal  @default(0)
-  pending_amount                  Decimal
-  status                          String   @default("PENDING")
-  created_at                      DateTime @default(now())
-  updated_at                      DateTime @updatedAt
+  running_bill_id                     String    @id @default(uuid())
+  bill_number                         String?   @unique
+  allotment_id                        String
+  beneficiary_id                      String
+  rate_id                             String
+  billing_period                      String
+  billing_period_start                DateTime?
+  billing_period_end                  DateTime?
+  running_charge_start_date_snapshot DateTime?
+  commissioned_date_snapshot          DateTime?
+  tariff_version                      String?
+  calculation_breakdown               String?
+  approved_litres_snapshot            Decimal
+  running_cost_per_litre_snapshot     Decimal
+  amount_due                          Decimal
+  amount_paid                         Decimal   @default(0)
+  pending_amount                      Decimal
+  due_date                            DateTime?
+  status                              String    @default("PENDING")
+  created_at                          DateTime  @default(now())
+  updated_at                          DateTime  @updatedAt
 
   allotment   WaterAllotment    @relation(fields: [allotment_id], references: [allotment_id], onDelete: Restrict)
   beneficiary Beneficiary       @relation(fields: [beneficiary_id], references: [beneficiary_id], onDelete: Restrict)
@@ -465,6 +478,8 @@ model RunningBill {
 
   @@index([allotment_id])
   @@index([beneficiary_id])
+  @@index([billing_period])
+  @@index([status])
   @@map("running_bills")
 }
 

@@ -1,106 +1,182 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { Colors } from '../constants/colors';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  SafeAreaView,
+  Platform,
+  StatusBar,
+} from 'react-native';
+import { useRouter } from 'expo-router';
+import { Feather, IconName } from './Icon';
+import { colors, spacing, borderRadius, typography, shadows } from '../constants/theme';
 import { useAuth } from '../auth/AuthContext';
 
 interface HeaderProps {
   title: string;
   subtitle?: string;
-  showSyncBadge?: boolean;
-  pendingCount?: number;
-  rightAction?: React.ReactNode;
+  showBack?: boolean;
+  onBack?: () => void;
+  rightAction?: {
+    icon: IconName | string;
+    onPress: () => void;
+    accessibilityLabel?: string;
+  };
+  showOfflineStatus?: boolean;
+  showRoleBadge?: boolean;
 }
 
 export const Header: React.FC<HeaderProps> = ({
   title,
   subtitle,
-  showSyncBadge = true,
-  pendingCount = 0,
+  showBack = false,
+  onBack,
   rightAction,
+  showOfflineStatus = true,
+  showRoleBadge = false,
 }) => {
-  const { session } = useAuth();
-  const userName = session?.user.name || 'Officer';
-  const isField = session?.user.role === 'FIELD_OFFICER';
+  const router = useRouter();
+  const { user } = useAuth();
+
+  const handleBack = () => {
+    if (onBack) {
+      onBack();
+    } else {
+      router.back();
+    }
+  };
 
   return (
-    <View style={styles.header}>
-      <View style={styles.topRow}>
-        <View style={styles.brandContainer}>
-          <Text style={styles.brand}>WATERGRID</Text>
-          <View style={styles.roleTag}>
-            <Text style={styles.roleText}>{isField ? 'FIELD OPS' : 'ADMIN'}</Text>
+    <SafeAreaView style={styles.safeArea}>
+      <StatusBar barStyle="dark-content" backgroundColor={colors.surface} />
+      <View style={styles.container}>
+        <View style={styles.leftContainer}>
+          {showBack ? (
+            <TouchableOpacity
+              onPress={handleBack}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              style={styles.backButton}
+              activeOpacity={0.7}
+              accessibilityLabel="Go back"
+            >
+              <Feather name="arrow-left" size={20} color={colors.textPrimary} />
+            </TouchableOpacity>
+          ) : null}
+
+          <View style={styles.titleContainer}>
+            <View style={styles.titleRow}>
+              <Text style={styles.title} numberOfLines={1}>
+                {title}
+              </Text>
+              {showRoleBadge && user && (
+                <View style={styles.roleBadge}>
+                  <Text style={styles.roleText}>
+                    {user.role === 'ADMIN' ? 'ADMIN' : 'FIELD'}
+                  </Text>
+                </View>
+              )}
+            </View>
+            {subtitle ? (
+              <Text style={styles.subtitle} numberOfLines={1}>
+                {subtitle}
+              </Text>
+            ) : null}
           </View>
         </View>
 
         <View style={styles.rightContainer}>
-          {showSyncBadge && (
+          {showOfflineStatus && (
             <View style={styles.offlinePill}>
               <View style={styles.offlineDot} />
-              <Text style={styles.offlineText}>Offline</Text>
+              <Text style={styles.offlineText}>Local</Text>
             </View>
           )}
-          {rightAction}
-        </View>
-      </View>
 
-      <View style={styles.bottomRow}>
-        <View style={styles.titleContainer}>
-          <Text style={styles.title}>{title}</Text>
-          {subtitle ? (
-            <Text style={styles.subtitle}>{subtitle}</Text>
-          ) : (
-            <Text style={styles.subtitle}>Welcome back, {userName}</Text>
+          {rightAction && (
+            <TouchableOpacity
+              onPress={rightAction.onPress}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              style={styles.actionButton}
+              activeOpacity={0.7}
+              accessibilityLabel={rightAction.accessibilityLabel}
+            >
+              <Feather
+                name={rightAction.icon}
+                size={20}
+                color={colors.textPrimary}
+              />
+            </TouchableOpacity>
           )}
         </View>
-
-        {pendingCount > 0 && (
-          <View style={styles.pendingBadge}>
-            <Text style={styles.pendingText}>{pendingCount} pending sync</Text>
-          </View>
-        )}
       </View>
-    </View>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  header: {
-    backgroundColor: '#FFFFFF',
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.neutral[200],
+  safeArea: {
+    backgroundColor: colors.surface,
+    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+    ...shadows.subtle,
   },
-  topRow: {
+  container: {
+    height: 56,
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
+    paddingHorizontal: spacing.lg,
+    backgroundColor: colors.surface,
   },
-  brandContainer: {
+  leftContainer: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
   },
-  brand: {
-    fontSize: 16,
-    fontWeight: '900',
-    color: Colors.primary[700],
-    letterSpacing: 1,
+  backButton: {
+    width: 36,
+    height: 36,
+    borderRadius: borderRadius.md,
+    backgroundColor: colors.surfaceSubtle,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.sm,
   },
-  roleTag: {
-    backgroundColor: Colors.primary[50],
+  titleContainer: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  title: {
+    fontSize: typography.fontSize.heading,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    fontFamily: typography.fontFamily.bold,
+    letterSpacing: -0.3,
+  },
+  subtitle: {
+    fontSize: typography.fontSize.caption,
+    color: colors.textSecondary,
+    marginTop: 1,
+    fontFamily: typography.fontFamily.regular,
+  },
+  roleBadge: {
+    backgroundColor: colors.primaryLight,
     paddingHorizontal: 6,
     paddingVertical: 2,
-    borderRadius: 4,
-    marginLeft: 8,
-    borderWidth: 1,
-    borderColor: Colors.primary[200],
+    borderRadius: borderRadius.sm,
+    marginLeft: spacing.xs,
   },
   roleText: {
-    fontSize: 10,
+    fontSize: typography.fontSize.micro,
     fontWeight: '700',
-    color: Colors.primary[700],
+    color: colors.primary,
+    fontFamily: typography.fontFamily.bold,
   },
   rightContainer: {
     flexDirection: 'row',
@@ -109,56 +185,31 @@ const styles = StyleSheet.create({
   offlinePill: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.neutral[100],
-    paddingHorizontal: 8,
+    backgroundColor: colors.surfaceSubtle,
+    paddingHorizontal: spacing.sm,
     paddingVertical: 4,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: Colors.neutral[200],
+    borderRadius: borderRadius.full,
+    marginRight: spacing.xs,
   },
   offlineDot: {
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: Colors.status.warningText,
-    marginRight: 5,
+    backgroundColor: colors.success,
+    marginRight: 4,
   },
   offlineText: {
-    fontSize: 11,
+    fontSize: typography.fontSize.micro,
     fontWeight: '600',
-    color: Colors.neutral[700],
+    color: colors.textSecondary,
   },
-  bottomRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-end',
-    marginTop: 4,
-  },
-  titleContainer: {
-    flex: 1,
-  },
-  title: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: Colors.neutral[900],
-    letterSpacing: -0.3,
-  },
-  subtitle: {
-    fontSize: 13,
-    color: Colors.neutral[500],
-    marginTop: 2,
-  },
-  pendingBadge: {
-    backgroundColor: Colors.status.warningBg,
-    borderColor: Colors.status.warningBorder,
-    borderWidth: 1,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  pendingText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: Colors.status.warningText,
+  actionButton: {
+    width: 36,
+    height: 36,
+    borderRadius: borderRadius.md,
+    backgroundColor: colors.surfaceSubtle,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: spacing.xs,
   },
 });

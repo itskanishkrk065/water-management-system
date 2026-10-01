@@ -377,26 +377,30 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         <KPICard
           title="Beneficiaries"
-          value={statsLoading ? '...' : (stats?.beneficiaries?.total ?? stats?.total_beneficiaries ?? 0)}
-          subtitle={`Active: ${stats?.beneficiaries?.active ?? stats?.total_beneficiaries ?? 0}`}
+          value={statsLoading ? '...' : (stats?.beneficiaries?.active ?? stats?.total_beneficiaries ?? 0)}
+          subtitle={
+            statsLoading
+              ? 'Loading...'
+              : stats?.beneficiaries?.inactive
+              ? `Active beneficiaries (${stats.beneficiaries.inactive} inactive)`
+              : 'Active operational beneficiaries'
+          }
           icon={Users}
           iconVariant="sky"
         />
 
         <KPICard
           title="Land Holdings"
-          value={statsLoading ? '...' : formatAcres(stats?.land?.total_active_acres ?? stats?.total_land_acres)}
-          subtitle={`${stats?.land?.active_holdings ?? 0} active holdings`}
+          value={statsLoading ? '...' : formatAcres(stats?.land?.total_active_acres ?? stats?.total_land_acres ?? 0)}
+          subtitle={
+            statsLoading
+              ? 'Loading...'
+              : `${stats?.land?.active_holdings ?? 0} active holdings${
+                  stats?.land?.inactive_holdings ? ` (${stats.land.inactive_holdings} inactive)` : ''
+                }`
+          }
           icon={Layers}
           iconVariant="emerald"
-        />
-
-        <KPICard
-          title="Water Allotted"
-          value={statsLoading ? '...' : formatLitres(stats?.water?.total_approved_litres ?? stats?.total_approved_litres)}
-          subtitle={`Approved apps: ${stats?.water?.approved_applications ?? 0}`}
-          icon={Droplets}
-          iconVariant="indigo"
         />
 
         <KPICard
@@ -406,15 +410,33 @@ export default function DashboardPage() {
               ? 'Restricted'
               : statsLoading
               ? '...'
-              : formatCurrency(stats?.financial?.total_development_billing ?? stats?.total_development_billing)
+              : formatCurrency(stats?.financial?.total_development_billing ?? 0)
           }
           subtitle={
             isFieldOfficer
               ? 'Financial Role Required'
-              : `Collected ${formatCurrency(stats?.financial?.total_collected ?? 0)} • Pending ${formatCurrency(stats?.financial?.total_pending ?? 0)}`
+              : `Paid: ${formatCurrency(stats?.financial?.total_development_paid ?? stats?.financial?.total_collected ?? 0)} • Pending: ${formatCurrency(stats?.financial?.total_development_pending ?? stats?.financial?.total_pending ?? 0)}`
           }
           icon={Receipt}
           iconVariant="amber"
+        />
+
+        <KPICard
+          title="Running Billing"
+          value={
+            isFieldOfficer
+              ? 'Restricted'
+              : statsLoading
+              ? '...'
+              : formatCurrency(stats?.financial?.total_running_billing ?? 0)
+          }
+          subtitle={
+            isFieldOfficer
+              ? 'Financial Role Required'
+              : `Paid: ${formatCurrency(stats?.financial?.total_running_paid ?? 0)} • Pending: ${formatCurrency(stats?.financial?.total_running_pending ?? 0)}`
+          }
+          icon={Droplets}
+          iconVariant="indigo"
         />
       </div>
 
@@ -424,7 +446,7 @@ export default function DashboardPage() {
         <div className="bg-[#F7FAFA] p-3.5 rounded-xl border border-[#DFEBE3] shadow-xs flex flex-col justify-between hover:border-slate-300 transition duration-150">
           <div>
             <div className="flex items-center justify-between">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600">Collections</span>
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600">Total Collections</span>
               <div className="p-1.5 bg-emerald-50 text-emerald-600 rounded-lg border border-emerald-100">
                 <CheckCircle className="w-3.5 h-3.5" />
               </div>
@@ -433,20 +455,23 @@ export default function DashboardPage() {
               <p className="mt-2 text-xs text-slate-400 italic">Financial data restricted under RBAC</p>
             ) : (
               <>
-                <div className="mt-1 text-xl font-bold text-slate-900">
-                  {formatCurrency(stats?.financial?.total_collected ?? stats?.total_collected)}
+                <div className="mt-1 text-xl font-bold text-slate-900 font-mono">
+                  {formatCurrency(stats?.financial?.total_collected ?? 0)}
                 </div>
-                <p className="text-[11px] text-slate-500 mt-0.5 font-normal">Verified receipts recorded</p>
+                <p className="text-[11px] text-slate-500 mt-0.5 font-normal">
+                  Dev: {formatCurrency(stats?.financial?.total_development_paid ?? 0)} • Running: {formatCurrency(stats?.financial?.total_running_paid ?? 0)}
+                </p>
               </>
             )}
           </div>
           <div className="mt-2.5 pt-2 border-t border-slate-200/60 text-[11px] flex justify-between items-center text-slate-600">
-            <span>Pending Balance:</span>
-            <strong className="text-rose-600 font-semibold">
-              {isFieldOfficer ? '---' : formatCurrency(stats?.financial?.total_pending ?? stats?.total_pending)}
+            <span>Combined Pending:</span>
+            <strong className="text-rose-600 font-semibold font-mono">
+              {isFieldOfficer ? '---' : formatCurrency(stats?.financial?.total_pending ?? 0)}
             </strong>
           </div>
         </div>
+
 
         {/* Installments */}
         <div className="bg-[#FEFBF6] p-3.5 rounded-xl border border-[#FCEFE0] shadow-xs flex flex-col justify-between hover:border-slate-300 transition duration-150">

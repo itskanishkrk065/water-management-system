@@ -88,4 +88,7 @@ export const colors = {
   info: Colors.accent.indigo,
   infoLight: Colors.status.infoBg,
   infoBorder: Colors.status.infoBorder,
+  neutral: Colors.neutral,
+  accent: Colors.accent,
+  status: Colors.status,
 };

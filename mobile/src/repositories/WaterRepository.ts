@@ -305,6 +305,17 @@ export class WaterRepository {
   }
 
   /**
+   * Reject a Water Application
+   */
+  async rejectApplication(
+    applicationId: string,
+    reason?: string,
+    user: string = 'ADMIN'
+  ): Promise<void> {
+    return this.updateStatus(applicationId, 'REJECTED', reason, user);
+  }
+
+  /**
    * Cancel or Reject an application (moves to History)
    */
   async updateStatus(
@@ -333,5 +344,64 @@ export class WaterRepository {
       JSON.stringify({ status, reason }),
       now,
     ]);
+  }
+
+  /**
+   * Update draft water application
+   */
+  async updateDraft(applicationId: string, requiredLitres: number, remarks?: string): Promise<WaterApplication> {
+    const db = await getDatabase();
+    const now = new Date().toISOString();
+    const app = await this.getById(applicationId);
+    if (!app) throw new Error('Application not found');
+    if (app.status !== 'DRAFT') throw new Error('Only draft applications can be edited');
+
+    await db.withTransactionAsync(async () => {
+      await db.runAsync(`
+        UPDATE water_applications 
+        SET required_litres = ?, remarks = COALESCE(?, remarks), updated_at = ?
+        WHERE application_id = ?;
+      `, [requiredLitres, remarks || null, now, applicationId]);
+
+      await db.runAsync(`
+        INSERT INTO sync_queue (id, operation_id, entity_type, entity_id, operation_type, payload, status)
+        VALUES (?, ?, 'WATER_APPLICATION', ?, 'UPDATE', ?, 'PENDING');
+      `, [
+        `sq-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        `op-wa-draft-${applicationId}-${Date.now()}`,
+        applicationId,
+        JSON.stringify({ application_id: applicationId, required_litres: requiredLitres }),
+      ]);
+    });
+
+    const updated = await this.getById(applicationId);
+    return updated!;
+  }
+
+  /**
+   * Submit a draft water application
+   */
+  async submitDraft(applicationId: string, submittedBy: string = 'FIELD_OFFICER'): Promise<void> {
+    return this.updateStatus(applicationId, 'SUBMITTED', 'Submitted for administrative approval', submittedBy);
+  }
+
+  /**
+   * Cancel an application
+   */
+  async cancelApplication(applicationId: string, reason?: string, user: string = 'FIELD_OFFICER'): Promise<void> {
+    return this.updateStatus(applicationId, 'CANCELLED', reason || 'Cancelled by applicant/officer', user);
+  }
+
+  /**
+   * Returns separated current vs history applications for a beneficiary
+   */
+  async getCurrentAndHistory(beneficiaryId: string): Promise<{
+    current: WaterApplication[];
+    history: WaterApplication[];
+  }> {
+    const all = await this.getByBeneficiaryId(beneficiaryId);
+    const current = all.filter((a) => a.status === 'SUBMITTED' || a.status === 'UNDER_REVIEW' || a.status === 'DRAFT' || a.status === 'APPROVED');
+    const history = all.filter((a) => a.status === 'REJECTED' || a.status === 'CANCELLED' || a.status === 'VOIDED');
+    return { current, history };
   }
 }

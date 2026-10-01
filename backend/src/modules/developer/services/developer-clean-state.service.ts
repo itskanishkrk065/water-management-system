@@ -13,7 +13,7 @@ import {
   CleanStatePreviewDto,
   AppEnvironmentEnum,
 } from '../dto/developer.dto';
-import { AuditAction, RoleName } from '@prisma/client';
+import { AuditAction, RoleName } from '../../common/enums';
 import { Decimal } from 'decimal.js';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -222,9 +222,10 @@ export class DeveloperCleanStateService {
     }
 
     // 2. Strict Confirmation Validation
-    if (dto.confirmationPhrase !== 'RESET DATABASE') {
+    const validPhrases = ['RESET DATABASE', 'CLEAN SLATE'];
+    if (!validPhrases.includes(dto.confirmationPhrase?.trim()?.toUpperCase())) {
       throw new BadRequestException(
-        `Confirmation failed: You must type exactly 'RESET DATABASE' to execute this dangerous operation (Received: '${dto.confirmationPhrase}').`
+        `Confirmation failed: You must type 'CLEAN SLATE' or 'RESET DATABASE' to execute this operation (Received: '${dto.confirmationPhrase}').`
       );
     }
 

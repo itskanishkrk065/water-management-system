@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { CleanStatePreview, DeveloperApi } from '@/lib/developer-api';
 import {
   ShieldAlert,
@@ -26,6 +27,7 @@ interface CleanStateTabProps {
 
 export function CleanStateTab({ environment, isProduction, onRefreshTelemetry }: CleanStateTabProps) {
   const [selectedMode, setSelectedMode] = useState<string>('EMPTY_CLEAN_STATE');
+  const queryClient = useQueryClient();
   const [selectedModules, setSelectedModules] = useState<string[]>(['PAYMENTS', 'BILLING']);
   const [previewData, setPreviewData] = useState<CleanStatePreview | null>(null);
   const [loadingPreview, setLoadingPreview] = useState<boolean>(false);
@@ -98,6 +100,9 @@ export function CleanStateTab({ environment, isProduction, onRefreshTelemetry }:
       );
       setExecutionResult(result);
       setShowPreviewModal(false);
+      queryClient.cancelQueries();
+      queryClient.clear();
+      await queryClient.invalidateQueries({ refetchType: 'all' });
       onRefreshTelemetry();
       loadAuditLogs();
     } catch (err: any) {

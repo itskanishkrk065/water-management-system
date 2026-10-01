@@ -15,6 +15,11 @@ function transformDecimals(obj: any): any {
   if (obj instanceof Date) {
     return obj.toISOString();
   }
+  if (typeof obj === 'bigint') {
+    return obj <= Number.MAX_SAFE_INTEGER && obj >= Number.MIN_SAFE_INTEGER
+      ? Number(obj)
+      : obj.toString();
+  }
   if (Decimal.isDecimal(obj) || (obj && typeof obj === 'object' && obj.isDecimal)) {
     return obj.toString();
   }

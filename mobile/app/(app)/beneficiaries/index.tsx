@@ -4,19 +4,24 @@ import {
   Text,
   StyleSheet,
   FlatList,
-  TouchableOpacity,
   RefreshControl,
+  SafeAreaView,
+  StatusBar,
+  TouchableOpacity,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Header } from '../../../src/components/Header';
 import { Input } from '../../../src/components/Input';
+import { ListItem } from '../../../src/components/ListItem';
 import { StatusBadge } from '../../../src/components/StatusBadge';
 import { EmptyState } from '../../../src/components/EmptyState';
-import { Colors } from '../../../src/constants/colors';
+import { ListSkeleton } from '../../../src/components/Skeleton';
+import { BottomSheet } from '../../../src/components/BottomSheet';
+import { Button } from '../../../src/components/Button';
+import { colors, spacing, borderRadius, typography, shadows } from '../../../src/constants/theme';
 import { BeneficiaryRepository } from '../../../src/repositories/BeneficiaryRepository';
 import { Beneficiary } from '../../../src/types/domain';
-import { Search, MapPin, Phone, Layers, ChevronRight, UserPlus } from 'lucide-react-native';
+import { Feather } from '../../../src/components/Icon';
 
 const beneficiaryRepo = new BeneficiaryRepository();
 
@@ -27,9 +32,16 @@ export default function BeneficiariesScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
+  // Filter bottom sheet state
+  const [filterSheetVisible, setFilterSheetVisible] = useState(false);
+  const [selectedStatusFilter, setSelectedStatusFilter] = useState<string>('ALL');
+
   const loadData = async (query: string = searchQuery) => {
     try {
-      const data = await beneficiaryRepo.search(query);
+      let data = await beneficiaryRepo.search(query);
+      if (selectedStatusFilter !== 'ALL') {
+        data = data.filter((b) => (b.sync_status || 'LOCAL_ONLY') === selectedStatusFilter);
+      }
       setBeneficiaries(data);
     } catch (err) {
       console.error('Error loading beneficiaries:', err);
@@ -42,7 +54,7 @@ export default function BeneficiariesScreen() {
   useFocusEffect(
     useCallback(() => {
       loadData(searchQuery);
-    }, [searchQuery])
+    }, [searchQuery, selectedStatusFilter])
   );
 
   const handleSearchChange = (text: string) => {
@@ -55,89 +67,154 @@ export default function BeneficiariesScreen() {
     loadData(searchQuery);
   };
 
+  const statusFilterOptions = [
+    { label: 'All Statuses', value: 'ALL' },
+    { label: 'Synced', value: 'SYNCED' },
+    { label: 'Pending Sync', value: 'PENDING_SYNC' },
+    { label: 'Local Only', value: 'LOCAL_ONLY' },
+  ];
+
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top']}>
+    <SafeAreaView style={styles.safeArea}>
+      <StatusBar barStyle="dark-content" backgroundColor={colors.surface} />
       <Header
-        title="Beneficiaries"
-        subtitle={`${beneficiaries.length} records in local database`}
+        title="Beneficiary Directory"
+        subtitle={`${beneficiaries.length} records available offline`}
+        rightAction={{
+          icon: 'filter',
+          onPress: () => setFilterSheetVisible(true),
+          accessibilityLabel: 'Filter beneficiaries',
+        }}
       />
 
       <View style={styles.container}>
         {/* Search Bar */}
-        <View style={styles.searchContainer}>
+        <View style={styles.searchBarWrapper}>
           <Input
-            label=""
-            placeholder="Search by Name, Phone, Survey # or App ID..."
+            placeholder="Search by name, phone, survey #, or app ID..."
             value={searchQuery}
             onChangeText={handleSearchChange}
-            leftIcon={<Search size={18} color={Colors.neutral[400]} />}
-            containerStyle={styles.searchInput}
+            onClear={() => handleSearchChange('')}
+            showClearButton={!!searchQuery}
+            icon={<Feather name="search" size={16} color={colors.textSecondary} />}
+            containerStyle={styles.searchInputContainer}
           />
         </View>
 
-        <FlatList
-          data={beneficiaries}
-          keyExtractor={(item) => item.beneficiary_id}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-          contentContainerStyle={styles.listContent}
-          renderItem={({ item }) => (
+        {/* Active Filter Pill */}
+        {selectedStatusFilter !== 'ALL' && (
+          <View style={styles.activeFilterBar}>
+            <Text style={styles.activeFilterLabel}>
+              Filter: <Text style={{ fontWeight: '700' }}>{selectedStatusFilter}</Text>
+            </Text>
             <TouchableOpacity
-              style={styles.card}
-              activeOpacity={0.7}
-              onPress={() => router.push(`/(app)/beneficiaries/${item.beneficiary_id}`)}
+              onPress={() => setSelectedStatusFilter('ALL')}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              <View style={styles.cardHeader}>
-                <View style={styles.nameContainer}>
-                  <Text style={styles.name}>{item.name}</Text>
-                  <View style={styles.phoneRow}>
-                    <Phone size={13} color={Colors.neutral[400]} />
-                    <Text style={styles.phoneText}>{item.phone_number}</Text>
-                  </View>
-                </View>
-                <StatusBadge status={item.sync_status} size="small" />
-              </View>
-
-              <View style={styles.detailsRow}>
-                <View style={styles.detailItem}>
-                  <MapPin size={13} color={Colors.neutral[400]} />
-                  <Text style={styles.detailText}>
-                    {item.village_name || 'Village'}, {item.block_name || 'Block'}
-                  </Text>
-                </View>
-
-                <View style={styles.detailItem}>
-                  <Layers size={13} color={Colors.primary[600]} />
-                  <Text style={styles.landText}>
-                    {item.total_land_acres.toFixed(2)} acres ({item.holdings_count || 0} holdings)
-                  </Text>
-                </View>
-              </View>
-
-              <View style={styles.cardFooter}>
-                <Text style={styles.metaText}>
-                  Apps: {item.applications_count || 0} • Allotments: {item.allotments_count || 0}
-                </Text>
-                <ChevronRight size={16} color={Colors.neutral[400]} />
-              </View>
+              <Feather name="x-circle" size={14} color={colors.textSecondary} />
             </TouchableOpacity>
-          )}
-          ListEmptyComponent={
-            !loading ? (
+          </View>
+        )}
+
+        {/* Beneficiaries List */}
+        {loading ? (
+          <ListSkeleton rows={6} />
+        ) : (
+          <FlatList
+            data={beneficiaries}
+            keyExtractor={(item) => item.beneficiary_id}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={onRefresh}
+                colors={[colors.primary]}
+              />
+            }
+            contentContainerStyle={styles.listContainer}
+            renderItem={({ item, index }) => (
+              <ListItem
+                title={item.name}
+                subtitle={`${item.phone_number} • ${item.village_name || 'Village'}, ${item.block_name || 'Panchayat'}`}
+                meta={`${item.total_land_acres.toFixed(2)} acres • ${item.holdings_count || 0} holdings • ${item.applications_count || 0} apps`}
+                avatarName={item.name}
+                rightElement={
+                  <StatusBadge
+                    status={item.sync_status || 'LOCAL_ONLY'}
+                    size="sm"
+                  />
+                }
+                onPress={() => router.push(`/(app)/beneficiaries/${item.beneficiary_id}`)}
+                borderBottom={index < beneficiaries.length - 1}
+              />
+            )}
+            ListEmptyComponent={
               <EmptyState
-                icon={<Search size={32} color={Colors.primary[600]} />}
+                icon={<Feather name="users" size={32} color={colors.primary} />}
                 title="No Beneficiaries Found"
                 description={
                   searchQuery
-                    ? `No matching records found for "${searchQuery}". Try a different name, phone or survey number.`
-                    : 'No beneficiaries registered on this device yet.'
+                    ? `No matching records found for "${searchQuery}". Try a different name, phone, or survey number.`
+                    : 'No beneficiaries registered in this offline database yet.'
                 }
-                actionTitle="+ Register Beneficiary"
+                actionTitle="+ New Registration"
                 onAction={() => router.push('/(app)/new-registration')}
               />
-            ) : null
-          }
-        />
+            }
+          />
+        )}
       </View>
+
+      {/* Filter Bottom Sheet */}
+      <BottomSheet
+        visible={filterSheetVisible}
+        onClose={() => setFilterSheetVisible(false)}
+        title="Filter Beneficiaries"
+        subtitle="Filter by synchronization status"
+      >
+        <View style={styles.filterSheetContent}>
+          <Text style={styles.filterSectionTitle}>Sync Status</Text>
+          <View style={styles.filterOptionsGrid}>
+            {statusFilterOptions.map((opt) => (
+              <TouchableOpacity
+                key={opt.value}
+                style={[
+                  styles.filterChip,
+                  selectedStatusFilter === opt.value && styles.filterChipActive,
+                ]}
+                onPress={() => setSelectedStatusFilter(opt.value)}
+                activeOpacity={0.7}
+              >
+                <Text
+                  style={[
+                    styles.filterChipText,
+                    selectedStatusFilter === opt.value && styles.filterChipTextActive,
+                  ]}
+                >
+                  {opt.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <View style={styles.filterActionButtons}>
+            <Button
+              title="Reset Filters"
+              variant="secondary"
+              onPress={() => {
+                setSelectedStatusFilter('ALL');
+                setFilterSheetVisible(false);
+              }}
+              style={{ flex: 1 }}
+            />
+            <Button
+              title="Apply Filters"
+              variant="primary"
+              onPress={() => setFilterSheetVisible(false)}
+              style={{ flex: 1 }}
+            />
+          </View>
+        </View>
+      </BottomSheet>
     </SafeAreaView>
   );
 }
@@ -145,97 +222,82 @@ export default function BeneficiariesScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
   },
   container: {
     flex: 1,
-    backgroundColor: Colors.neutral[50],
+    backgroundColor: colors.background,
   },
-  searchContainer: {
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.neutral[200],
+  searchBarWrapper: {
+    backgroundColor: colors.surface,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.xs,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
   },
-  searchInput: {
-    marginBottom: 10,
+  searchInputContainer: {
+    marginBottom: 0,
   },
-  listContent: {
-    padding: 16,
-    paddingBottom: 32,
-  },
-  card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 14,
-    padding: 16,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: Colors.neutral[200],
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
-    elevation: 1,
-  },
-  cardHeader: {
+  activeFilterBar: {
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 10,
+    backgroundColor: colors.primaryLight,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.xs,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.primaryBorder,
   },
-  nameContainer: {
-    flex: 1,
-    marginRight: 8,
+  activeFilterLabel: {
+    fontSize: typography.fontSize.tiny,
+    color: colors.primary,
   },
-  name: {
-    fontSize: 16,
+  listContainer: {
+    backgroundColor: colors.surface,
+    paddingBottom: spacing.xxxl,
+  },
+  filterSheetContent: {
+    paddingBottom: spacing.lg,
+  },
+  filterSectionTitle: {
+    fontSize: typography.fontSize.bodySecondary,
     fontWeight: '700',
-    color: Colors.neutral[900],
+    color: colors.textPrimary,
+    marginBottom: spacing.sm,
+    fontFamily: typography.fontFamily.bold,
   },
-  phoneRow: {
+  filterOptionsGrid: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginTop: 3,
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    marginBottom: spacing.xl,
   },
-  phoneText: {
-    fontSize: 13,
-    color: Colors.neutral[500],
-    fontWeight: '500',
-    fontVariant: ['tabular-nums'],
+  filterChip: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: borderRadius.full,
+    borderWidth: 1.2,
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceSubtle,
   },
-  detailsRow: {
-    flexDirection: 'column',
-    gap: 4,
-    paddingVertical: 8,
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
-    borderColor: Colors.neutral[100],
+  filterChipActive: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primaryLight,
   },
-  detailItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  detailText: {
-    fontSize: 12,
-    color: Colors.neutral[600],
-  },
-  landText: {
-    fontSize: 12,
+  filterChipText: {
+    fontSize: typography.fontSize.caption,
     fontWeight: '600',
-    color: Colors.primary[700],
-    fontVariant: ['tabular-nums'],
+    color: colors.textSecondary,
+    fontFamily: typography.fontFamily.medium,
   },
-  cardFooter: {
+  filterChipTextActive: {
+    color: colors.primary,
+    fontWeight: '700',
+  },
+  filterActionButtons: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  metaText: {
-    fontSize: 11,
-    color: Colors.neutral[400],
+    gap: spacing.sm,
+    marginTop: spacing.md,
   },
 });

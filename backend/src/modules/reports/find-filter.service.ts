@@ -6,12 +6,13 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { FindFilterDto, ReportingDateType } from './dto/find-filter.dto';
+import { Prisma } from '@prisma/client';
 import {
-  Prisma,
   BeneficiaryStatus,
   LandStatus,
   AuditAction,
-} from '@prisma/client';
+  AuditEntityType,
+} from '../common/enums';
 import { Decimal } from 'decimal.js';
 import { d, toDecimalString } from '../common/decimal.util';
 import * as PDFDocument from 'pdfkit';
@@ -134,8 +135,9 @@ export class FindFilterService {
         phone_number: { contains: dto.phoneNumber.trim() },
       });
     }
-    if (dto.beneficiaryStatus) {
-      andConditions.push({ status: dto.beneficiaryStatus });
+    const targetStatus = dto.beneficiaryStatus || dto.status;
+    if (targetStatus) {
+      andConditions.push({ status: targetStatus });
     }
 
     // 3. Land Filters

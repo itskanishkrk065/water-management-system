@@ -11,7 +11,7 @@ import {
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { BeneficiaryStatus, LocationDirection } from '@prisma/client';
+import { BeneficiaryStatus, LocationDirection } from '../../common/enums';
 
 export class CreateBeneficiaryDto {
   @ApiProperty({ example: 'K. Ramasamy Gounder' })

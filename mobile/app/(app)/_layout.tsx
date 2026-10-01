@@ -1,37 +1,34 @@
 import React from 'react';
+import { Platform } from 'react-native';
 import { Tabs } from 'expo-router';
-import { Colors } from '../../src/constants/colors';
-import {
-  Home,
-  Users,
-  UserPlus,
-  FileText,
-  RefreshCw,
-  MoreHorizontal,
-  Droplets,
-  Terminal,
-} from 'lucide-react-native';
+import { colors, typography, shadows } from '../../src/constants/theme';
+import { Feather } from '../../src/components/Icon';
 import { useAuth } from '../../src/auth/AuthContext';
 
 export default function AppLayout() {
-  const { isAdmin } = useAuth();
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'ADMIN';
 
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: Colors.primary[600],
-        tabBarInactiveTintColor: Colors.neutral[400],
+        tabBarActiveTintColor: colors.primary,
+        tabBarInactiveTintColor: colors.textMuted,
         tabBarStyle: {
-          backgroundColor: '#FFFFFF',
-          borderTopColor: Colors.neutral[200],
-          height: 60,
-          paddingBottom: 8,
+          backgroundColor: colors.surface,
+          borderTopColor: colors.border,
+          borderTopWidth: 1,
+          height: Platform.OS === 'ios' ? 84 : 64,
+          paddingBottom: Platform.OS === 'ios' ? 24 : 8,
           paddingTop: 8,
+          ...shadows.sheet,
         },
         tabBarLabelStyle: {
-          fontSize: 11,
+          fontSize: typography.fontSize.micro,
           fontWeight: '600',
+          fontFamily: typography.fontFamily.medium,
+          marginTop: 2,
         },
       }}
     >
@@ -39,59 +36,89 @@ export default function AppLayout() {
         name="index"
         options={{
           title: 'Home',
-          tabBarIcon: ({ color, size }) => <Home color={color} size={size || 22} />,
+          tabBarIcon: ({ color, size }) => (
+            <Feather name="home" color={color} size={size ? size - 2 : 20} />
+          ),
         }}
       />
       <Tabs.Screen
-        name="beneficiaries"
+        name="beneficiaries/index"
         options={{
           title: 'Beneficiaries',
-          tabBarIcon: ({ color, size }) => <Users color={color} size={size || 22} />,
+          tabBarIcon: ({ color, size }) => (
+            <Feather name="users" color={color} size={size ? size - 2 : 20} />
+          ),
         }}
       />
+
+      {/* Field Officer: Add (New Registration) */}
       <Tabs.Screen
-        name="new-registration"
+        name="new-registration/index"
         options={{
+          href: !isAdmin ? '/(app)/new-registration' : null,
           title: 'Register',
-          tabBarIcon: ({ color, size }) => <UserPlus color={color} size={size || 22} />,
+          tabBarIcon: ({ color, size }) => (
+            <Feather name="user-plus" color={color} size={size ? size - 2 : 20} />
+          ),
         }}
       />
+
+      {/* Admin: Approvals / Water */}
       <Tabs.Screen
-        name="drafts"
+        name="water/index"
         options={{
-          title: 'Drafts',
-          tabBarIcon: ({ color, size }) => <FileText color={color} size={size || 22} />,
+          href: isAdmin ? '/(app)/water' : null,
+          title: 'Approvals',
+          tabBarIcon: ({ color, size }) => (
+            <Feather name="check-circle" color={color} size={size ? size - 2 : 20} />
+          ),
         }}
       />
+
+      {/* Admin: Reports */}
       <Tabs.Screen
-        name="water"
+        name="reports/index"
         options={{
-          title: 'Water',
-          tabBarIcon: ({ color, size }) => <Droplets color={color} size={size || 22} />,
+          href: isAdmin ? '/(app)/reports' : null,
+          title: 'Reports',
+          tabBarIcon: ({ color, size }) => (
+            <Feather name="bar-chart-2" color={color} size={size ? size - 2 : 20} />
+          ),
         }}
       />
+
+      {/* Field Officer: Sync */}
       <Tabs.Screen
-        name="sync"
+        name="sync/index"
         options={{
+          href: !isAdmin ? '/(app)/sync' : null,
           title: 'Sync',
-          tabBarIcon: ({ color, size }) => <RefreshCw color={color} size={size || 22} />,
+          tabBarIcon: ({ color, size }) => (
+            <Feather name="refresh-cw" color={color} size={size ? size - 2 : 20} />
+          ),
         }}
       />
+
+      {/* More Hub for secondary screens */}
       <Tabs.Screen
-        name="developer"
-        options={{
-          href: isAdmin ? '/(app)/developer' : null, // Admin only tab
-          title: 'Dev Portal',
-          tabBarIcon: ({ color, size }) => <Terminal color={color} size={size || 22} />,
-        }}
-      />
-      <Tabs.Screen
-        name="more"
+        name="more/index"
         options={{
           title: 'More',
-          tabBarIcon: ({ color, size }) => <MoreHorizontal color={color} size={size || 22} />,
+          tabBarIcon: ({ color, size }) => (
+            <Feather name="grid" color={color} size={size ? size - 2 : 20} />
+          ),
         }}
       />
+
+      {/* Hidden Subscreens / Detail Screens */}
+      <Tabs.Screen name="beneficiaries/[id]" options={{ href: null }} />
+      <Tabs.Screen name="water/new" options={{ href: null }} />
+      <Tabs.Screen name="extensions/index" options={{ href: null }} />
+      <Tabs.Screen name="extensions/new" options={{ href: null }} />
+      <Tabs.Screen name="billing/index" options={{ href: null }} />
+      <Tabs.Screen name="infrastructure/index" options={{ href: null }} />
+      <Tabs.Screen name="developer/index" options={{ href: null }} />
+      <Tabs.Screen name="drafts/index" options={{ href: null }} />
     </Tabs>
   );
 }

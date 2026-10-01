@@ -2,7 +2,8 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { UpdateInfrastructureStatusDto } from './dto/infrastructure.dto';
-import { AuditAction, InfrastructureStatus, Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
+import { AuditAction, InfrastructureStatus } from '../common/enums';
 
 @Injectable()
 export class InfrastructureService {
@@ -125,7 +126,15 @@ export class InfrastructureService {
       if (!existing.completion_date) {
         updateData.completion_date = eventDate;
       }
-      updateData.commissioned_date = dto.date ? eventDate : (existing.commissioned_date || eventDate);
+      const commDate = dto.date ? eventDate : (existing.commissioned_date || eventDate);
+      updateData.commissioned_date = commDate;
+
+      // Individual running charge start date defaults to commissioned_date unless explicitly provided
+      if (dto.runningChargeStartDate) {
+        updateData.running_charge_start_date = new Date(dto.runningChargeStartDate);
+      } else if (!existing.running_charge_start_date) {
+        updateData.running_charge_start_date = commDate;
+      }
     }
 
     const updated = await this.prisma.infrastructure.update({
@@ -145,6 +154,51 @@ export class InfrastructureService {
       oldValues: existing,
       newValues: updated,
       reason: dto.remarks || `Infrastructure status transitioned to ${dto.status}`,
+      ipAddress,
+    });
+
+    return updated;
+  }
+
+  /**
+   * Allows authorized ADMIN to correct or adjust the individual runningChargeStartDate
+   * when actual water usage commenced on a different date.
+   */
+  async updateRunningChargeStartDate(
+    id: string,
+    runningChargeStartDate: string,
+    reason?: string,
+    userId?: string,
+    ipAddress?: string,
+  ) {
+    const existing = await this.prisma.infrastructure.findUnique({
+      where: { infrastructure_id: id },
+    });
+    if (!existing) {
+      throw new NotFoundException(`Infrastructure ${id} not found`);
+    }
+
+    const newStartDate = new Date(runningChargeStartDate);
+
+    const updated = await this.prisma.infrastructure.update({
+      where: { infrastructure_id: id },
+      data: {
+        running_charge_start_date: newStartDate,
+      },
+      include: {
+        beneficiary: true,
+        allotment: true,
+      },
+    });
+
+    await this.auditService.log({
+      userId,
+      action: AuditAction.UPDATE,
+      entityType: 'Infrastructure',
+      entityId: id,
+      oldValues: { running_charge_start_date: existing.running_charge_start_date },
+      newValues: { running_charge_start_date: updated.running_charge_start_date },
+      reason: reason || `Updated running charge start date to ${newStartDate.toISOString().slice(0, 10)}`,
       ipAddress,
     });
 

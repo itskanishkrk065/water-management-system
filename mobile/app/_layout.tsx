@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, Text, ActivityIndicator, StyleSheet, StatusBar } from 'react-native';
 import { Stack } from 'expo-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider } from '../src/auth/AuthContext';
+import { ToastProvider } from '../src/components/Toast';
 import { initDatabase } from '../src/db/database';
-import { Colors } from '../src/constants/colors';
+import { colors, typography, borderRadius } from '../src/constants/theme';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -45,8 +46,14 @@ export default function RootLayout() {
   if (!dbReady) {
     return (
       <View style={styles.centerContainer}>
-        <ActivityIndicator size="large" color={Colors.primary[600]} />
-        <Text style={styles.loadingText}>Initializing WaterGrid Mobile DB...</Text>
+        <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+        <View style={styles.logoBadge}>
+          <Text style={styles.logoText}>WG</Text>
+        </View>
+        <Text style={styles.appName}>WaterGrid</Text>
+        <Text style={styles.appTagline}>Field Operations & Water Allotment</Text>
+        <ActivityIndicator size="small" color={colors.primary} style={styles.spinner} />
+        <Text style={styles.loadingText}>Initializing offline engine...</Text>
       </View>
     );
   }
@@ -55,9 +62,13 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
-          <Stack screenOptions={{ headerShown: false }}>
-            <Stack.Screen name="(app)" options={{ headerShown: false }} />
-          </Stack>
+          <ToastProvider>
+            <Stack screenOptions={{ headerShown: false }}>
+              <Stack.Screen name="index" options={{ headerShown: false }} />
+              <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+              <Stack.Screen name="(app)" options={{ headerShown: false }} />
+            </Stack>
+          </ToastProvider>
         </AuthProvider>
       </QueryClientProvider>
     </SafeAreaProvider>
@@ -72,21 +83,52 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     padding: 24,
   },
+  logoBadge: {
+    width: 64,
+    height: 64,
+    borderRadius: borderRadius.xl,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  logoText: {
+    color: '#FFFFFF',
+    fontSize: 24,
+    fontWeight: '800',
+    fontFamily: typography.fontFamily.bold,
+  },
+  appName: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: colors.textPrimary,
+    fontFamily: typography.fontFamily.bold,
+  },
+  appTagline: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    marginTop: 4,
+    fontFamily: typography.fontFamily.regular,
+  },
+  spinner: {
+    marginTop: 32,
+  },
   loadingText: {
-    marginTop: 16,
-    fontSize: 14,
-    color: Colors.neutral[600],
+    marginTop: 12,
+    fontSize: 13,
+    color: colors.textMuted,
     fontWeight: '500',
+    fontFamily: typography.fontFamily.medium,
   },
   errorTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: Colors.status.dangerText,
+    color: colors.danger,
     marginBottom: 8,
   },
   errorSubtitle: {
     fontSize: 14,
-    color: Colors.neutral[600],
+    color: colors.textSecondary,
     textAlign: 'center',
   },
 });

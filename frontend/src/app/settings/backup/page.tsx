@@ -79,9 +79,11 @@ export default function DatabaseBackupSettingsPage() {
       const res = await apiClient.post('/backup/restore', { fileName, reason: restoreReason });
       return res.data;
     },
-    onSuccess: (data) => {
+    onSuccess: async (data) => {
+      queryClient.cancelQueries();
+      queryClient.clear();
+      await queryClient.invalidateQueries({ refetchType: 'all' });
       alert(data.message || 'System backup restored successfully.');
-      queryClient.invalidateQueries();
       setShowRestoreModal(false);
       setSelectedBackup(null);
       setReason('');

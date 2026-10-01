@@ -6,7 +6,7 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser, RequestUser } from '../common/decorators/current-user.decorator';
-import { RoleName, ApplicationStatus } from '@prisma/client';
+import { RoleName, ApplicationStatus } from '../common/enums';
 
 @ApiTags('Water Applications & Allotments')
 @ApiBearerAuth()
@@ -42,6 +42,7 @@ export class WaterController {
     @Query('projectId') projectId?: string,
     @Query('beneficiaryId') beneficiaryId?: string,
     @Query('status') status?: ApplicationStatus,
+    @Query('scope') scope?: 'CURRENT' | 'HISTORY' | 'ALL',
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
@@ -49,6 +50,7 @@ export class WaterController {
       projectId,
       beneficiaryId,
       status,
+      scope,
       page: page ? parseInt(page, 10) : 1,
       limit: limit ? parseInt(limit, 10) : 20,
     });

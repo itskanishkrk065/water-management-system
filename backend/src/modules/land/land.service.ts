@@ -3,7 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { CreateLandHoldingDto, CreateParcelDto, UpdateLandHoldingDto, CheckParcelAvailabilityDto } from './dto/land.dto';
 import { DecimalUtil } from '../common/decimal.util';
-import { AuditAction, LandStatus } from '@prisma/client';
+import { AuditAction, LandStatus, ApplicationStatus } from '../common/enums';
 import { Decimal } from 'decimal.js';
 
 @Injectable()
@@ -351,14 +351,38 @@ export class LandService {
   async deactivateHolding(landId: string, userId?: string, ipAddress?: string) {
     const existing = await this.prisma.landHolding.findUnique({
       where: { land_id: landId },
+      include: {
+        waterApplications: true,
+        parcels: true,
+      },
     });
     if (!existing) {
       throw new NotFoundException('Land holding not found');
     }
 
-    const updated = await this.prisma.landHolding.update({
-      where: { land_id: landId },
-      data: { status: LandStatus.INACTIVE },
+    if (existing.status === LandStatus.INACTIVE) {
+      throw new BadRequestException('Land holding is already deactivated / archived.');
+    }
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      // 1. Mark land holding INACTIVE
+      const holdingUpdated = await tx.landHolding.update({
+        where: { land_id: landId },
+        data: { status: LandStatus.INACTIVE },
+      });
+
+      // 2. Transition any pending/in-progress water applications on this holding to CANCELLED
+      await tx.waterApplication.updateMany({
+        where: {
+          land_id: landId,
+          status: { in: [ApplicationStatus.SUBMITTED, ApplicationStatus.UNDER_REVIEW] },
+        },
+        data: {
+          status: 'CANCELLED' as any,
+        },
+      });
+
+      return holdingUpdated;
     });
 
     await this.auditService.log({
@@ -366,9 +390,9 @@ export class LandService {
       action: AuditAction.UPDATE,
       entityType: 'LandHolding',
       entityId: landId,
-      oldValues: existing,
-      newValues: updated,
-      reason: 'Deactivated land holding',
+      oldValues: { status: existing.status },
+      newValues: { status: LandStatus.INACTIVE },
+      reason: `Deactivated land holding #${landId.slice(0, 8)} and archived pending water applications`,
       ipAddress,
     });
 

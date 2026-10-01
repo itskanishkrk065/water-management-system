@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { RoleName } from '@prisma/client';
+import { RoleName } from '../common/enums';
 
 export interface GlobalSearchResultItem {
   id: string;

@@ -5,23 +5,26 @@ import {
   StyleSheet,
   FlatList,
   TouchableOpacity,
-  Alert,
   RefreshControl,
+  SafeAreaView,
+  StatusBar,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Header } from '../../../src/components/Header';
 import { Button } from '../../../src/components/Button';
 import { EmptyState } from '../../../src/components/EmptyState';
-import { Colors } from '../../../src/constants/colors';
+import { useToast } from '../../../src/components/Toast';
+import { colors, spacing, borderRadius, typography, shadows } from '../../../src/constants/theme';
 import { DraftRepository } from '../../../src/repositories/DraftRepository';
 import { RegistrationDraft } from '../../../src/types/domain';
-import { FileText, Phone, Trash2, ArrowRight, UserPlus } from 'lucide-react-native';
+import { Feather } from '../../../src/components/Icon';
 
 const draftRepo = new DraftRepository();
 
 export default function DraftsScreen() {
   const router = useRouter();
+  const { showToast } = useToast();
+
   const [drafts, setDrafts] = useState<RegistrationDraft[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -44,22 +47,14 @@ export default function DraftsScreen() {
     }, [])
   );
 
-  const handleDeleteDraft = (draft: RegistrationDraft) => {
-    Alert.alert(
-      'Discard Draft',
-      `Are you sure you want to discard the draft for ${draft.name || draft.phone_number}?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Discard',
-          style: 'destructive',
-          onPress: async () => {
-            await draftRepo.deleteDraft(draft.draft_id);
-            loadDrafts();
-          },
-        },
-      ]
-    );
+  const handleDeleteDraft = async (draft: RegistrationDraft) => {
+    try {
+      await draftRepo.deleteDraft(draft.draft_id);
+      showToast({ message: 'Registration draft discarded', type: 'info' });
+      loadDrafts();
+    } catch (err: any) {
+      showToast({ message: err.message || 'Failed to delete draft', type: 'error' });
+    }
   };
 
   const handleResumeDraft = (draft: RegistrationDraft) => {
@@ -67,53 +62,51 @@ export default function DraftsScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top']}>
+    <SafeAreaView style={styles.safeArea}>
+      <StatusBar barStyle="dark-content" backgroundColor={colors.surface} />
       <Header
-        title="My Drafts"
-        subtitle={`${drafts.length} saved progressive registration drafts`}
+        title="Registration Drafts"
+        subtitle={`${drafts.length} saved offline sessions`}
+        showBack
       />
 
       <FlatList
         data={drafts}
         keyExtractor={(item) => item.draft_id}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={loadDrafts} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={loadDrafts} colors={[colors.primary]} />}
         contentContainerStyle={styles.listContent}
         renderItem={({ item }) => (
           <View style={styles.card}>
-            <View style={styles.cardHeader}>
+            <View style={styles.cardHeaderRow}>
               <View>
-                <Text style={styles.draftName}>
-                  {item.name ? item.name : 'Unnamed Draft'}
-                </Text>
-                <View style={styles.phoneRow}>
-                  <Phone size={13} color={Colors.neutral[400]} />
-                  <Text style={styles.phoneText}>{item.phone_number}</Text>
-                </View>
+                <Text style={styles.draftName}>{item.name || 'Unnamed Farmer Draft'}</Text>
+                <Text style={styles.phoneText}>{item.phone_number}</Text>
               </View>
-
               <View style={styles.stepBadge}>
-                <Text style={styles.stepText}>Step {item.step} of 6</Text>
+                <Text style={styles.stepBadgeText}>Step {item.step} of 6</Text>
               </View>
             </View>
 
             <Text style={styles.updatedText}>
-              Last updated: {new Date(item.updated_at).toLocaleString()}
+              Last saved: {new Date(item.updated_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} • Device SQLite
             </Text>
 
             <View style={styles.actionRow}>
               <TouchableOpacity
                 onPress={() => handleDeleteDraft(item)}
                 style={styles.deleteBtn}
+                activeOpacity={0.7}
               >
-                <Trash2 size={16} color={Colors.status.dangerText} />
-                <Text style={styles.deleteText}>Discard</Text>
+                <Feather name="trash-2" size={14} color={colors.danger} />
+                <Text style={styles.deleteBtnText}>Discard</Text>
               </TouchableOpacity>
 
               <Button
                 title="Continue Registration"
+                size="sm"
+                variant="primary"
                 onPress={() => handleResumeDraft(item)}
-                size="small"
-                icon={<ArrowRight size={14} color="#FFFFFF" />}
+                icon={<Feather name="arrow-right" size={14} color="#FFFFFF" />}
                 iconPosition="right"
               />
             </View>
@@ -122,10 +115,10 @@ export default function DraftsScreen() {
         ListEmptyComponent={
           !loading ? (
             <EmptyState
-              icon={<FileText size={32} color={Colors.primary[600]} />}
-              title="No Pending Drafts"
+              icon={<Feather name="file-text" size={32} color={colors.primary} />}
+              title="No Saved Drafts"
               description="You have no in-progress registrations saved locally on this device."
-              actionTitle="+ Start New Registration"
+              actionTitle="+ New Registration"
               onAction={() => router.push('/(app)/new-registration')}
             />
           ) : null
@@ -138,83 +131,73 @@ export default function DraftsScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
   },
   listContent: {
-    padding: 16,
-    paddingBottom: 32,
+    padding: spacing.lg,
+    backgroundColor: colors.background,
+    paddingBottom: spacing.xxxl,
   },
   card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 14,
-    padding: 16,
-    marginBottom: 12,
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.xl,
+    padding: spacing.lg,
+    marginBottom: spacing.md,
     borderWidth: 1,
-    borderColor: Colors.neutral[200],
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
-    elevation: 1,
+    borderColor: colors.border,
+    ...shadows.subtle,
   },
-  cardHeader: {
+  cardHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: 8,
+    marginBottom: spacing.xs,
   },
   draftName: {
-    fontSize: 16,
+    fontSize: typography.fontSize.bodySecondary,
     fontWeight: '700',
-    color: Colors.neutral[900],
-  },
-  phoneRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginTop: 2,
+    color: colors.textPrimary,
   },
   phoneText: {
-    fontSize: 13,
-    color: Colors.neutral[500],
-    fontVariant: ['tabular-nums'],
+    fontSize: typography.fontSize.caption,
+    color: colors.textSecondary,
+    marginTop: 2,
   },
   stepBadge: {
-    backgroundColor: Colors.primary[50],
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: Colors.primary[200],
+    backgroundColor: colors.primaryLight,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 3,
+    borderRadius: borderRadius.md,
   },
-  stepText: {
-    fontSize: 12,
+  stepBadgeText: {
+    fontSize: typography.fontSize.micro,
     fontWeight: '700',
-    color: Colors.primary[700],
+    color: colors.primary,
   },
   updatedText: {
-    fontSize: 12,
-    color: Colors.neutral[400],
-    marginBottom: 12,
+    fontSize: typography.fontSize.micro,
+    color: colors.textMuted,
+    marginTop: spacing.xs,
+    marginBottom: spacing.md,
   },
   actionRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    borderTopWidth: 1,
-    borderColor: Colors.neutral[100],
-    paddingTop: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    paddingTop: spacing.sm,
   },
   deleteBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    paddingVertical: 6,
-    paddingHorizontal: 8,
+    paddingVertical: 4,
+    paddingHorizontal: 6,
   },
-  deleteText: {
-    fontSize: 13,
-    color: Colors.status.dangerText,
+  deleteBtnText: {
+    fontSize: typography.fontSize.tiny,
+    color: colors.danger,
     fontWeight: '600',
   },
 });

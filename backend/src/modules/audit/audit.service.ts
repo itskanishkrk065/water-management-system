@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { AuditAction, Prisma } from '@prisma/client';
+import { AuditAction } from '../common/enums';
+import { Prisma } from '@prisma/client';
 
 export interface LogAuditOptions {
   userId?: string | null;
@@ -20,9 +21,17 @@ export class AuditService {
 
   async log(options: LogAuditOptions) {
     const client = options.tx || this.prisma;
+    let validUserId: string | null = options.userId || null;
+    if (validUserId) {
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(validUserId);
+      if (!isUuid) {
+        validUserId = null;
+      }
+    }
+
     return client.auditLog.create({
       data: {
-        user_id: options.userId || null,
+        user_id: validUserId,
         action: options.action,
         entity_type: options.entityType,
         entity_id: options.entityId,
@@ -43,7 +52,19 @@ export class AuditService {
     offset?: number;
   }) {
     const where: Prisma.AuditLogWhereInput = {};
-    if (query.entityType) where.entity_type = query.entityType;
+    if (query.entityType) {
+      const raw = query.entityType.trim();
+      const upper = raw.toUpperCase();
+      const lower = raw.toLowerCase();
+      const simplePascal = raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase();
+      const underscoredPascal = raw
+        .toLowerCase()
+        .split('_')
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+        .join('');
+      const variants = Array.from(new Set([raw, upper, lower, simplePascal, underscoredPascal]));
+      where.OR = variants.map((v) => ({ entity_type: v }));
+    }
     if (query.entityId) where.entity_id = query.entityId;
     if (query.userId) where.user_id = query.userId;
     if (query.action) where.action = query.action;

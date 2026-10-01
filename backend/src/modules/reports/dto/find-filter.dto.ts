@@ -21,7 +21,7 @@ import {
   PaymentMode,
   InfrastructureStatus,
   ExtensionStatus,
-} from '@prisma/client';
+} from '../../common/enums';
 
 export type PaymentSummaryStatus = 'PAID' | 'PARTIALLY_PAID' | 'UNPAID' | 'OVERDUE';
 
@@ -83,7 +83,13 @@ export class FindFilterDto {
   @ApiPropertyOptional({ enum: BeneficiaryStatus, example: BeneficiaryStatus.ACTIVE })
   @IsOptional()
   @IsEnum(BeneficiaryStatus)
+  @Transform(({ value, obj }) => value || obj?.status)
   beneficiaryStatus?: BeneficiaryStatus;
+
+  @ApiPropertyOptional({ enum: BeneficiaryStatus, example: BeneficiaryStatus.ACTIVE, description: 'Alias for beneficiaryStatus' })
+  @IsOptional()
+  @IsEnum(BeneficiaryStatus)
+  status?: BeneficiaryStatus;
 
   // 3. Land Filters
   @ApiPropertyOptional({ example: 1.0 })

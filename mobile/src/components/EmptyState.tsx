@@ -30,7 +30,7 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
           title={actionTitle}
           onPress={onAction}
           variant="primary"
-          size="medium"
+          size="md"
           style={styles.button}
         />
       )}

@@ -7,7 +7,8 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
-import { LocationImportStatus, AuditAction, Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
+import { LocationImportStatus, AuditAction } from '../common/enums';
 import * as crypto from 'crypto';
 import * as xlsx from 'xlsx';
 

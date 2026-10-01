@@ -2,7 +2,8 @@ import { Injectable, BadRequestException, NotFoundException } from '@nestjs/comm
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { RecordPaymentDto, ReversePaymentDto } from './dto/payment.dto';
-import { AuditAction, BillStatus, InstallmentStatus, PaymentStatus, Prisma } from '@prisma/client';
+import { AuditAction, AuditEntityType, BillStatus, InstallmentStatus, PaymentStatus, PaymentMode } from '../common/enums';
+import { Prisma } from '@prisma/client';
 import { DecimalUtil } from '../common/decimal.util';
 import { Decimal } from 'decimal.js';
 
@@ -27,9 +28,21 @@ export class PaymentsService {
       throw new BadRequestException('Payment must be associated with an installment, running bill, or extension.');
     }
 
+    if (dto.amount === undefined || dto.amount === null || isNaN(Number(dto.amount))) {
+      throw new BadRequestException('A valid numerical payment amount is required.');
+    }
+
     const payAmount = DecimalUtil.roundMoney(new Decimal(dto.amount));
+    if (payAmount.lte(0)) {
+      throw new BadRequestException('Payment amount must be strictly greater than zero.');
+    }
+
     const receiptNumber = this.generateReceiptNumber();
     const paymentDate = dto.paymentDate ? new Date(dto.paymentDate) : new Date();
+    const mode = dto.paymentMode || dto.paymentMethod || PaymentMode.CASH;
+    const ref = mode === PaymentMode.CASH ? null : (dto.paymentReference || dto.referenceNumber || null);
+    const remarks = dto.remarks || dto.notes || null;
+    const officer = dto.collectorName || dto.collector || recordedBy;
 
     const result = await this.prisma.$transaction(async (tx) => {
       // 1. Payment for Installment
@@ -43,6 +56,11 @@ export class PaymentsService {
         }
         if (installment.status === InstallmentStatus.PAID) {
           throw new BadRequestException('Installment is already fully paid.');
+        }
+
+        const beneficiaryId = dto.beneficiaryId || installment.bill?.beneficiary_id;
+        if (!beneficiaryId) {
+          throw new BadRequestException('Unable to resolve beneficiary for this installment payment.');
         }
 
         const currentPaid = new Decimal(installment.amount_paid);
@@ -64,16 +82,16 @@ export class PaymentsService {
         // Create Payment record
         const payment = await tx.payment.create({
           data: {
-            beneficiary_id: dto.beneficiaryId,
+            beneficiary_id: beneficiaryId,
             installment_id: dto.installmentId,
             amount: payAmount,
             payment_date: paymentDate,
-            payment_reference: dto.paymentReference || null,
+            payment_reference: ref,
             receipt_number: receiptNumber,
-            payment_mode: dto.paymentMode,
+            payment_mode: mode,
             status: PaymentStatus.COMPLETED,
-            remarks: dto.remarks || null,
-            recorded_by: recordedBy,
+            remarks,
+            recorded_by: officer,
           },
         });
 
@@ -120,6 +138,14 @@ export class PaymentsService {
         if (runningBill.status === BillStatus.PAID) {
           throw new BadRequestException('Running bill is already fully paid.');
         }
+        if (runningBill.status === 'VOIDED' || runningBill.status === 'CANCELLED') {
+          throw new BadRequestException('Cannot record payment against a voided or cancelled running bill.');
+        }
+
+        const beneficiaryId = dto.beneficiaryId || runningBill.beneficiary_id;
+        if (dto.beneficiaryId && dto.beneficiaryId !== runningBill.beneficiary_id) {
+          throw new BadRequestException('Beneficiary ID mismatch with running bill beneficiary.');
+        }
 
         const currentPaid = new Decimal(runningBill.amount_paid);
         const amountDue = new Decimal(runningBill.amount_due);
@@ -137,16 +163,16 @@ export class PaymentsService {
 
         const payment = await tx.payment.create({
           data: {
-            beneficiary_id: dto.beneficiaryId,
+            beneficiary_id: beneficiaryId,
             running_bill_id: dto.runningBillId,
             amount: payAmount,
             payment_date: paymentDate,
-            payment_reference: dto.paymentReference || null,
+            payment_reference: ref,
             receipt_number: receiptNumber,
-            payment_mode: dto.paymentMode,
+            payment_mode: mode,
             status: PaymentStatus.COMPLETED,
-            remarks: dto.remarks || null,
-            recorded_by: recordedBy,
+            remarks,
+            recorded_by: officer,
           },
         });
 
@@ -161,6 +187,7 @@ export class PaymentsService {
 
         return payment;
       }
+
 
       // 3. Payment for Extension
       const payment = await tx.payment.create({
@@ -184,7 +211,7 @@ export class PaymentsService {
     await this.auditService.log({
       userId,
       action: AuditAction.PAYMENT_RECORDED,
-      entityType: 'Payment',
+      entityType: AuditEntityType.PAYMENT,
       entityId: result.payment_id,
       newValues: result,
       reason: `Recorded payment of ₹${dto.amount} with receipt ${receiptNumber}`,
@@ -310,7 +337,7 @@ export class PaymentsService {
     await this.auditService.log({
       userId,
       action: AuditAction.PAYMENT_REVERSED,
-      entityType: 'Payment',
+      entityType: AuditEntityType.PAYMENT,
       entityId: paymentId,
       oldValues: original,
       newValues: result,

@@ -122,3 +122,27 @@ export enum LocationImportStatus {
   FAILED = 'FAILED',
   CANCELLED = 'CANCELLED',
 }
+
+export enum AuditEntityType {
+  BENEFICIARY = 'Beneficiary',
+  LAND_HOLDING = 'LandHolding',
+  LAND_PARCEL = 'LandParcel',
+  WATER_APPLICATION = 'WaterApplication',
+  WATER_ALLOTMENT = 'WaterAllotment',
+  DEVELOPMENT_BILL = 'DevelopmentBill',
+  INSTALLMENT = 'Installment',
+  INSTALLMENT_TEMPLATE = 'InstallmentTemplate',
+  PAYMENT = 'Payment',
+  INFRASTRUCTURE = 'Infrastructure',
+  RUNNING_BILL = 'RunningBill',
+  EXTENSION = 'Extension',
+  RATE_CONFIGURATION = 'RateConfiguration',
+  USER_ACCOUNT = 'UserAccount',
+  LOCATION_IMPORT = 'LocationImport',
+  FIND_FILTER_QUERY = 'FindFilterQuery',
+  REPORT_EXPORT = 'ReportExport',
+  REPORT_PRESET = 'ReportPreset',
+  SYSTEM_BACKUP = 'SystemBackup',
+  SYSTEM_RESTORE = 'SystemRestore',
+}
+
