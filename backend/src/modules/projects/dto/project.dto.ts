@@ -1,6 +1,6 @@
 import { IsDateString, IsEnum, IsNotEmpty, IsOptional, IsString } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
-import { ProjectStatus } from '@prisma/client';
+import { ProjectStatus } from '../../common/enums';
 
 export class CreateProjectDto {
   @ApiProperty({ example: 'WMP-2026-02' })

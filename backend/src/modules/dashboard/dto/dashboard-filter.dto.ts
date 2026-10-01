@@ -1,6 +1,6 @@
 import { IsOptional, IsString, IsDateString, IsEnum } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { ApplicationStatus, BeneficiaryStatus } from '@prisma/client';
+import { ApplicationStatus, BeneficiaryStatus } from '../../common/enums';
 
 export class DashboardFilterDto {
   @ApiPropertyOptional({ example: 'UUID of District' })

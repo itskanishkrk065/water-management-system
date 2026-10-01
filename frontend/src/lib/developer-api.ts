@@ -258,4 +258,30 @@ export const DeveloperApi = {
     const { data } = await apiClient.post('/developer/test-data/purge', { confirmationPhrase });
     return data;
   },
+
+  getLogs: async (limit: number = 50): Promise<{
+    auditLogs: Array<{
+      id: string;
+      action: string;
+      tableName: string;
+      recordId: string;
+      timestamp: string;
+      ipAddress: string;
+      user: string;
+      role: string;
+      oldValues: any;
+      newValues: any;
+    }>;
+    physicalLogs: Array<{
+      timestamp: string;
+      level: string;
+      source: string;
+      message: string;
+    }>;
+    totalAuditEntries: number;
+    logsDirectory: string;
+  }> => {
+    const { data } = await apiClient.get('/developer/logs', { params: { limit } });
+    return data;
+  },
 };

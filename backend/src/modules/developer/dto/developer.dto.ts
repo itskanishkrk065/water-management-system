@@ -88,6 +88,21 @@ export class CleanStatePreviewDto {
   @IsArray()
   @IsString({ each: true })
   modules?: string[];
+
+  @ApiPropertyOptional({ default: true })
+  @IsOptional()
+  @IsBoolean()
+  preserveMasterLocations?: boolean = true;
+
+  @ApiPropertyOptional({ default: true })
+  @IsOptional()
+  @IsBoolean()
+  preserveMasterTariffs?: boolean = true;
+
+  @ApiPropertyOptional({ default: true })
+  @IsOptional()
+  @IsBoolean()
+  preserveUsersAndRoles?: boolean = true;
 }
 
 export class CleanStateExecuteDto {
@@ -116,6 +131,31 @@ export class CleanStateExecuteDto {
   @IsOptional()
   @IsString()
   productionBypassKey?: string;
+
+  @ApiPropertyOptional({ default: true })
+  @IsOptional()
+  @IsBoolean()
+  preserveMasterLocations?: boolean = true;
+
+  @ApiPropertyOptional({ default: true })
+  @IsOptional()
+  @IsBoolean()
+  preserveMasterTariffs?: boolean = true;
+
+  @ApiPropertyOptional({ default: true })
+  @IsOptional()
+  @IsBoolean()
+  preserveUsersAndRoles?: boolean = true;
+
+  @ApiPropertyOptional({ default: true })
+  @IsOptional()
+  @IsBoolean()
+  preserveProjectSchemes?: boolean = true;
+
+  @ApiPropertyOptional({ default: true })
+  @IsOptional()
+  @IsBoolean()
+  preserveInstallmentTemplates?: boolean = true;
 }
 
 export class GenerateTestDataDto {

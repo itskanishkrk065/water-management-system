@@ -3,12 +3,13 @@ import { PrismaService } from '../prisma/prisma.service';
 import {
   ApplicationStatus,
   BeneficiaryStatus,
+  BillStatus,
   InfrastructureStatus,
   InstallmentStatus,
   LandStatus,
   PaymentStatus,
   RoleName,
-} from '@prisma/client';
+} from '../common/enums';
 import { Decimal } from 'decimal.js';
 import { DashboardFilterDto } from './dto/dashboard-filter.dto';
 import { RequestUser } from '../common/decorators/current-user.decorator';
@@ -103,13 +104,17 @@ export class DashboardService {
         },
       }),
 
-      // 2. Land Holdings
+      // 2. Land Holdings (Strictly filter active holdings to active beneficiaries)
       this.prisma.landHolding.findMany({
         where: landWhere,
         select: { declared_total_area: true, status: true },
       }),
       this.prisma.landHolding.findMany({
-        where: { ...landWhere, status: LandStatus.ACTIVE },
+        where: {
+          ...landWhere,
+          status: LandStatus.ACTIVE,
+          beneficiary: { status: BeneficiaryStatus.ACTIVE },
+        },
         select: { declared_total_area: true },
       }),
 
@@ -119,23 +124,46 @@ export class DashboardService {
         select: {
           status: true,
           required_litres: true,
+          landHolding: { select: { status: true } },
+          beneficiary: { select: { status: true } },
         },
       }),
+      // Water Allotments: Strictly active allotments from active applications attached to active holdings & beneficiaries
       this.prisma.waterAllotment.findMany({
-        where: Object.keys(appWhere).length > 0 ? { application: appWhere } : {},
+        where: {
+          application: {
+            ...appWhere,
+            status: { notIn: ['CANCELLED' as any, 'VOIDED' as any, 'REJECTED' as any] },
+            landHolding: { status: LandStatus.ACTIVE },
+            beneficiary: { status: BeneficiaryStatus.ACTIVE },
+          },
+        },
         select: { approved_litres: true },
       }),
 
-      // 4. Financial (Bills & Payments)
+      // 4. Financial (Bills & Payments) - Non-cancelled development bills with active applications
       !isFieldOfficer
         ? this.prisma.developmentBill.findMany({
-            where: devBillWhere,
+            where: {
+              ...devBillWhere,
+              status: { not: BillStatus.CANCELLED },
+              allotment: {
+                application: {
+                  status: { notIn: ['CANCELLED' as any, 'VOIDED' as any, 'REJECTED' as any] },
+                  landHolding: { status: LandStatus.ACTIVE },
+                  beneficiary: { status: BeneficiaryStatus.ACTIVE },
+                },
+              },
+            },
             select: { total_amount: true, amount_paid: true, pending_amount: true, status: true },
           })
         : Promise.resolve([]),
       !isFieldOfficer
         ? this.prisma.runningBill.findMany({
-            where: Object.keys(beneficiaryWhere).length > 0 ? { beneficiary: beneficiaryWhere } : {},
+            where: {
+              ...(Object.keys(beneficiaryWhere).length > 0 ? { beneficiary: beneficiaryWhere } : {}),
+              status: { not: BillStatus.CANCELLED },
+            },
             select: { amount_due: true, amount_paid: true, pending_amount: true, status: true },
           })
         : Promise.resolve([]),
@@ -154,7 +182,13 @@ export class DashboardService {
       // 5. Installments
       !isFieldOfficer
         ? this.prisma.installment.count({
-            where: { status: { in: [InstallmentStatus.PENDING, InstallmentStatus.PARTIALLY_PAID] } },
+            where: {
+              status: { in: [InstallmentStatus.PENDING, InstallmentStatus.PARTIALLY_PAID] },
+              bill: {
+                status: { not: BillStatus.CANCELLED },
+                beneficiary: { status: BeneficiaryStatus.ACTIVE },
+              },
+            },
           })
         : Promise.resolve(0),
       !isFieldOfficer
@@ -162,13 +196,22 @@ export class DashboardService {
             where: {
               status: { in: [InstallmentStatus.PENDING, InstallmentStatus.PARTIALLY_PAID] },
               due_date: { lt: new Date() },
+              bill: {
+                status: { not: BillStatus.CANCELLED },
+                beneficiary: { status: BeneficiaryStatus.ACTIVE },
+              },
             },
           })
         : Promise.resolve(0),
 
       // 6. Operational queues counts
       this.prisma.waterApplication.count({
-        where: { ...appWhere, status: ApplicationStatus.SUBMITTED },
+        where: {
+          ...appWhere,
+          status: ApplicationStatus.SUBMITTED,
+          landHolding: { status: LandStatus.ACTIVE },
+          beneficiary: { status: BeneficiaryStatus.ACTIVE },
+        },
       }),
       this.prisma.infrastructure.count({
         where: {
@@ -198,16 +241,30 @@ export class DashboardService {
     let underReviewApps = 0;
     let approvedApps = 0;
     let rejectedApps = 0;
+    let cancelledApps = 0;
     let totalRequiredLitres = new Decimal(0);
+    let activeAppsCount = 0;
+    let historicalAppsCount = 0;
 
     for (const app of allApplications) {
+      const isParentActive =
+        app.landHolding?.status === LandStatus.ACTIVE &&
+        app.beneficiary?.status === BeneficiaryStatus.ACTIVE;
+      const isTerminal = ['CANCELLED', 'VOIDED', 'REJECTED', 'ARCHIVED'].includes(app.status as string);
+
       if (app.status === ApplicationStatus.SUBMITTED) submittedApps++;
       else if (app.status === ApplicationStatus.UNDER_REVIEW) underReviewApps++;
       else if (app.status === ApplicationStatus.APPROVED) approvedApps++;
       else if (app.status === ApplicationStatus.REJECTED) rejectedApps++;
+      else if (['CANCELLED', 'VOIDED'].includes(app.status as string)) cancelledApps++;
 
-      if (app.required_litres) {
-        totalRequiredLitres = totalRequiredLitres.plus(new Decimal(app.required_litres));
+      if (!isTerminal && isParentActive) {
+        activeAppsCount++;
+        if (app.required_litres) {
+          totalRequiredLitres = totalRequiredLitres.plus(new Decimal(app.required_litres));
+        }
+      } else {
+        historicalAppsCount++;
       }
     }
 
@@ -228,8 +285,13 @@ export class DashboardService {
     }
 
     let totalRunningBilled = new Decimal(0);
+    let totalRunningPaid = new Decimal(0);
+    let totalRunningPending = new Decimal(0);
+
     for (const r of runningBills) {
       totalRunningBilled = totalRunningBilled.plus(new Decimal(r.amount_due || 0));
+      totalRunningPaid = totalRunningPaid.plus(new Decimal(r.amount_paid || 0));
+      totalRunningPending = totalRunningPending.plus(new Decimal(r.pending_amount || 0));
     }
 
     let totalExtBilled = new Decimal(0);
@@ -243,6 +305,7 @@ export class DashboardService {
     );
 
     const totalBilled = totalDevBilled.plus(totalRunningBilled).plus(totalExtBilled);
+    const totalPending = totalDevPending.plus(totalRunningPending);
 
     // Data Quality Quick Check
     let dataQuality = {
@@ -274,17 +337,20 @@ export class DashboardService {
       land: {
         total_holdings: allHoldings.length,
         active_holdings: activeHoldings.length,
+        inactive_holdings: Math.max(0, allHoldings.length - activeHoldings.length),
         total_land_acres: totalLandArea.toFixed(2),
         total_active_acres: totalActiveLandArea.toFixed(2),
       },
       water: {
         total_applications: allApplications.length,
+        active_applications: activeAppsCount,
         draft_applications: 0,
         submitted_applications: submittedApps,
         under_review_applications: underReviewApps,
         approved_applications: approvedApps,
         rejected_applications: rejectedApps,
-        cancelled_applications: 0,
+        cancelled_applications: cancelledApps,
+        historical_applications: historicalAppsCount,
         total_required_litres: totalRequiredLitres.toFixed(0),
         total_calculated_litres: totalApprovedLitres.toFixed(0),
         total_approved_litres: totalApprovedLitres.toFixed(0),
@@ -297,11 +363,15 @@ export class DashboardService {
         : {
             accessible: true,
             total_development_billing: totalDevBilled.toFixed(2),
+            total_development_paid: totalDevPaid.toFixed(2),
+            total_development_pending: totalDevPending.toFixed(2),
             total_running_billing: totalRunningBilled.toFixed(2),
+            total_running_paid: totalRunningPaid.toFixed(2),
+            total_running_pending: totalRunningPending.toFixed(2),
             total_extension_billing: totalExtBilled.toFixed(2),
             total_billed_amount: totalBilled.toFixed(2),
             total_collected: totalCollected.toFixed(2),
-            total_pending: totalDevPending.toFixed(2),
+            total_pending: totalPending.toFixed(2),
             pending_installments_count: pendingInstallmentsCount,
             overdue_installments_count: overdueInstallmentsCount,
           },
@@ -311,12 +381,13 @@ export class DashboardService {
       },
       data_quality: dataQuality,
       // Backward compatibility fields
-      total_beneficiaries: totalBeneficiaries,
+      total_beneficiaries: activeBeneficiaries,
       total_land_acres: totalActiveLandArea.toFixed(2),
       total_approved_litres: totalApprovedLitres.toFixed(0),
       total_development_billing: totalDevBilled.toFixed(2),
+      total_running_billing: totalRunningBilled.toFixed(2),
       total_collected: totalCollected.toFixed(2),
-      total_pending: totalDevPending.toFixed(2),
+      total_pending: totalPending.toFixed(2),
       pending_approvals_count: pendingApprovalsCount,
       infrastructure_awaiting_commissioning_count: infrastructureAwaitingCount,
     };

@@ -6,7 +6,7 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser, RequestUser } from '../common/decorators/current-user.decorator';
-import { InfrastructureStatus, RoleName } from '@prisma/client';
+import { InfrastructureStatus, RoleName } from '../common/enums';
 
 @ApiTags('Infrastructure')
 @ApiBearerAuth()
@@ -47,5 +47,23 @@ export class InfrastructureController {
     @Ip() ip: string,
   ) {
     return this.infrastructureService.updateStatus(id, dto, user.user_id, ip);
+  }
+
+  @Patch(':id/running-start-date')
+  @Roles(RoleName.ADMIN)
+  @ApiOperation({ summary: 'Update individual running charge start date (Admin only)' })
+  async updateRunningChargeStartDate(
+    @Param('id') id: string,
+    @Body() body: { runningChargeStartDate: string; reason?: string },
+    @CurrentUser() user: RequestUser,
+    @Ip() ip: string,
+  ) {
+    return this.infrastructureService.updateRunningChargeStartDate(
+      id,
+      body.runningChargeStartDate,
+      body.reason,
+      user.user_id,
+      ip,
+    );
   }
 }

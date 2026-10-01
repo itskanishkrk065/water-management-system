@@ -3,7 +3,7 @@ import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AuditService } from './audit.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
-import { AuditAction } from '@prisma/client';
+import { AuditAction } from '../common/enums';
 
 @ApiTags('Audit')
 @ApiBearerAuth()

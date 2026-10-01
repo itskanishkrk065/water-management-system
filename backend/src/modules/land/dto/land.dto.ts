@@ -11,7 +11,7 @@ import {
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { LandStatus } from '@prisma/client';
+import { LandStatus } from '../../common/enums';
 
 export class CreateParcelDto {
   @ApiProperty({ example: '101' })

@@ -428,6 +428,10 @@ export class DeveloperDbExplorerService {
 
     const tables = await this.getAllTablesSummary();
     const totalRecords = tables.reduce((acc, t) => acc + t.rowCount, 0);
+    const tableCounts: Record<string, number> = {};
+    for (const t of tables) {
+      tableCounts[t.tableName] = t.rowCount;
+    }
 
     const dbPath = this.resolveDbPath();
     let fileSize = 0;
@@ -440,11 +444,14 @@ export class DeveloperDbExplorerService {
 
     return {
       databasePath: dbPath,
+      dbPath,
       fileSizeBytes: fileSize,
       fileSizeFormatted: `${(fileSize / (1024 * 1024)).toFixed(2)} MB`,
       lastModified,
       totalTables: tables.length,
       totalRecords,
+      tableCounts,
+      allTables: tables,
       integrityCheckStatus: integrityCheck.toLowerCase().includes('ok') ? 'PASS' : 'FAIL',
       integrityCheckDetails: integrityCheck,
       foreignKeyViolationsCount: foreignKeyCheck.length,
@@ -458,17 +465,37 @@ export class DeveloperDbExplorerService {
         calculatedDbSize: `${((pageCount * pageSize) / (1024 * 1024)).toFixed(2)} MB`,
         walStatus,
       },
+      pageCount,
+      journalMode,
       largestTables: tables.sort((a, b) => b.rowCount - a.rowCount).slice(0, 10),
     };
   }
 
-  private resolveDbPath(): string {
+  public resolveDbPath(): string {
     const dbUrl = process.env.DATABASE_URL || '';
     if (dbUrl.startsWith('file:')) {
-      return path.resolve(dbUrl.replace('file:', ''));
+      const raw = dbUrl.replace(/^file:/, '');
+      const directPath = path.isAbsolute(raw) ? raw : path.resolve(process.cwd(), raw);
+      if (fs.existsSync(directPath)) {
+        return directPath;
+      }
     }
-    const localAppData = process.env.LOCALAPPDATA || process.env.APPDATA || process.env.HOME || '.';
-    return path.join(localAppData, 'WaterManagement', 'database', 'water_management.db');
+
+    const candidates = [
+      path.resolve(process.cwd(), 'prisma/template.db'),
+      path.resolve(process.cwd(), 'backend/prisma/template.db'),
+      path.resolve(process.cwd(), '../backend/prisma/template.db'),
+      path.resolve(process.cwd(), 'data/watergrid.db'),
+      path.join(process.env.WATER_APP_DATA_DIR || path.join(process.env.LOCALAPPDATA || process.env.APPDATA || process.env.HOME || '.', 'WaterManagement'), 'database', 'water_management.db'),
+    ];
+
+    for (const cand of candidates) {
+      if (fs.existsSync(cand)) {
+        return cand;
+      }
+    }
+
+    return candidates[0];
   }
 
   /**
@@ -497,5 +524,89 @@ export class DeveloperDbExplorerService {
       }
     }
     return sanitized;
+  }
+
+  /**
+   * Diagnostic summary of all relational data for a beneficiary (or all beneficiaries).
+   */
+  async getBeneficiaryRelationshipSummary(beneficiaryId?: string) {
+    const whereClause = beneficiaryId ? { beneficiary_id: beneficiaryId } : {};
+    const beneficiaries = await this.prisma.beneficiary.findMany({
+      where: whereClause,
+      select: {
+        beneficiary_id: true,
+        name: true,
+        status: true,
+        landHoldings: { select: { land_id: true, status: true, declared_total_area: true } },
+        waterApplications: { select: { application_id: true, status: true, required_litres: true } },
+        waterAllotments: { select: { allotment_id: true, approved_litres: true, approval_status: true } },
+        developmentBills: {
+          select: {
+            bill_id: true,
+            total_amount: true,
+            amount_paid: true,
+            pending_amount: true,
+            status: true,
+            installments: {
+              select: {
+                installment_id: true,
+                installment_number: true,
+                amount_due: true,
+                amount_paid: true,
+                status: true,
+              },
+            },
+          },
+        },
+        payments: { select: { payment_id: true, receipt_number: true, amount: true, payment_mode: true, status: true } },
+        infrastructures: { select: { infrastructure_id: true, status: true } },
+        extensions: { select: { extension_id: true, status: true } },
+      },
+      orderBy: { name: 'asc' },
+      take: 50,
+    });
+
+    return beneficiaries.map((b) => {
+      const activeHoldings = b.landHoldings.filter((l) => l.status === 'ACTIVE');
+      const historicalHoldings = b.landHoldings.filter((l) => l.status !== 'ACTIVE');
+      const activeWater = b.waterApplications.filter((w) => !['REJECTED', 'CANCELLED', 'VOIDED', 'ARCHIVED'].includes(w.status));
+      const historicalWater = b.waterApplications.filter((w) => ['REJECTED', 'CANCELLED', 'VOIDED', 'ARCHIVED'].includes(w.status));
+      const allInstallments = b.developmentBills.flatMap((bill) => bill.installments || []);
+
+      return {
+        beneficiaryId: b.beneficiary_id,
+        name: b.name,
+        status: b.status,
+        land: {
+          total: b.landHoldings.length,
+          active: activeHoldings.length,
+          historical: historicalHoldings.length,
+        },
+        water: {
+          total: b.waterApplications.length,
+          current: activeWater.length,
+          historical: historicalWater.length,
+          allotments: b.waterAllotments.length,
+        },
+        bills: {
+          total: b.developmentBills.length,
+          details: b.developmentBills,
+        },
+        installments: {
+          total: allInstallments.length,
+          details: allInstallments,
+        },
+        payments: {
+          total: b.payments.length,
+          details: b.payments,
+        },
+        infrastructure: {
+          total: b.infrastructures.length,
+        },
+        extensions: {
+          total: b.extensions.length,
+        },
+      };
+    });
   }
 }

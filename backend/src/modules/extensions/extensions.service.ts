@@ -2,7 +2,8 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { CreateExtensionRequestDto, ApproveExtensionDto } from './dto/extension.dto';
-import { AuditAction, ExtensionStatus, Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
+import { AuditAction, ExtensionStatus } from '../common/enums';
 import { DecimalUtil } from '../common/decimal.util';
 import { Decimal } from 'decimal.js';
 

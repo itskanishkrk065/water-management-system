@@ -13,7 +13,7 @@ import {
   PaymentMode,
   InfrastructureStatus,
   ExtensionStatus,
-} from '@prisma/client';
+} from '../common/enums';
 import { Decimal } from 'decimal.js';
 
 describe('FindFilterService', () => {

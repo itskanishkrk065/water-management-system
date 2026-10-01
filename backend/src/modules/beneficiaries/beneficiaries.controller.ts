@@ -28,7 +28,7 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser, RequestUser } from '../common/decorators/current-user.decorator';
-import { RoleName, BeneficiaryStatus } from '@prisma/client';
+import { RoleName, BeneficiaryStatus } from '../common/enums';
 import { LandService } from '../land/land.service';
 
 @ApiTags('Beneficiaries')

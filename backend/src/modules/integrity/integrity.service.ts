@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Decimal } from 'decimal.js';
+import { ApplicationStatus, BeneficiaryStatus, LandStatus, PaymentStatus } from '../common/enums';
 
 export interface IntegrityFinding {
   code: string;
@@ -65,7 +66,7 @@ export class IntegrityService {
     // 1. Check for duplicate active applications per land holding
     const activeApps = await this.prisma.waterApplication.findMany({
       where: {
-        status: { in: ['SUBMITTED', 'UNDER_REVIEW', 'APPROVED', 'DRAFT'] },
+        status: { in: [ApplicationStatus.SUBMITTED, ApplicationStatus.UNDER_REVIEW, ApplicationStatus.APPROVED] },
         land_id: { not: null },
       },
       include: { landHolding: true, beneficiary: true },
@@ -126,7 +127,7 @@ export class IntegrityService {
     // 3. Check for approved applications without water allotments
     const approvedWithoutAllotment = await this.prisma.waterApplication.findMany({
       where: {
-        status: 'APPROVED',
+        status: ApplicationStatus.APPROVED,
         allotment: null,
       },
     });

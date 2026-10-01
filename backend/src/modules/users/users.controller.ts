@@ -5,7 +5,7 @@ import { CreateUserDto, UpdateUserDto } from './dto/user.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
-import { RoleName } from '@prisma/client';
+import { RoleName } from '../common/enums';
 
 @ApiTags('Users')
 @ApiBearerAuth()

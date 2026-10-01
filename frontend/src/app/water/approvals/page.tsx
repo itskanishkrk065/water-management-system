@@ -99,12 +99,10 @@ export default function WaterApprovalsPage() {
 
   const handleOpenApprove = (app: any) => {
     setSelectedApp(app);
-    const totalLand = app.beneficiary?.landHoldings?.reduce(
-      (acc: number, h: any) => acc + (parseFloat(h.declared_total_area) || 0),
-      0,
-    ) || 0;
-    const calculated = totalLand * 10000;
-    setApprovedLitres(calculated ? calculated.toString() : app.required_litres);
+    const totalLand = parseFloat(app.total_land_acres || app.landHolding?.declared_total_area || '0');
+    const litresPerAcre = parseFloat(app.litres_per_acre || '10000');
+    const calculated = parseFloat(app.calculated_allotment || (totalLand * litresPerAcre).toString());
+    setApprovedLitres(calculated > 0 ? calculated.toString() : (app.required_litres ? app.required_litres.toString() : '5000'));
     setApprovalRemarks('Approved based on regional canal allocation quota');
     setError(null);
   };
@@ -195,12 +193,9 @@ export default function WaterApprovalsPage() {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {applications.map((app: any) => {
-                  const totalLand =
-                    app.beneficiary?.landHoldings?.reduce(
-                      (acc: number, h: any) => acc + (parseFloat(h.declared_total_area) || 0),
-                      0,
-                    ) || 0;
-                  const calculated = totalLand * 10000;
+                  const totalLand = parseFloat(app.total_land_acres || app.landHolding?.declared_total_area || '0');
+                  const litresPerAcre = parseFloat(app.litres_per_acre || '10000');
+                  const calculated = parseFloat(app.calculated_allotment || (totalLand * litresPerAcre).toString());
 
                   return (
                     <tr key={app.application_id} className="hover:bg-slate-50/70 transition">
@@ -209,7 +204,7 @@ export default function WaterApprovalsPage() {
                         <div className="font-semibold text-slate-900">{app.beneficiary?.name}</div>
                         <div className="text-slate-500 text-xs">{app.beneficiary?.phone_number}</div>
                         <div className="text-slate-400 text-xs">
-                          {app.beneficiary?.village?.name}, {app.beneficiary?.district?.name}
+                          {app.beneficiary?.village?.name || 'Village'}, {app.beneficiary?.district?.name || ''}
                         </div>
                       </td>
                       <td className="py-3.5 px-4 font-semibold text-emerald-700">{formatAcres(totalLand)}</td>
@@ -267,47 +262,46 @@ export default function WaterApprovalsPage() {
               </button>
             </div>
 
-            {/* Crucial Section 28 Multi-Value Comparison Box */}
-            <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
-              <div className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center space-x-1.5">
-                <Layers className="w-3.5 h-3.5 text-sky-600" />
-                <span>Section 28 Allotment Quantity Reconciliation</span>
-              </div>
-              <div className="grid grid-cols-2 gap-3 text-xs">
-                <div className="p-3 bg-white rounded-lg border border-slate-200">
-                  <span className="text-slate-500 block text-[11px] uppercase tracking-wider font-semibold">Total Land</span>
-                  <div className="text-sm font-bold text-slate-900 mt-1">
-                    {formatAcres(
-                      selectedApp.beneficiary?.landHoldings?.reduce(
-                        (acc: number, h: any) => acc + (parseFloat(h.declared_total_area) || 0),
-                        0,
-                      ) || 0,
-                    )}
+            {/* Section 28 Multi-Value Comparison Box */}
+            {(() => {
+              const totalLand = parseFloat(selectedApp.total_land_acres || selectedApp.landHolding?.declared_total_area || '0');
+              const litresPerAcre = parseFloat(selectedApp.litres_per_acre || '10000');
+              const calculated = parseFloat(selectedApp.calculated_allotment || (totalLand * litresPerAcre).toString());
+              const devCostPerLitre = parseFloat(selectedApp.development_cost_per_litre || '2.00');
+
+              return (
+                <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
+                  <div className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center space-x-1.5">
+                    <Layers className="w-3.5 h-3.5 text-sky-600" />
+                    <span>Section 28 Allotment Quantity Reconciliation</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 text-xs">
+                    <div className="p-3 bg-white rounded-lg border border-slate-200">
+                      <span className="text-slate-500 block text-[11px] uppercase tracking-wider font-semibold">Total Land</span>
+                      <div className="text-sm font-bold text-slate-900 mt-1">
+                        {formatAcres(totalLand)}
+                      </div>
+                    </div>
+                    <div className="p-3 bg-white rounded-lg border border-slate-200">
+                      <span className="text-slate-500 block text-[11px] uppercase tracking-wider font-semibold">Litres / Acre Tariff</span>
+                      <div className="text-sm font-bold text-slate-900 mt-1">{litresPerAcre.toLocaleString()} L / Acre</div>
+                    </div>
+                    <div className="p-3 bg-sky-50/70 rounded-lg border border-sky-200">
+                      <span className="text-sky-700 block text-[11px] uppercase tracking-wider font-semibold">Calculated Baseline</span>
+                      <div className="text-base font-bold text-sky-900 mt-1">
+                        {formatLitres(calculated)}
+                      </div>
+                    </div>
+                    <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
+                      <span className="text-slate-600 block text-[11px] uppercase tracking-wider font-semibold">Farmer Request</span>
+                      <div className="text-base font-bold text-slate-800 mt-1">
+                        {formatLitres(selectedApp.required_litres)}
+                      </div>
+                    </div>
                   </div>
                 </div>
-                <div className="p-3 bg-white rounded-lg border border-slate-200">
-                  <span className="text-slate-500 block text-[11px] uppercase tracking-wider font-semibold">Litres / Acre Tariff</span>
-                  <div className="text-sm font-bold text-slate-900 mt-1">10,000 L / Acre</div>
-                </div>
-                <div className="p-3 bg-sky-50/70 rounded-lg border border-sky-200">
-                  <span className="text-sky-700 block text-[11px] uppercase tracking-wider font-semibold">Calculated Baseline</span>
-                  <div className="text-base font-bold text-sky-900 mt-1">
-                    {formatLitres(
-                      (selectedApp.beneficiary?.landHoldings?.reduce(
-                        (acc: number, h: any) => acc + (parseFloat(h.declared_total_area) || 0),
-                        0,
-                      ) || 0) * 10000,
-                    )}
-                  </div>
-                </div>
-                <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
-                  <span className="text-slate-600 block text-[11px] uppercase tracking-wider font-semibold">Farmer Request</span>
-                  <div className="text-base font-bold text-slate-800 mt-1">
-                    {formatLitres(selectedApp.required_litres)}
-                  </div>
-                </div>
-              </div>
-            </div>
+              );
+            })()}
 
             <form onSubmit={handleApproveSubmit} className="space-y-4">
               <div>
@@ -318,7 +312,7 @@ export default function WaterApprovalsPage() {
                   <input
                     type="number"
                     required
-                    placeholder="e.g. 45000"
+                    placeholder="e.g. 50000"
                     value={approvedLitres}
                     onChange={(e) => setApprovedLitres(e.target.value)}
                     className="w-full px-4 py-2.5 border-2 border-sky-600 rounded-lg text-lg font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500"
@@ -334,18 +328,22 @@ export default function WaterApprovalsPage() {
               {parseFloat(approvedLitres) > 0 && (
                 <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-lg text-xs space-y-1.5">
                   <div className="flex justify-between items-center">
-                    <span className="text-slate-600">Standard Development Tariff:</span>
-                    <span className="font-semibold text-slate-900">₹2.00 / Litre</span>
+                    <span className="text-slate-600">Applicable Development Tariff:</span>
+                    <span className="font-semibold text-slate-900">
+                      ₹{parseFloat(selectedApp.development_cost_per_litre || '2.00').toFixed(2)} / Litre
+                    </span>
                   </div>
                   <div className="flex justify-between items-center text-sm">
                     <span className="font-bold text-emerald-900">Total Development Bill (Atomic):</span>
                     <span className="font-bold text-emerald-700 text-base">
-                      {formatCurrency(parseFloat(approvedLitres) * 2.0)}
+                      {formatCurrency(parseFloat(approvedLitres) * parseFloat(selectedApp.development_cost_per_litre || '2.00'))}
                     </span>
                   </div>
                   <div className="text-[11px] text-slate-500 pt-1.5 border-t border-emerald-200/60">
                     Will atomically create 5 installments (Installment #1 = 2.5% ={' '}
-                    <span className="font-semibold text-slate-800">{formatCurrency(parseFloat(approvedLitres) * 2.0 * 0.025)}</span>).
+                    <span className="font-semibold text-slate-800">
+                      {formatCurrency(parseFloat(approvedLitres) * parseFloat(selectedApp.development_cost_per_litre || '2.00') * 0.025)}
+                    </span>).
                   </div>
                 </div>
               )}

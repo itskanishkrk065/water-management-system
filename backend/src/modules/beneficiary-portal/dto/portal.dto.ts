@@ -11,7 +11,7 @@ import {
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { LocationDirection, DocumentCategory } from '@prisma/client';
+import { LocationDirection, DocumentCategory } from '../../common/enums';
 
 export class UpdateProfileDto {
   @ApiPropertyOptional({ example: 'Survey Field 101, Canal Road' })

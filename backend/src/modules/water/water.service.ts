@@ -10,7 +10,7 @@ import {
   InfrastructureStatus,
   InstallmentStatus,
   LandStatus,
-} from '@prisma/client';
+} from '../common/enums';
 import { DecimalUtil } from '../common/decimal.util';
 import { Decimal } from 'decimal.js';
 
@@ -288,6 +288,7 @@ export class WaterService {
     projectId?: string;
     beneficiaryId?: string;
     status?: ApplicationStatus;
+    scope?: 'CURRENT' | 'HISTORY' | 'ALL';
     page?: number;
     limit?: number;
   }) {
@@ -298,7 +299,21 @@ export class WaterService {
     const where: any = {};
     if (query.projectId) where.project_id = query.projectId;
     if (query.beneficiaryId) where.beneficiary_id = query.beneficiaryId;
-    if (query.status) where.status = query.status;
+
+    if (query.status) {
+      where.status = query.status;
+    } else if (query.scope === 'HISTORY') {
+      where.OR = [
+        { status: { in: ['CANCELLED', 'REJECTED', 'VOIDED', 'ARCHIVED', 'SUPERSEDED'] as any } },
+        { landHolding: { status: { not: LandStatus.ACTIVE } } },
+      ];
+    } else if (query.scope === 'ALL') {
+      // Return everything without status restriction
+    } else {
+      // Default: CURRENT operational applications on active holdings
+      where.status = { in: [ApplicationStatus.SUBMITTED, ApplicationStatus.UNDER_REVIEW, ApplicationStatus.APPROVED] };
+      where.landHolding = { status: LandStatus.ACTIVE };
+    }
 
     const [items, total] = await Promise.all([
       this.prisma.waterApplication.findMany({
@@ -313,6 +328,18 @@ export class WaterService {
               name: true,
               phone_number: true,
               village: { select: { name: true } },
+              district: { select: { name: true } },
+              landHoldings: {
+                where: { status: LandStatus.ACTIVE },
+                select: {
+                  land_id: true,
+                  declared_total_area: true,
+                  area_unit: true,
+                  parcels: {
+                    select: { survey_number: true, subdivision_number: true },
+                  },
+                },
+              },
             },
           },
           project: {
@@ -340,8 +367,58 @@ export class WaterService {
       this.prisma.waterApplication.count({ where }),
     ]);
 
+    // Enrich each application with exact land holding calculation and effective tariff rate
+    const enrichedItems = await Promise.all(
+      items.map(async (item) => {
+        let totalLand = new Decimal(0);
+        if (item.landHolding) {
+          totalLand = new Decimal(item.landHolding.declared_total_area);
+        } else if (item.beneficiary?.landHoldings?.length) {
+          totalLand = item.beneficiary.landHoldings.reduce(
+            (acc, h) => acc.plus(new Decimal(h.declared_total_area)),
+            new Decimal(0),
+          );
+        }
+
+        const appDate = item.application_date ? new Date(item.application_date) : new Date();
+        let rate = await this.prisma.rateConfiguration.findFirst({
+          where: {
+            project_id: item.project_id,
+            effective_from: { lte: appDate },
+            OR: [{ effective_to: null }, { effective_to: { gt: appDate } }],
+          },
+          orderBy: { effective_from: 'desc' },
+        });
+        if (!rate) {
+          rate = await this.prisma.rateConfiguration.findFirst({
+            where: { project_id: item.project_id, is_active: true },
+            orderBy: { effective_from: 'desc' },
+          });
+        }
+        if (!rate) {
+          rate = await this.prisma.rateConfiguration.findFirst({
+            where: { project_id: item.project_id },
+            orderBy: { effective_from: 'desc' },
+          });
+        }
+
+        const litresPerAcre = rate ? new Decimal(rate.litres_per_acre) : new Decimal(10000);
+        const calculatedAllotment = DecimalUtil.mul(totalLand, litresPerAcre);
+
+        return {
+          ...item,
+          total_land_acres: totalLand.toFixed(4),
+          litres_per_acre: litresPerAcre.toString(),
+          calculated_allotment: calculatedAllotment.toFixed(2),
+          development_cost_per_litre: rate?.development_cost_per_litre?.toString() || '2.00',
+          running_cost_per_litre: rate?.running_cost_per_litre?.toString() || '0.50',
+          rate_configuration: rate || null,
+        };
+      }),
+    );
+
     return {
-      items,
+      items: enrichedItems,
       meta: {
         total,
         page,
@@ -431,13 +508,24 @@ export class WaterService {
       throw new BadRequestException('Cannot approve a rejected application.');
     }
 
-    // Active rate for the project
-    const activeRate = await this.prisma.rateConfiguration.findFirst({
-      where: { project_id: application.project_id, is_active: true },
+    // Resolve applicable rate for the project using application/effective date
+    const appDate = application.application_date ? new Date(application.application_date) : new Date();
+    let activeRate = await this.prisma.rateConfiguration.findFirst({
+      where: {
+        project_id: application.project_id,
+        effective_from: { lte: appDate },
+        OR: [{ effective_to: null }, { effective_to: { gt: appDate } }],
+      },
       orderBy: { effective_from: 'desc' },
     });
     if (!activeRate) {
-      throw new BadRequestException(`No active rate configuration found for project ${application.project_id}`);
+      activeRate = await this.prisma.rateConfiguration.findFirst({
+        where: { project_id: application.project_id, is_active: true },
+        orderBy: { effective_from: 'desc' },
+      });
+    }
+    if (!activeRate) {
+      throw new BadRequestException(`No rate configuration found for project ${application.project_id}`);
     }
 
     // Active installment template

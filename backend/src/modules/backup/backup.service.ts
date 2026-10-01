@@ -1,7 +1,7 @@
 import { Injectable, BadRequestException, InternalServerErrorException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
-import { AuditAction } from '@prisma/client';
+import { AuditAction } from '../common/enums';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
@@ -283,6 +283,20 @@ export class BackupService {
       fs.mkdirSync(dbDir, { recursive: true });
     }
     fs.writeFileSync(this.dbPath, dbPayloadBuffer);
+
+    // Reinitialize Prisma connection to refresh SQLite file handle and WAL state
+    await this.prisma.reinitializeConnection();
+
+    // Verify foreign key and database integrity immediately
+    try {
+      const integrity: any = await this.prisma.$queryRawUnsafe('PRAGMA integrity_check;');
+      const integrityResult = Array.isArray(integrity) && integrity.length > 0 ? Object.values(integrity[0])[0] : 'ok';
+      if (integrityResult !== 'ok') {
+        throw new BadRequestException(`Restored database integrity check failed: ${integrityResult}`);
+      }
+    } catch (checkErr: any) {
+      if (checkErr instanceof BadRequestException) throw checkErr;
+    }
 
     await this.auditService.log({
       userId,

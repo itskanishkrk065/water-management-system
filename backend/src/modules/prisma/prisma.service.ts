@@ -85,6 +85,21 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     }
   }
 
+  async reinitializeConnection() {
+    try {
+      await this.$disconnect();
+      await this.$connect();
+      await this.$queryRawUnsafe('PRAGMA journal_mode = WAL;');
+      await this.$queryRawUnsafe('PRAGMA synchronous = NORMAL;');
+      await this.$queryRawUnsafe('PRAGMA cache_size = -64000;');
+      await this.$queryRawUnsafe('PRAGMA temp_store = MEMORY;');
+      await this.$queryRawUnsafe('PRAGMA busy_timeout = 5000;');
+      this.logger.log('[Prisma] Database connection reinitialized successfully with performance PRAGMAs');
+    } catch (err: any) {
+      this.logger.warn(`[Prisma] Warning during database reinitialization: ${err?.message || err}`);
+    }
+  }
+
   async onModuleDestroy() {
     await this.$disconnect();
   }

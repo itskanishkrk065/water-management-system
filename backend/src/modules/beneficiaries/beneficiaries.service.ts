@@ -12,7 +12,8 @@ import {
   CompleteOnboardingDto,
 } from './dto/beneficiary.dto';
 import { DecimalUtil } from '../common/decimal.util';
-import { AuditAction, BeneficiaryStatus, LandStatus, Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
+import { AuditAction, BeneficiaryStatus, LandStatus, InfrastructureStatus } from '../common/enums';
 import { Decimal } from 'decimal.js';
 
 @Injectable()
@@ -482,7 +483,7 @@ export class BeneficiariesService {
     const totalLand = this.calculateTotalLand(beneficiary.landHoldings as any);
 
     // Parallel aggregate overview stats
-    const [allotmentAgg, appAgg, billAgg, paymentAgg, appsCount, infraCount] = await Promise.all([
+    const [allotmentAgg, appAgg, billAgg, paymentAgg, activeAppsCount, historicalAppsCount, infraCount, billsCount, paymentsCount] = await Promise.all([
       this.prisma.waterAllotment.aggregate({
         where: { beneficiary_id: id },
         _sum: { approved_litres: true },
@@ -490,7 +491,7 @@ export class BeneficiariesService {
       this.prisma.waterApplication.aggregate({
         where: {
           beneficiary_id: id,
-          status: { notIn: ['REJECTED', 'CANCELLED', 'VOIDED'] },
+          status: { notIn: ['REJECTED', 'CANCELLED', 'VOIDED', 'ARCHIVED'] },
         },
         _sum: { required_litres: true },
       }),
@@ -502,8 +503,21 @@ export class BeneficiariesService {
         where: { beneficiary_id: id, status: 'COMPLETED', is_reversal: false },
         _sum: { amount: true },
       }),
-      this.prisma.waterApplication.count({ where: { beneficiary_id: id } }),
+      this.prisma.waterApplication.count({
+        where: {
+          beneficiary_id: id,
+          status: { notIn: ['REJECTED', 'CANCELLED', 'VOIDED', 'ARCHIVED'] },
+        },
+      }),
+      this.prisma.waterApplication.count({
+        where: {
+          beneficiary_id: id,
+          status: { in: ['REJECTED', 'CANCELLED', 'VOIDED', 'ARCHIVED'] },
+        },
+      }),
       this.prisma.infrastructure.count({ where: { beneficiary_id: id } }),
+      this.prisma.developmentBill.count({ where: { beneficiary_id: id } }),
+      this.prisma.payment.count({ where: { beneficiary_id: id, is_reversal: false } }),
     ]);
 
     return {
@@ -512,13 +526,17 @@ export class BeneficiariesService {
       metrics: {
         totalLandAcres: totalLand.toString(),
         activeHoldingsCount: beneficiary.landHoldings.length,
-        waterApplicationsCount: appsCount,
+        waterApplicationsCount: activeAppsCount,
+        activeWaterAppsCount: activeAppsCount,
+        historicalWaterAppsCount: historicalAppsCount,
         requiredLitresTotal: appAgg._sum.required_litres?.toString() || '0',
         approvedLitresTotal: allotmentAgg._sum.approved_litres?.toString() || '0',
         billsTotalAmount: billAgg._sum.total_amount?.toString() || '0',
         pendingBalance: billAgg._sum.pending_amount?.toString() || '0',
         totalPaid: paymentAgg._sum.amount?.toString() || '0',
         infrastructureCount: infraCount,
+        billsCount,
+        paymentsCount,
       },
     };
   }
@@ -584,10 +602,10 @@ export class BeneficiariesService {
 
   async getBeneficiaryPayments(id: string, query?: { page?: number; limit?: number }) {
     const page = Math.max(1, query?.page || 1);
-    const limit = Math.max(1, Math.min(100, query?.limit || 20));
+    const limit = Math.max(1, Math.min(100, query?.limit || 50));
     const skip = (page - 1) * limit;
 
-    const [items, total] = await Promise.all([
+    const [items, total, developmentBills] = await Promise.all([
       this.prisma.payment.findMany({
         where: { beneficiary_id: id },
         orderBy: { payment_date: 'desc' },
@@ -598,10 +616,29 @@ export class BeneficiariesService {
         },
       }),
       this.prisma.payment.count({ where: { beneficiary_id: id } }),
+      this.prisma.developmentBill.findMany({
+        where: { beneficiary_id: id },
+        orderBy: { created_at: 'desc' },
+        include: {
+          installments: {
+            orderBy: { installment_number: 'asc' },
+            include: {
+              payments: {
+                where: { is_reversal: false },
+                orderBy: { payment_date: 'desc' },
+              },
+            },
+          },
+        },
+      }),
     ]);
+
+    const installments = developmentBills.flatMap((b) => b.installments || []);
 
     return {
       items,
+      developmentBills,
+      installments,
       meta: {
         total,
         page,
@@ -709,9 +746,43 @@ export class BeneficiariesService {
 
     const totalLand = this.calculateTotalLand(beneficiary.landHoldings as any);
 
+    // Compute Running Billing Financial Summary
+    let totalRunningBilled = new Decimal(0);
+    let totalRunningPaid = new Decimal(0);
+    let totalRunningPending = new Decimal(0);
+
+    for (const rb of beneficiary.runningBills || []) {
+      totalRunningBilled = totalRunningBilled.plus(new Decimal(rb.amount_due || 0));
+      totalRunningPaid = totalRunningPaid.plus(new Decimal(rb.amount_paid || 0));
+      totalRunningPending = totalRunningPending.plus(new Decimal(rb.pending_amount || 0));
+    }
+
+    const primaryInfra = beneficiary.infrastructures?.[0] || beneficiary.waterAllotments?.[0]?.infrastructure || null;
+    const isCommissioned = primaryInfra?.status === InfrastructureStatus.COMMISSIONED;
+    const runningStartDate = primaryInfra?.running_charge_start_date || primaryInfra?.commissioned_date || null;
+    const hasStarted = runningStartDate && new Date(runningStartDate) <= new Date();
+
+    const runningSummary = {
+      status: isCommissioned && hasStarted ? 'ACTIVE' : 'NOT_STARTED',
+      reason: !primaryInfra
+        ? 'Infrastructure not planned'
+        : !isCommissioned
+        ? `Infrastructure status is ${primaryInfra.status}`
+        : !hasStarted
+        ? `Running charges start on ${new Date(runningStartDate!).toISOString().slice(0, 10)}`
+        : 'Active and eligible for running charges',
+      commissionedDate: primaryInfra?.commissioned_date || null,
+      runningChargeStartDate: runningStartDate,
+      totalBilled: totalRunningBilled.toFixed(2),
+      totalPaid: totalRunningPaid.toFixed(2),
+      totalPending: totalRunningPending.toFixed(2),
+      billCount: beneficiary.runningBills?.length || 0,
+    };
+
     return {
       ...beneficiary,
       total_land_acres: totalLand.toString(),
+      running_summary: runningSummary,
     };
   }
 
