@@ -329,12 +329,15 @@ function startFrontendService() {
   logDesktop(`Frontend standalone path: ${standaloneServer}`);
   logDesktop(`Frontend standalone working dir: ${standaloneCwd}`);
 
+  const targetApiUrl = (process.env.WATERGRID_API_URL || process.env.NEXT_PUBLIC_API_URL || `http://${BACKEND_HOST}:${BACKEND_PORT}/api/v1`).trim().replace(/\/+$/, '');
+
   const frontendEnv = {
     PORT: String(FRONTEND_PORT),
     HOSTNAME: FRONTEND_HOST,
     NODE_ENV: 'production',
     NODE_PATH: standaloneNodeModules,
-    NEXT_PUBLIC_API_URL: `http://${BACKEND_HOST}:${BACKEND_PORT}/api/v1`,
+    NEXT_PUBLIC_API_URL: targetApiUrl,
+    WATERGRID_API_URL: targetApiUrl,
   };
 
   if (fs.existsSync(standaloneServer)) {
@@ -695,6 +698,10 @@ ipcMain.handle('app:set-secure-token', async (event, key, token) => {
     logDesktop(`Failed to encrypt secure token ${key}: ${err.message}`);
     return false;
   }
+});
+
+ipcMain.handle('app:get-api-url', () => {
+  return (process.env.WATERGRID_API_URL || process.env.NEXT_PUBLIC_API_URL || `http://${BACKEND_HOST}:${BACKEND_PORT}/api/v1`).trim().replace(/\/+$/, '');
 });
 
 // 12. Graceful Application Shutdown

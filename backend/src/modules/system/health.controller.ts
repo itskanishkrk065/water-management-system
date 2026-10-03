@@ -80,7 +80,7 @@ export class HealthController {
     } catch (err: any) {
       throw new ServiceUnavailableException({
         status: 'NOT_READY',
-        error: `Database ping failed: ${err.message}`,
+        error: 'Database connection unreachable',
         timestamp: new Date().toISOString(),
       });
     }

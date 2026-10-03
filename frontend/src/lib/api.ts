@@ -9,6 +9,14 @@ export const apiClient = axios.create({
   },
 });
 
+if (typeof window !== 'undefined' && (window as any).electronAPI?.getApiUrl) {
+  (window as any).electronAPI.getApiUrl().then((url: string) => {
+    if (url) {
+      apiClient.defaults.baseURL = url;
+    }
+  }).catch(() => {});
+}
+
 /**
  * Retrieves a stored token, prioritizing Electron SafeStorage (DPAPI/Keychain)
  * with graceful fallback to localStorage in browser environments.

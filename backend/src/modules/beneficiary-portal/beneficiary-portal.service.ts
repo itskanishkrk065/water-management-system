@@ -966,15 +966,42 @@ export class BeneficiaryPortalService {
   async uploadDocument(userId: string, dto: UploadDocumentDto) {
     const b = await this.getAuthenticatedBeneficiary(userId);
 
-    const safeFileName = path.basename(dto.fileName.trim());
-    const safeStoragePath = dto.storagePath ? path.basename(dto.storagePath.trim()) : safeFileName;
+    // Canonical Storage Root & Containment Verification (Phase Q Hardening)
+    const CANONICAL_STORAGE_ROOT = path.resolve(
+      process.env.DOCUMENT_STORAGE_ROOT || path.join(process.cwd(), 'uploads', 'documents'),
+    );
+
+    // Derive server-side destination partitioned by authenticated beneficiary ID
+    const beneficiaryDir = path.resolve(CANONICAL_STORAGE_ROOT, b.beneficiary_id);
+    const sanitizedFileName = path.basename(dto.fileName.trim()).replace(/[^a-zA-Z0-9._-]/g, '_');
+    if (!sanitizedFileName || sanitizedFileName === '.' || sanitizedFileName === '..') {
+      throw new BadRequestException('Invalid file name for document upload.');
+    }
+
+    const storageFileName = `${Date.now()}_${sanitizedFileName}`;
+    const targetPath = path.resolve(beneficiaryDir, storageFileName);
+
+    // Containment verification: targetPath must strictly reside within beneficiaryDir & CANONICAL_STORAGE_ROOT
+    const relFromBeneficiary = path.relative(beneficiaryDir, targetPath);
+    const relFromRoot = path.relative(CANONICAL_STORAGE_ROOT, targetPath);
+    if (
+      relFromBeneficiary.startsWith('..') ||
+      path.isAbsolute(relFromBeneficiary) ||
+      relFromRoot.startsWith('..') ||
+      path.isAbsolute(relFromRoot) ||
+      targetPath.includes('\0')
+    ) {
+      throw new BadRequestException('Security violation: Path traversal or storage boundary violation detected.');
+    }
+
+    const safeStoragePath = path.join(b.beneficiary_id, storageFileName).replace(/\\/g, '/');
 
     return this.prisma.beneficiaryDocument.create({
       data: {
         beneficiary_id: b.beneficiary_id,
         category: dto.category,
         title: dto.title.trim(),
-        file_name: safeFileName,
+        file_name: sanitizedFileName,
         file_size_bytes: dto.fileSizeBytes || null,
         mime_type: dto.mimeType || 'application/pdf',
         storage_path: safeStoragePath,

@@ -22,6 +22,11 @@ function getNormalizedDatabaseUrl(): string | undefined {
   return dbUrl;
 }
 
+function sanitizeDbUrl(url?: string): string {
+  if (!url) return 'DEFAULT';
+  return url.replace(/:\/\/([^:]+):([^@]+)@/, '://$1:****@');
+}
+
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(PrismaService.name);
@@ -46,7 +51,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
 
   async onModuleInit() {
     const dbUrl = process.env.DATABASE_URL || 'DEFAULT';
-    this.logger.log(`[Prisma] Initializing connection to: ${dbUrl}`);
+    this.logger.log(`[Prisma] Initializing connection to: ${sanitizeDbUrl(dbUrl)}`);
     this.logger.log(`[Prisma] Runtime - Platform: ${process.platform}, Arch: ${process.arch}, Node: ${process.version}`);
     this.logger.log(`[Prisma] Prisma Version: ${Prisma.prismaVersion?.client || '5.22.0'}`);
 
@@ -64,7 +69,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
         await this.$queryRawUnsafe('PRAGMA busy_timeout = 5000;');
         this.logger.log('[Prisma] SQLite Performance PRAGMAs configured (FK=ON, WAL, cache=64MB, temp_store=MEMORY)');
       } catch (pragmaErr: any) {
-        // Non-fatal if using PostgreSQL dev mode
+        // Non-fatal if using PostgreSQL / Neon mode
       }
 
       // Controlled startup health check
@@ -78,7 +83,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
       if (error?.meta) {
         console.error(`[Prisma] Meta: ${JSON.stringify(error.meta)}`);
       }
-      console.error(`[Prisma] Database URL: ${process.env.DATABASE_URL}`);
+      console.error(`[Prisma] Database URL: ${sanitizeDbUrl(process.env.DATABASE_URL)}`);
       console.error(`[Prisma] Platform: ${process.platform}, Arch: ${process.arch}, Node: ${process.version}`);
       console.error(`[Prisma] Stack:\n${error?.stack}`);
       console.error('==============================================');
@@ -90,13 +95,18 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     try {
       await this.$disconnect();
       await this.$connect();
-      await this.$queryRawUnsafe('PRAGMA foreign_keys = ON;');
-      await this.$queryRawUnsafe('PRAGMA journal_mode = WAL;');
-      await this.$queryRawUnsafe('PRAGMA synchronous = NORMAL;');
-      await this.$queryRawUnsafe('PRAGMA cache_size = -64000;');
-      await this.$queryRawUnsafe('PRAGMA temp_store = MEMORY;');
-      await this.$queryRawUnsafe('PRAGMA busy_timeout = 5000;');
-      this.logger.log('[Prisma] Database connection reinitialized successfully with performance PRAGMAs (FK=ON)');
+      try {
+        await this.$queryRawUnsafe('PRAGMA foreign_keys = ON;');
+        await this.$queryRawUnsafe('PRAGMA journal_mode = WAL;');
+        await this.$queryRawUnsafe('PRAGMA synchronous = NORMAL;');
+        await this.$queryRawUnsafe('PRAGMA cache_size = -64000;');
+        await this.$queryRawUnsafe('PRAGMA temp_store = MEMORY;');
+        await this.$queryRawUnsafe('PRAGMA busy_timeout = 5000;');
+        this.logger.log('[Prisma] SQLite Performance PRAGMAs configured (FK=ON, WAL)');
+      } catch (pragmaErr: any) {
+        // Non-fatal if using PostgreSQL / Neon mode
+      }
+      this.logger.log('[Prisma] Database connection reinitialized successfully');
     } catch (err: any) {
       this.logger.warn(`[Prisma] Warning during database reinitialization: ${err?.message || err}`);
     }

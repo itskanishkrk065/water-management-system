@@ -6,5 +6,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getSecureToken: (key) => ipcRenderer.invoke('app:get-secure-token', key),
   setSecureToken: (key, token) => ipcRenderer.invoke('app:set-secure-token', key, token),
   getDeviceId: () => ipcRenderer.invoke('app:get-device-id'),
+  getApiUrl: () => ipcRenderer.invoke('app:get-api-url'),
   isDesktop: true,
 });
