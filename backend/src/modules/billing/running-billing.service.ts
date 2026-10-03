@@ -448,7 +448,7 @@ export class RunningBillingService {
       where: {
         allotment_id: usage.allotment_id,
         billing_period: usage.billingPeriod.period_code,
-        status: { notIn: ['CANCELLED', 'VOIDED'] },
+        status: { notIn: [BillStatus.CANCELLED] },
       },
     });
     if (existingBill) {
@@ -679,7 +679,7 @@ export class RunningBillingService {
     if (query.beneficiaryId) where.beneficiary_id = query.beneficiaryId;
     if (query.allotmentId) where.allotment_id = query.allotmentId;
     if (query.districtId) where.beneficiary = { district_id: query.districtId };
-    if (query.status) where.status = query.status;
+    if (query.status) where.status = query.status as any;
 
     if (query.search) {
       const search = query.search.trim();

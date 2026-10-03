@@ -155,8 +155,8 @@ export class PaymentsService {
         if (runningBill.status === BillStatus.PAID) {
           throw new BadRequestException('Running bill is already fully paid.');
         }
-        if (runningBill.status === 'VOIDED' || runningBill.status === 'CANCELLED') {
-          throw new BadRequestException('Cannot record payment against a voided or cancelled running bill.');
+        if (runningBill.status === BillStatus.CANCELLED) {
+          throw new BadRequestException('Cannot record payment against a cancelled running bill.');
         }
 
         const beneficiaryId = dto.beneficiaryId || runningBill.beneficiary_id;
@@ -325,8 +325,8 @@ export class PaymentsService {
       if (runningBill.status === BillStatus.PAID) {
         throw new BadRequestException('Running bill is already fully paid.');
       }
-      if (runningBill.status === 'VOIDED' || runningBill.status === 'CANCELLED') {
-        throw new BadRequestException('Cannot record payment against a voided or cancelled running bill.');
+      if (runningBill.status === BillStatus.CANCELLED) {
+        throw new BadRequestException('Cannot record payment against a cancelled running bill.');
       }
 
       // Infrastructure commissioning guard

@@ -93,7 +93,7 @@ export class WaterService {
 
   /**
    * Canonical backend query: Get eligible land holdings for a new water application.
-   * Excludes land holdings that already have an active / blocking water application (APPROVED, SUBMITTED, UNDER_REVIEW, DRAFT).
+   * Excludes land holdings that already have an active / blocking water application (APPROVED, SUBMITTED, UNDER_REVIEW).
    * Holdings with REJECTED, CANCELLED, or VOIDED applications are released and eligible.
    */
   async getEligibleHoldings(beneficiaryId: string) {
@@ -124,17 +124,16 @@ export class WaterService {
       throw new NotFoundException(`Beneficiary ${beneficiaryId} not found`);
     }
 
-    const blockingStatuses = [
+    const blockingStatuses: ApplicationStatus[] = [
       ApplicationStatus.APPROVED,
       ApplicationStatus.SUBMITTED,
       ApplicationStatus.UNDER_REVIEW,
-      'DRAFT',
     ];
 
     const eligibleHoldings = beneficiary.landHoldings
       .filter((h) => {
         const blockingApp = beneficiary.waterApplications.find(
-          (a) => a.land_id === h.land_id && blockingStatuses.includes(a.status as any),
+          (a) => a.land_id === h.land_id && blockingStatuses.includes(a.status as ApplicationStatus),
         );
         return !blockingApp;
       })
@@ -241,7 +240,7 @@ export class WaterService {
         const existingActiveApp = await tx.waterApplication.findFirst({
           where: {
             land_id: targetLand.land_id,
-            status: { in: [ApplicationStatus.SUBMITTED, ApplicationStatus.UNDER_REVIEW, ApplicationStatus.APPROVED, 'DRAFT'] },
+            status: { in: [ApplicationStatus.SUBMITTED, ApplicationStatus.UNDER_REVIEW, ApplicationStatus.APPROVED] },
           },
         });
 

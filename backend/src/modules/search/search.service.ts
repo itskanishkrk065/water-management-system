@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { RoleName } from '../common/enums';
 
@@ -68,19 +69,24 @@ export class SearchService {
 
     const cleanDigits = rawTerm.replace(/[^0-9]/g, '');
     const isFinancialAllowed = role === RoleName.ADMIN || role === RoleName.ACCOUNTS || role === RoleName.VIEWER;
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawTerm);
 
     // 1. Search Beneficiaries
-    const beneficiaryWhere: any = {
-      OR: [
-        { name: { contains: rawTerm } },
-        cleanDigits.length >= 3 ? { phone_number: { contains: cleanDigits } } : undefined,
-        rawTerm.includes('@') ? { email: { contains: rawTerm } } : undefined,
-        rawTerm.length === 36 ? { beneficiary_id: rawTerm } : undefined,
-      ].filter(Boolean),
-    };
+    const benWhereOR: Prisma.BeneficiaryWhereInput[] = [
+      { name: { contains: rawTerm } },
+    ];
+    if (cleanDigits.length >= 3) {
+      benWhereOR.push({ phone_number: { contains: cleanDigits } });
+    }
+    if (rawTerm.includes('@')) {
+      benWhereOR.push({ email: { contains: rawTerm } });
+    }
+    if (isUuid) {
+      benWhereOR.push({ beneficiary_id: rawTerm });
+    }
 
     const beneficiariesPromise = this.prisma.beneficiary.findMany({
-      where: beneficiaryWhere,
+      where: { OR: benWhereOR },
       take: limit,
       include: {
         district: true,
@@ -89,22 +95,24 @@ export class SearchService {
     });
 
     // 2. Search Land Holdings & Parcels
-    const landHoldingsPromise = this.prisma.landHolding.findMany({
-      where: {
-        OR: [
-          rawTerm.length >= 4 ? { land_id: { contains: rawTerm } } : undefined,
-          {
-            parcels: {
-              some: {
-                OR: [
-                  { survey_number: { contains: rawTerm } },
-                  { subdivision_number: { contains: rawTerm } },
-                ],
-              },
-            },
+    const landWhereOR: Prisma.LandHoldingWhereInput[] = [
+      {
+        parcels: {
+          some: {
+            OR: [
+              { survey_number: { contains: rawTerm } },
+              { subdivision_number: { contains: rawTerm } },
+            ],
           },
-        ].filter(Boolean),
+        },
       },
+    ];
+    if (isUuid) {
+      landWhereOR.push({ land_id: rawTerm });
+    }
+
+    const landHoldingsPromise = this.prisma.landHolding.findMany({
+      where: { OR: landWhereOR },
       take: limit,
       include: {
         beneficiary: { select: { beneficiary_id: true, name: true, phone_number: true } },
@@ -114,14 +122,18 @@ export class SearchService {
     });
 
     // 3. Search Water Applications
+    const appWhereOR: Prisma.WaterApplicationWhereInput[] = [
+      { beneficiary: { name: { contains: rawTerm } } },
+    ];
+    if (cleanDigits.length >= 3) {
+      appWhereOR.push({ beneficiary: { phone_number: { contains: cleanDigits } } });
+    }
+    if (isUuid) {
+      appWhereOR.push({ application_id: rawTerm });
+    }
+
     const waterApplicationsPromise = this.prisma.waterApplication.findMany({
-      where: {
-        OR: [
-          rawTerm.length >= 4 ? { application_id: { contains: rawTerm } } : undefined,
-          { beneficiary: { name: { contains: rawTerm } } },
-          cleanDigits.length >= 3 ? { beneficiary: { phone_number: { contains: cleanDigits } } } : undefined,
-        ].filter(Boolean),
-      },
+      where: { OR: appWhereOR },
       take: limit,
       include: {
         beneficiary: { select: { beneficiary_id: true, name: true } },
@@ -131,49 +143,59 @@ export class SearchService {
     });
 
     // 4. Search Bills (Financial Role check)
-    const billsPromise = isFinancialAllowed
-      ? this.prisma.developmentBill.findMany({
-          where: {
-            OR: [
-              rawTerm.length >= 4 ? { bill_id: { contains: rawTerm } } : undefined,
-              { beneficiary: { name: { contains: rawTerm } } },
-              cleanDigits.length >= 3 ? { beneficiary: { phone_number: { contains: cleanDigits } } } : undefined,
-            ].filter(Boolean),
-          },
-          take: limit,
-          include: {
-            beneficiary: { select: { beneficiary_id: true, name: true } },
-          },
-        })
-      : Promise.resolve([]);
+    let billsPromise = Promise.resolve<any[]>([]);
+    if (isFinancialAllowed) {
+      const billWhereOR: Prisma.DevelopmentBillWhereInput[] = [
+        { beneficiary: { name: { contains: rawTerm } } },
+      ];
+      if (cleanDigits.length >= 3) {
+        billWhereOR.push({ beneficiary: { phone_number: { contains: cleanDigits } } });
+      }
+      if (isUuid) {
+        billWhereOR.push({ bill_id: rawTerm });
+      }
+
+      billsPromise = this.prisma.developmentBill.findMany({
+        where: { OR: billWhereOR },
+        take: limit,
+        include: {
+          beneficiary: { select: { beneficiary_id: true, name: true } },
+        },
+      });
+    }
 
     // 5. Search Payments (Financial Role check)
-    const paymentsPromise = isFinancialAllowed
-      ? this.prisma.payment.findMany({
-          where: {
-            OR: [
-              rawTerm.length >= 4 ? { payment_id: { contains: rawTerm } } : undefined,
-              { receipt_number: { contains: rawTerm } },
-              { payment_reference: { contains: rawTerm } },
-              { beneficiary: { name: { contains: rawTerm } } },
-            ].filter(Boolean),
-          },
-          take: limit,
-          include: {
-            beneficiary: { select: { beneficiary_id: true, name: true } },
-          },
-        })
-      : Promise.resolve([]);
+    let paymentsPromise = Promise.resolve<any[]>([]);
+    if (isFinancialAllowed) {
+      const paymentWhereOR: Prisma.PaymentWhereInput[] = [
+        { receipt_number: { contains: rawTerm } },
+        { payment_reference: { contains: rawTerm } },
+        { beneficiary: { name: { contains: rawTerm } } },
+      ];
+      if (isUuid) {
+        paymentWhereOR.push({ payment_id: rawTerm });
+      }
+
+      paymentsPromise = this.prisma.payment.findMany({
+        where: { OR: paymentWhereOR },
+        take: limit,
+        include: {
+          beneficiary: { select: { beneficiary_id: true, name: true } },
+        },
+      });
+    }
 
     // 6. Search Project Schemes
+    const projectWhereOR: Prisma.ProjectWhereInput[] = [
+      { project_name: { contains: rawTerm } },
+      { project_code: { contains: rawTerm } },
+    ];
+    if (isUuid) {
+      projectWhereOR.push({ project_id: rawTerm });
+    }
+
     const projectSchemesPromise = this.prisma.project.findMany({
-      where: {
-        OR: [
-          { project_name: { contains: rawTerm } },
-          { project_code: { contains: rawTerm } },
-          rawTerm.length >= 4 ? { project_id: { contains: rawTerm } } : undefined,
-        ].filter(Boolean),
-      },
+      where: { OR: projectWhereOR },
       take: limit,
     });
 
