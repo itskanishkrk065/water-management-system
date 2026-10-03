@@ -37,6 +37,16 @@ function authRateLimiter(req: any, res: any, next: any) {
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
+
+  // 0. Resolve runtime environment BEFORE creating the NestJS app.
+  //    ConfigModule.forRoot evaluates ignoreEnvFile at module-init time,
+  //    so NODE_ENV must already be set to prevent the local .env
+  //    (which contains NODE_ENV=development) from overriding Render's env.
+  if (!process.env.NODE_ENV && (process.env.RENDER || process.env.RENDER_SERVICE_ID)) {
+    process.env.NODE_ENV = 'production';
+  }
+  const isProduction = process.env.NODE_ENV === 'production';
+
   const app = await NestFactory.create(AppModule);
 
   // 1. Security Headers
@@ -76,11 +86,7 @@ async function bootstrap() {
     new StructuredLoggerInterceptor(),
   );
 
-  // 6. Runtime Environment & Swagger OpenAPI Documentation
-  if (!process.env.NODE_ENV && process.env.RENDER) {
-    process.env.NODE_ENV = 'production';
-  }
-  const isProduction = process.env.NODE_ENV === 'production';
+  // 6. Swagger OpenAPI Documentation
   if (!isProduction || process.env.ENABLE_SWAGGER === 'true') {
     const config = new DocumentBuilder()
       .setTitle('Water Management System API')
