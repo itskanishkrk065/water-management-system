@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { PaymentsService } from '../payments/payments.service';
 import { Decimal } from 'decimal.js';
 import { d, toDecimalString } from '../common/decimal.util';
 import {
@@ -28,6 +29,7 @@ export class BeneficiaryPortalService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
+    private readonly paymentsService: PaymentsService,
   ) {}
 
   /**
@@ -826,6 +828,22 @@ export class BeneficiaryPortalService {
       include: {
         rate: { select: { version_code: true, running_cost_per_litre: true } },
         payments: { orderBy: { payment_date: 'desc' } },
+        waterUsageRecord: true,
+        billingPeriod: true,
+      },
+      orderBy: { created_at: 'desc' },
+    });
+
+    const usageRecords = await this.prisma.waterUsageRecord.findMany({
+      where: {
+        OR: [
+          { beneficiary_id: b.beneficiary_id },
+          { allotment: { beneficiary_id: b.beneficiary_id } },
+        ],
+      },
+      include: {
+        billingPeriod: true,
+        runningBill: true,
       },
       orderBy: { created_at: 'desc' },
     });
@@ -836,7 +854,40 @@ export class BeneficiaryPortalService {
       commissionedAt: infra?.commissioned_date || null,
       runningChargeStartDate: runningStartDate,
       bills,
+      usageRecords,
     };
+  }
+
+  /**
+   * POST /beneficiary/running-bills/:id/pay
+   * Self-service running bill payment for the beneficiary portal.
+   *
+   * Ownership is enforced in two layers:
+   * 1. Here: getAuthenticatedBeneficiary resolves the authenticated user's beneficiaryId.
+   * 2. In PaymentsService.recordRunningBillPayment: the bill's beneficiary_id must match.
+   */
+  async payMyRunningBill(
+    userId: string,
+    runningBillId: string,
+    dto: {
+      amount: number;
+      paymentMode?: string;
+      paymentReference?: string;
+      paymentDate?: string;
+      remarks?: string;
+    },
+    ipAddress?: string,
+  ) {
+    const b = await this.getAuthenticatedBeneficiary(userId);
+
+    return this.paymentsService.recordRunningBillPayment(
+      runningBillId,
+      dto,
+      b.beneficiary_id,
+      b.name || b.email || userId,
+      userId,
+      ipAddress,
+    );
   }
 
   /**

@@ -35,6 +35,14 @@ redis_data/
 
 # Temporary DB restores & archives
 *.pre-restore-*
+*.pre-*
 *.wmbak
 *.tsbuildinfo
 backend/prisma/prisma/
+*-wal
+*-shm
+
+# Mobile builds & binaries
+mobile/
+*.apk
+

@@ -44,6 +44,19 @@ export class PaymentsService {
     const remarks = dto.remarks || dto.notes || null;
     const officer = dto.collectorName || dto.collector || recordedBy;
 
+    // Idempotency check (RUN-NEW-041)
+    if (dto.idempotencyKey) {
+      const existingPayment = await this.prisma.payment.findFirst({
+        where: {
+          payment_reference: dto.idempotencyKey,
+          status: { not: PaymentStatus.REVERSED },
+        },
+      });
+      if (existingPayment) {
+        return existingPayment;
+      }
+    }
+
     const result = await this.prisma.$transaction(async (tx) => {
       // 1. Payment for Installment
       if (dto.installmentId) {
@@ -219,6 +232,165 @@ export class PaymentsService {
     });
 
     return result;
+  }
+
+  /**
+   * Dedicated running bill payment recorder — called from the beneficiary portal.
+   *
+   * Differences from the generic recordPayment path:
+   * 1. Enforces ownership: validates that the running bill belongs to this beneficiary.
+   * 2. Validates infrastructure commissioning to prevent payment on ineligible bills.
+   * 3. Emits RUNNING_BILL_PAYMENT_RECORDED audit action (not generic PAYMENT_RECORDED).
+   * 4. Prevents routing to installment or extension paths — only running bill logic runs.
+   * 5. Rejects voided / cancelled bills before any writes.
+   */
+  async recordRunningBillPayment(
+    runningBillId: string,
+    dto: {
+      amount: number;
+      paymentMode?: string;
+      paymentReference?: string;
+      paymentDate?: string;
+      remarks?: string;
+      idempotencyKey?: string;
+    },
+    beneficiaryId: string,
+    recordedBy: string,
+    userId?: string,
+    ipAddress?: string,
+  ) {
+    if (!runningBillId) {
+      throw new BadRequestException('Running bill ID is required.');
+    }
+    if (dto.amount === undefined || dto.amount === null || isNaN(Number(dto.amount))) {
+      throw new BadRequestException('A valid numerical payment amount is required.');
+    }
+
+    const payAmount = DecimalUtil.roundMoney(new Decimal(dto.amount));
+    if (payAmount.lte(0)) {
+      throw new BadRequestException('Payment amount must be strictly greater than zero.');
+    }
+
+    // Resolve the running bill and validate ownership in a single query
+    const runningBill = await this.prisma.runningBill.findUnique({
+      where: { running_bill_id: runningBillId },
+      include: {
+        allotment: {
+          include: { infrastructure: { select: { status: true } } },
+        },
+      },
+    });
+
+    if (!runningBill) {
+      throw new NotFoundException(`Running bill ${runningBillId} not found.`);
+    }
+
+    // Ownership gate: if beneficiaryId is explicitly provided (self-service portal), verify ownership
+    const effectiveBeneficiaryId = runningBill.beneficiary_id;
+    if (beneficiaryId && beneficiaryId !== effectiveBeneficiaryId) {
+      throw new BadRequestException('Running bill does not belong to your account.');
+    }
+
+    // Status guards
+    if (runningBill.status === BillStatus.PAID) {
+      throw new BadRequestException('Running bill is already fully paid.');
+    }
+    if (runningBill.status === 'VOIDED' || runningBill.status === 'CANCELLED') {
+      throw new BadRequestException('Cannot record payment against a voided or cancelled running bill.');
+    }
+
+    // Infrastructure commissioning guard
+    const infraStatus = runningBill.allotment?.infrastructure?.status;
+    if (infraStatus && infraStatus !== 'COMMISSIONED') {
+      throw new BadRequestException(
+        `Infrastructure is not COMMISSIONED (current: ${infraStatus}). Running charges cannot be collected until commissioning.`,
+      );
+    }
+
+    const pendingAmount = new Decimal(runningBill.pending_amount);
+    if (payAmount.greaterThan(pendingAmount)) {
+      throw new BadRequestException(
+        `Payment amount ₹${payAmount.toFixed(2)} exceeds pending running bill amount ₹${pendingAmount.toFixed(2)}.`,
+      );
+    }
+
+    const receiptNumber = this.generateReceiptNumber('RRC');
+    const paymentDate = dto.paymentDate ? new Date(dto.paymentDate) : new Date();
+    const mode = (dto.paymentMode || 'CASH') as any;
+    const ref = mode === 'CASH' ? null : (dto.paymentReference || null);
+    const idempKey = dto.idempotencyKey || (ref ? ref : undefined);
+
+    // Idempotency check (RUN-NEW-041)
+    if (idempKey) {
+      const existing = await this.prisma.payment.findFirst({
+        where: {
+          running_bill_id: runningBillId,
+          payment_reference: idempKey,
+          status: { not: PaymentStatus.REVERSED },
+        },
+      });
+      if (existing) {
+        return existing;
+      }
+    }
+
+    const payment = await this.prisma.$transaction(async (tx) => {
+      const newPaid = DecimalUtil.roundMoney(
+        DecimalUtil.add(new Decimal(runningBill.amount_paid), payAmount),
+      );
+      const newPending = DecimalUtil.roundMoney(
+        DecimalUtil.sub(new Decimal(runningBill.amount_due), newPaid),
+      );
+      const newStatus = newPending.isZero() ? BillStatus.PAID : BillStatus.PARTIALLY_PAID;
+
+      // Immutable payment record — linked exclusively to running_bill_id
+      const created = await tx.payment.create({
+        data: {
+          beneficiary_id: effectiveBeneficiaryId,
+          running_bill_id: runningBillId,
+          amount: payAmount,
+          payment_date: paymentDate,
+          payment_reference: idempKey || ref,
+          receipt_number: receiptNumber,
+          payment_mode: mode,
+          status: PaymentStatus.COMPLETED,
+          remarks: dto.remarks || null,
+          recorded_by: recordedBy,
+        },
+      });
+
+      // Update running bill balances atomically
+      await tx.runningBill.update({
+        where: { running_bill_id: runningBillId },
+        data: {
+          amount_paid: newPaid,
+          pending_amount: newPending,
+          status: newStatus,
+        },
+      });
+
+      return created;
+    });
+
+    // Specific audit action distinguishes running bill payments from installment payments
+    await this.auditService.log({
+      userId,
+      action: AuditAction.RUNNING_PAYMENT_RECORDED,
+      entityType: AuditEntityType.PAYMENT,
+      entityId: payment.payment_id,
+      newValues: {
+        runningBillId,
+        amount: payAmount.toFixed(2),
+        receiptNumber,
+        beneficiaryId: effectiveBeneficiaryId,
+        paymentMode: mode,
+        billingPeriod: runningBill.billing_period,
+      },
+      reason: `Running bill payment of ₹${payAmount.toFixed(2)} recorded. Receipt: ${receiptNumber}. Period: ${runningBill.billing_period}.`,
+      ipAddress,
+    });
+
+    return payment;
   }
 
   /**
@@ -417,7 +589,15 @@ export class PaymentsService {
             },
           },
         },
-        runningBill: true,
+        runningBill: {
+          include: {
+            allotment: {
+              include: {
+                application: { include: { project: true } },
+              },
+            },
+          },
+        },
       },
     });
 
@@ -484,9 +664,15 @@ export class PaymentsService {
       doc.text(`Address: ${b.address_line_1}`, 55, 226);
     }
 
-    // Section 2: Water Allocation & Land Holding Particulars
+    // Section 2: Water Allocation & Land Holding Particulars (context-aware: dev bill vs running bill)
+    const isRunningBillPayment = !!payment.running_bill_id;
+    const runningBill = (payment as any).runningBill;
+
     doc.rect(40, 252, 515, 90).fill('#f8fafc');
-    doc.fillColor('#334155').fontSize(10).font('Helvetica-Bold').text('2. WATER ALLOCATION & LAND HOLDING PARTICULARS', 55, 262);
+    doc.fillColor('#334155').fontSize(10).font('Helvetica-Bold').text(
+      isRunningBillPayment ? '2. RUNNING CHARGES — BILLING PARTICULARS' : '2. WATER ALLOCATION & LAND HOLDING PARTICULARS',
+      55, 262,
+    );
 
     const inst = payment.installment;
     const bill = inst?.bill;
@@ -495,31 +681,56 @@ export class PaymentsService {
     const land = app?.landHolding;
 
     doc.fontSize(8.5).font('Helvetica').fillColor('#475569');
-    doc.text(`Land Holding ID: ${land ? land.land_id.slice(0, 8) + '...' : 'N/A'}`, 55, 282);
-    doc.text(`Declared Area: ${land ? Number(land.declared_total_area).toFixed(2) + ' ACRES' : 'N/A'}`, 55, 298);
-    doc.text(`Water App #: ${app ? '#' + app.application_id.slice(0, 8) : 'N/A'}`, 55, 314);
 
-    doc.text(`Approved Quota: ${allot ? Number(allot.approved_litres).toLocaleString('en-IN') + ' L' : 'N/A'}`, 300, 282);
-    doc.text(`Historical Tariff Rate: ${bill ? '₹' + Number(bill.development_cost_per_litre_snapshot).toFixed(2) + '/L' : 'N/A'}`, 300, 298);
-    doc.text(`Development Bill #: ${bill ? '#' + bill.bill_id.slice(0, 8) : 'N/A'}`, 300, 314);
+    if (isRunningBillPayment && runningBill) {
+      // Running bill payment — show periodic charge details
+      doc.text(`Bill Number: ${runningBill.bill_number || runningBill.running_bill_id?.slice(0, 8) || 'N/A'}`, 55, 282);
+      doc.text(`Billing Period: ${runningBill.billing_period || 'N/A'}`, 55, 298);
+      doc.text(`Period Window: ${runningBill.billing_period_start ? new Date(runningBill.billing_period_start).toLocaleDateString('en-IN') : 'N/A'} — ${runningBill.billing_period_end ? new Date(runningBill.billing_period_end).toLocaleDateString('en-IN') : 'N/A'}`, 55, 314);
 
-    // Section 3: Payment & Milestone Breakdown Table
+      doc.text(`Approved Quota: ${runningBill.approved_litres_snapshot ? Number(runningBill.approved_litres_snapshot).toLocaleString('en-IN') + ' L' : 'N/A'}`, 300, 282);
+      doc.text(`Running Rate: ₹${runningBill.running_cost_per_litre_snapshot ? Number(runningBill.running_cost_per_litre_snapshot).toFixed(2) : 'N/A'}/L`, 300, 298);
+      doc.text(`Tariff Version: ${runningBill.tariff_version || 'STANDARD'}`, 300, 314);
+    } else {
+      // Development bill / installment payment
+      doc.text(`Land Holding ID: ${land ? land.land_id.slice(0, 8) + '...' : 'N/A'}`, 55, 282);
+      doc.text(`Declared Area: ${land ? Number(land.declared_total_area).toFixed(2) + ' ACRES' : 'N/A'}`, 55, 298);
+      doc.text(`Water App #: ${app ? '#' + app.application_id.slice(0, 8) : 'N/A'}`, 55, 314);
+
+      doc.text(`Approved Quota: ${allot ? Number(allot.approved_litres).toLocaleString('en-IN') + ' L' : 'N/A'}`, 300, 282);
+      doc.text(`Historical Tariff Rate: ${bill ? '₹' + Number(bill.development_cost_per_litre_snapshot).toFixed(2) + '/L' : 'N/A'}`, 300, 298);
+      doc.text(`Development Bill #: ${bill ? '#' + bill.bill_id.slice(0, 8) : 'N/A'}`, 300, 314);
+    }
+
+    // Section 3: Payment Breakdown Table (context-aware)
+    const sectionThreeLabel = isRunningBillPayment
+      ? '3. RECURRING RUNNING CHARGE SETTLEMENT'
+      : '3. PAYMENT & INSTALLMENT SETTLEMENT';
+
     doc.rect(40, 350, 515, 130).fill('#ffffff').stroke('#cbd5e1');
-    doc.rect(40, 350, 515, 22).fill('#e2e8f0');
-    doc.fillColor('#1e293b').fontSize(9).font('Helvetica-Bold').text('3. PAYMENT & INSTALLMENT SETTLEMENT', 55, 356);
+    doc.rect(40, 350, 515, 22).fill(isRunningBillPayment ? '#ecfeff' : '#e2e8f0');
+    doc.fillColor('#1e293b').fontSize(9).font('Helvetica-Bold').text(sectionThreeLabel, 55, 356);
 
     doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#334155');
-    doc.text('Description / Milestone', 55, 380);
-    doc.text('Stage %', 280, 380);
+    doc.text('Description', 55, 380);
+    doc.text('Charge Type', 280, 380);
     doc.text('Due Amount', 360, 380, { align: 'right', width: 80 });
     doc.text('Paid in Transaction', 450, 380, { align: 'right', width: 90 });
 
     doc.moveTo(40, 395).lineTo(555, 395).stroke('#cbd5e1');
 
     doc.font('Helvetica').fillColor('#1e293b');
-    const milestoneName = inst ? `Stage #${inst.installment_number} Milestone Payment` : 'Water Development Settlement';
-    const stagePct = inst ? `${Number(inst.percentage).toFixed(1)}%` : '100.0%';
-    const dueAmt = inst ? `₹${Number(inst.amount_due).toLocaleString('en-IN', { minimumFractionDigits: 2 })}` : '₹0.00';
+    const milestoneName = isRunningBillPayment
+      ? `Running Charges — ${runningBill?.billing_period || 'Recurring Cycle'}`
+      : inst
+      ? `Stage #${inst.installment_number} Milestone Payment`
+      : 'Water Development Settlement';
+    const stagePct = isRunningBillPayment ? 'RECURRING' : inst ? `${Number(inst.percentage).toFixed(1)}%` : '100.0%';
+    const dueAmt = isRunningBillPayment && runningBill
+      ? `₹${Number(runningBill.amount_due).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`
+      : inst
+      ? `₹${Number(inst.amount_due).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`
+      : '₹0.00';
     const paidAmt = `₹${Number(payment.amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
 
     doc.text(milestoneName, 55, 405);
@@ -567,6 +778,14 @@ export class PaymentsService {
     const buffer = await pdfPromise;
     const fileName = `Payment_Receipt_${payment.receipt_number}.pdf`;
     return { buffer, fileName };
+  }
+
+  /**
+   * Explicit financial deletion rejection guard (RUN-NEW-044).
+   * Financial payment records are strictly immutable and cannot be deleted.
+   */
+  async deletePayment(paymentId: string): Promise<never> {
+    throw new BadRequestException('Financial payment records are immutable and cannot be deleted. Use payment reversal if authorized.');
   }
 
   private generateReceiptNumber(prefix = 'REC'): string {

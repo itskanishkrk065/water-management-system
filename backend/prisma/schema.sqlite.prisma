@@ -33,6 +33,7 @@ model User {
   refreshTokens RefreshToken[]
   auditLogs     AuditLog[]
   beneficiary   Beneficiary?
+  collectedWaterUsages WaterUsageRecord[] @relation("UsageCollectionAgent")
 
   @@map("users")
 }
@@ -201,6 +202,7 @@ model Beneficiary {
   extensions        Extension[]
   payments          Payment[]
   documents         BeneficiaryDocument[]
+  waterUsageRecords WaterUsageRecord[]
 
   @@index([phone_number])
   @@index([district_id])
@@ -341,6 +343,7 @@ model WaterAllotment {
   infrastructure  Infrastructure?
   runningBills    RunningBill[]
   extensions      Extension[]
+  waterUsageRecords WaterUsageRecord[]
 
   @@index([beneficiary_id])
   @@index([rate_id])
@@ -441,11 +444,75 @@ model Infrastructure {
 
   allotment   WaterAllotment @relation(fields: [allotment_id], references: [allotment_id], onDelete: Restrict)
   beneficiary Beneficiary    @relation(fields: [beneficiary_id], references: [beneficiary_id], onDelete: Restrict)
+  waterUsageRecords WaterUsageRecord[]
 
   @@index([beneficiary_id])
   @@index([status])
   @@index([running_charge_start_date])
   @@map("infrastructure")
+}
+
+model BillingPeriod {
+  billing_period_id    String    @id @default(uuid())
+  period_code          String    @unique
+  period_start         DateTime
+  period_end           DateTime
+  status               String    @default("OPEN")
+  collection_start_date DateTime
+  collection_end_date   DateTime
+  payment_due_date     DateTime
+  created_at           DateTime  @default(now())
+  updated_at           DateTime  @updatedAt
+  closed_at            DateTime?
+
+  waterUsageRecords WaterUsageRecord[]
+  runningBills      RunningBill[]
+
+  @@index([status])
+  @@index([period_start])
+  @@index([period_end])
+  @@map("billing_periods")
+}
+
+model WaterUsageRecord {
+  usage_id                 String    @id @default(uuid())
+  beneficiary_id           String
+  allotment_id             String
+  infrastructure_id        String?
+  billing_period_id        String
+  collection_agent_id      String?
+  usage_period_start       DateTime
+  usage_period_end         DateTime
+  collection_date          DateTime  @default(now())
+  actual_usage_litres      Decimal
+  approved_litres_snapshot Decimal
+  usage_entry_mode         String    @default("DIRECT")
+  previous_meter_reading   Decimal?
+  current_meter_reading    Decimal?
+  running_rate_snapshot    Decimal
+  tariff_id                String?
+  tariff_version           String?
+  calculated_amount        Decimal
+  status                   String    @default("RECORDED")
+  notes                    String?
+  verified_at              DateTime?
+  verified_by              String?
+  created_at               DateTime  @default(now())
+  updated_at               DateTime  @updatedAt
+
+  beneficiary     Beneficiary       @relation(fields: [beneficiary_id], references: [beneficiary_id], onDelete: Restrict)
+  allotment       WaterAllotment    @relation(fields: [allotment_id], references: [allotment_id], onDelete: Restrict)
+  infrastructure  Infrastructure?   @relation(fields: [infrastructure_id], references: [infrastructure_id], onDelete: SetNull)
+  billingPeriod   BillingPeriod     @relation(fields: [billing_period_id], references: [billing_period_id], onDelete: Restrict)
+  collectionAgent User?             @relation("UsageCollectionAgent", fields: [collection_agent_id], references: [user_id], onDelete: SetNull)
+  runningBill     RunningBill?
+
+  @@unique([allotment_id, billing_period_id])
+  @@index([beneficiary_id])
+  @@index([billing_period_id])
+  @@index([status])
+  @@index([collection_date])
+  @@map("water_usage_records")
 }
 
 model RunningBill {
@@ -455,6 +522,8 @@ model RunningBill {
   beneficiary_id                      String
   rate_id                             String
   billing_period                      String
+  billing_period_id                   String?
+  usage_id                            String?   @unique
   billing_period_start                DateTime?
   billing_period_end                  DateTime?
   running_charge_start_date_snapshot DateTime?
@@ -462,25 +531,42 @@ model RunningBill {
   tariff_version                      String?
   calculation_breakdown               String?
   approved_litres_snapshot            Decimal
+  actual_usage_litres_snapshot        Decimal?
   running_cost_per_litre_snapshot     Decimal
   amount_due                          Decimal
   amount_paid                         Decimal   @default(0)
   pending_amount                      Decimal
   due_date                            DateTime?
   status                              String    @default("PENDING")
+  is_legacy                           Boolean   @default(false)
+  legacy_classification               String?
   created_at                          DateTime  @default(now())
   updated_at                          DateTime  @updatedAt
 
-  allotment   WaterAllotment    @relation(fields: [allotment_id], references: [allotment_id], onDelete: Restrict)
-  beneficiary Beneficiary       @relation(fields: [beneficiary_id], references: [beneficiary_id], onDelete: Restrict)
-  rate        RateConfiguration @relation(fields: [rate_id], references: [rate_id], onDelete: Restrict)
-  payments    Payment[]
+  allotment         WaterAllotment    @relation(fields: [allotment_id], references: [allotment_id], onDelete: Restrict)
+  beneficiary       Beneficiary       @relation(fields: [beneficiary_id], references: [beneficiary_id], onDelete: Restrict)
+  rate              RateConfiguration @relation(fields: [rate_id], references: [rate_id], onDelete: Restrict)
+  billingPeriod     BillingPeriod?    @relation(fields: [billing_period_id], references: [billing_period_id], onDelete: SetNull)
+  waterUsageRecord  WaterUsageRecord? @relation(fields: [usage_id], references: [usage_id], onDelete: SetNull)
+  payments          Payment[]
 
   @@index([allotment_id])
   @@index([beneficiary_id])
   @@index([billing_period])
+  @@index([billing_period_id])
   @@index([status])
+  @@index([is_legacy])
   @@map("running_bills")
+}
+
+model SystemClockState {
+  state_id             String    @id @default(uuid())
+  last_known_timestamp DateTime  @default(now())
+  is_rollback_detected Boolean   @default(false)
+  rollback_detected_at DateTime?
+  updated_at           DateTime  @updatedAt
+
+  @@map("system_clock_state")
 }
 
 model Extension {

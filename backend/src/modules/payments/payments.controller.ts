@@ -26,6 +26,25 @@ export class PaymentsController {
     return this.paymentsService.recordPayment(dto, user.email, user.user_id, ip);
   }
 
+  @Post('running-bills/:id/pay')
+  @Roles(RoleName.ADMIN, RoleName.ACCOUNTS, RoleName.FIELD_OFFICER, RoleName.BENEFICIARY)
+  @ApiOperation({ summary: 'Authoritative running bill payment (used by both Running Bills module and Beneficiary Portal)' })
+  async recordRunningBillPayment(
+    @Param('id') runningBillId: string,
+    @Body() dto: { amount: number; paymentMode?: string; paymentReference?: string; paymentDate?: string; remarks?: string },
+    @CurrentUser() user: RequestUser,
+    @Ip() ip: string,
+  ) {
+    return this.paymentsService.recordRunningBillPayment(
+      runningBillId,
+      dto,
+      user.role === RoleName.BENEFICIARY ? user.user_id : undefined,
+      user.email || user.full_name || 'System Operator',
+      user.user_id,
+      ip,
+    );
+  }
+
   @Post(':id/reverse')
   @Roles(RoleName.ADMIN, RoleName.ACCOUNTS)
   @ApiOperation({ summary: 'Reverse a payment transaction with audit record (Accounts / Admin)' })

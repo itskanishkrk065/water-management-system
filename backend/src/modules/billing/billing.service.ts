@@ -253,42 +253,77 @@ export class BillingService {
 
   /**
    * Computes calculation breakdown for a billing period, splitting across tariff changes if needed.
+   *
+   * Key invariants enforced:
+   * 1. Only RUNNING-type rate configurations are used (DEVELOPMENT/TAR rates excluded).
+   * 2. Non-overlapping windows: each rate is valid only until the next rate's effective_from
+   *    (latest-rate-wins semantics). This prevents double-counting when multiple open-ended
+   *    rate rows exist for the same project.
+   * 3. effectiveBillingStart respects individual per-beneficiary commissioning dates — if an
+   *    infrastructure was commissioned mid-period, billing starts from that date, not pStart.
    */
   private async calculateRunningChargeComponents(
     approvedLitres: Decimal,
     projectId: string,
     pStart: Date,
     pEnd: Date,
+    effectiveBillingStart?: Date,
   ): Promise<{
     totalAmount: Decimal;
     primaryTariff: any;
     components: RunningBillComponent[];
   }> {
-    // Find all rate configurations that overlap with [pStart, pEnd]
+    // Clamp the billing start to the individual running charge start date.
+    // This correctly prorates the first billing period for mid-period commissionings.
+    const billingStart = effectiveBillingStart && effectiveBillingStart > pStart
+      ? effectiveBillingStart
+      : pStart;
+
+    if (billingStart > pEnd) {
+      this.logger.warn(`calculateRunningChargeComponents: effectiveBillingStart (${billingStart.toISOString()}) is after pEnd (${pEnd.toISOString()}). Returning zero amount.`);
+      return { totalAmount: new Decimal(0), primaryTariff: null, components: [] };
+    }
+
+    // CRITICAL: Only query RUNNING-type rate configurations.
+    // DEVELOPMENT (TAR-*) rates must never be included in running charge calculations.
     const allRates = await this.prisma.rateConfiguration.findMany({
       where: {
         project_id: projectId,
+        rate_type: 'RUNNING',
         effective_from: { lte: pEnd },
-        OR: [{ effective_to: null }, { effective_to: { gt: pStart } }],
+        OR: [{ effective_to: null }, { effective_to: { gt: billingStart } }],
       },
       orderBy: { effective_from: 'asc' },
     });
 
-    if (allRates.length === 0) {
-      const fallbackRate = await this.ratesService.getApplicableTariff('RUNNING', pStart, projectId);
+    // Fallback: if no RUNNING-typed rates exist, try any rate with a nonzero running cost
+    // (handles legacy data before rate_type was properly set).
+    const effectiveRates = allRates.length > 0 ? allRates : await this.prisma.rateConfiguration.findMany({
+      where: {
+        project_id: projectId,
+        running_cost_per_litre: { gt: 0 },
+        effective_from: { lte: pEnd },
+        OR: [{ effective_to: null }, { effective_to: { gt: billingStart } }],
+      },
+      orderBy: { effective_from: 'asc' },
+    });
+
+    if (effectiveRates.length === 0) {
+      const fallbackRate = await this.ratesService.getApplicableTariff('RUNNING', billingStart, projectId);
       const totalAmount = DecimalUtil.roundMoney(
         approvedLitres.times(fallbackRate.running_cost_per_litre),
       );
+      const totalDays = Math.max(1, Math.round((pEnd.getTime() - billingStart.getTime()) / (1000 * 60 * 60 * 24)) + 1);
       return {
         totalAmount,
         primaryTariff: fallbackRate,
         components: [
           {
-            periodLabel: `${pStart.toISOString().slice(0, 10)} → ${pEnd.toISOString().slice(0, 10)}`,
-            startDate: pStart.toISOString(),
+            periodLabel: `${billingStart.toISOString().slice(0, 10)} → ${pEnd.toISOString().slice(0, 10)}`,
+            startDate: billingStart.toISOString(),
             endDate: pEnd.toISOString(),
-            days: Math.round((pEnd.getTime() - pStart.getTime()) / (1000 * 60 * 60 * 24)) + 1,
-            totalDays: Math.round((pEnd.getTime() - pStart.getTime()) / (1000 * 60 * 60 * 24)) + 1,
+            days: totalDays,
+            totalDays,
             chargeableLitres: approvedLitres.toFixed(2),
             runningRatePerLitre: fallbackRate.running_cost_per_litre.toString(),
             tariffVersion: fallbackRate.version_code || 'STANDARD',
@@ -300,30 +335,49 @@ export class BillingService {
     }
 
     /**
-     * Authoritative Running Charge Quantity Model:
-     * Model C: Time-Prorated Allocation
-     * "Running billing quantity is time-prorated against the beneficiary's approved/allotted quantity for the billing period."
+     * Authoritative Running Charge Quantity Model: Time-Prorated Allocation
      *
-     * When a billing period falls entirely within a single tariff window, the full periodic allocation is charged at that rate.
-     * When a billing period crosses a tariff boundary, the allocation quantity is split across tariff tiers in proportion to active calendar days.
+     * Non-overlapping window construction (latest-rate-wins):
+     * Given rates sorted by effective_from ASC, each rate is valid only until the
+     * NEXT rate starts. This prevents double-counting when multiple open-ended
+     * rate rows exist for the same project and period.
+     *
+     * Example:
+     *   Rate A: effective_from=Jan, effective_to=null
+     *   Rate B: effective_from=Aug, effective_to=null
+     *   → Rate A window: Jan → Aug-1 (capped by Rate B start)
+     *   → Rate B window: Aug → open
+     *   No overlap. No double-counting.
      */
-    if (allRates.length === 1) {
-      const rate = allRates[0];
+
+    // Single-rate fast path — prorated by effective billing days if beneficiary started mid-period.
+    if (effectiveRates.length === 1) {
+      const rate = effectiveRates[0];
+      const fullPeriodDays = Math.max(1, Math.round((pEnd.getTime() - pStart.getTime()) / (1000 * 60 * 60 * 24)) + 1);
+      const effectiveDays = Math.max(1, Math.round((pEnd.getTime() - billingStart.getTime()) / (1000 * 60 * 60 * 24)) + 1);
+      const totalDays = effectiveDays;
+
+      // Prorate if billingStart > pStart (mid-period commissioning)
+      const ratio = new Decimal(effectiveDays).dividedBy(fullPeriodDays);
+      const chargeableLitres = billingStart > pStart
+        ? approvedLitres.times(ratio).toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
+        : approvedLitres;
+
       const totalAmount = DecimalUtil.roundMoney(
-        approvedLitres.times(rate.running_cost_per_litre),
+        chargeableLitres.times(rate.running_cost_per_litre),
       );
-      const totalDays = Math.round((pEnd.getTime() - pStart.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+
       return {
         totalAmount,
         primaryTariff: rate,
         components: [
           {
-            periodLabel: `${pStart.toISOString().slice(0, 10)} → ${pEnd.toISOString().slice(0, 10)}`,
-            startDate: pStart.toISOString(),
+            periodLabel: `${billingStart.toISOString().slice(0, 10)} → ${pEnd.toISOString().slice(0, 10)}`,
+            startDate: billingStart.toISOString(),
             endDate: pEnd.toISOString(),
             days: totalDays,
             totalDays,
-            chargeableLitres: approvedLitres.toFixed(2),
+            chargeableLitres: chargeableLitres.toFixed(2),
             runningRatePerLitre: rate.running_cost_per_litre.toString(),
             tariffVersion: rate.version_code || 'STANDARD',
             tariffId: rate.rate_id,
@@ -333,45 +387,60 @@ export class BillingService {
       };
     }
 
-
-    // MULTI-TARIFF SPLIT across period
-    const totalDays = Math.max(1, Math.round((pEnd.getTime() - pStart.getTime()) / (1000 * 60 * 60 * 24)) + 1);
+    // MULTI-TARIFF SPLIT: build non-overlapping time windows across the billing period.
+    // totalDays is computed over [billingStart, pEnd] (respects individual start date).
+    const totalDays = Math.max(1, Math.round((pEnd.getTime() - billingStart.getTime()) / (1000 * 60 * 60 * 24)) + 1);
     const components: RunningBillComponent[] = [];
     let cumulativeAmount = new Decimal(0);
 
-    for (let i = 0; i < allRates.length; i++) {
-      const rate = allRates[i];
+    for (let i = 0; i < effectiveRates.length; i++) {
+      const rate = effectiveRates[i];
+      const nextRate = effectiveRates[i + 1];
       const rateEffFrom = new Date(rate.effective_from);
-      const rateEffTo = rate.effective_to ? new Date(rate.effective_to) : null;
 
-      const segStart = rateEffFrom > pStart ? rateEffFrom : pStart;
-      let segEnd = rateEffTo && rateEffTo < pEnd ? new Date(rateEffTo.getTime() - 1000) : pEnd;
-      if (segEnd > pEnd) segEnd = pEnd;
-
-      if (segStart <= segEnd) {
-        const segDays = Math.max(1, Math.round((segEnd.getTime() - segStart.getTime()) / (1000 * 60 * 60 * 24)) + 1);
-        const segRatio = new Decimal(segDays).dividedBy(totalDays);
-        const segLitres = approvedLitres.times(segRatio).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
-        const segAmount = segLitres.times(rate.running_cost_per_litre).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
-
-        cumulativeAmount = cumulativeAmount.plus(segAmount);
-
-        components.push({
-          periodLabel: `${segStart.toISOString().slice(0, 10)} → ${segEnd.toISOString().slice(0, 10)}`,
-          startDate: segStart.toISOString(),
-          endDate: segEnd.toISOString(),
-          days: segDays,
-          totalDays,
-          chargeableLitres: segLitres.toFixed(2),
-          runningRatePerLitre: rate.running_cost_per_litre.toString(),
-          tariffVersion: rate.version_code || `TAR-${i + 1}`,
-          tariffId: rate.rate_id,
-          amount: segAmount.toFixed(2),
-        });
+      // LATEST-RATE-WINS: this rate's effective end is the earlier of:
+      //   a) Its own effective_to
+      //   b) The next rate's effective_from (when next rate supersedes this one)
+      // This is the key fix preventing double-counting of overlapping rates.
+      let rateWindowEnd: Date | null = rate.effective_to ? new Date(rate.effective_to) : null;
+      if (nextRate) {
+        const nextStart = new Date(nextRate.effective_from);
+        rateWindowEnd = rateWindowEnd ? (nextStart < rateWindowEnd ? nextStart : rateWindowEnd) : nextStart;
       }
+
+      // Intersect the rate's non-overlapping window with [billingStart, pEnd]
+      const segStart = rateEffFrom > billingStart ? rateEffFrom : billingStart;
+      const segEndRaw = rateWindowEnd && rateWindowEnd <= pEnd ? rateWindowEnd : pEnd;
+      // segEnd is inclusive: if rateWindowEnd is exclusive (next rate starts exactly here),
+      // subtract 1 millisecond to keep segments non-overlapping.
+      const segEnd = (rateWindowEnd && rateWindowEnd.getTime() === segEndRaw.getTime() && nextRate)
+        ? new Date(segEndRaw.getTime() - 1)
+        : segEndRaw;
+
+      if (segStart > pEnd || segEnd < billingStart) continue; // Window is entirely outside billing period
+
+      const segDays = Math.max(1, Math.round((segEnd.getTime() - segStart.getTime()) / (1000 * 60 * 60 * 24)) + 1);
+      const segRatio = new Decimal(segDays).dividedBy(totalDays);
+      const segLitres = approvedLitres.times(segRatio).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+      const segAmount = segLitres.times(rate.running_cost_per_litre).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+
+      cumulativeAmount = cumulativeAmount.plus(segAmount);
+
+      components.push({
+        periodLabel: `${segStart.toISOString().slice(0, 10)} → ${segEnd.toISOString().slice(0, 10)}`,
+        startDate: segStart.toISOString(),
+        endDate: segEnd.toISOString(),
+        days: segDays,
+        totalDays,
+        chargeableLitres: segLitres.toFixed(2),
+        runningRatePerLitre: rate.running_cost_per_litre.toString(),
+        tariffVersion: rate.version_code || `RATE-${i + 1}`,
+        tariffId: rate.rate_id,
+        amount: segAmount.toFixed(2),
+      });
     }
 
-    const primaryTariff = allRates[allRates.length - 1];
+    const primaryTariff = effectiveRates[effectiveRates.length - 1];
     return {
       totalAmount: DecimalUtil.roundMoney(cumulativeAmount),
       primaryTariff,
@@ -448,12 +517,19 @@ export class BillingService {
         ineligibilityReason = `Already billed for period '${dto.billingPeriod}'`;
       }
 
-      // Calculate calculation breakdown
+      // Determine the effective billing start date for this individual beneficiary.
+      // If their infrastructure was commissioned mid-period, they are only charged from
+      // the running_charge_start_date, NOT from the start of the billing period.
+      const runningStartDate = infra?.running_charge_start_date || infra?.commissioned_date;
+      const effectiveBillingStart = runningStartDate ? new Date(runningStartDate) : pStart;
+
+      // Calculate calculation breakdown (individual start date passed for mid-period proration)
       const { totalAmount, primaryTariff, components } = await this.calculateRunningChargeComponents(
         approvedLitres,
         projectId,
         pStart,
         pEnd,
+        effectiveBillingStart,
       );
 
       previewList.push({
@@ -473,8 +549,8 @@ export class BillingService {
         isEligible,
         ineligibilityReason,
         alreadyBilled,
-        tariffVersion: primaryTariff.version_code || 'STANDARD',
-        runningRatePerLitre: primaryTariff.running_cost_per_litre.toString(),
+        tariffVersion: primaryTariff?.version_code || 'STANDARD',
+        runningRatePerLitre: primaryTariff?.running_cost_per_litre?.toString() || '0',
         calculatedAmount: totalAmount.toFixed(2),
         components,
       });

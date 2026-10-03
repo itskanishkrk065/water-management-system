@@ -73,6 +73,11 @@ export class RecordPaymentDto {
   @IsOptional()
   @IsString()
   notes?: string;
+
+  @ApiProperty({ example: 'IDEMP-12345', required: false })
+  @IsOptional()
+  @IsString()
+  idempotencyKey?: string;
 }
 
 export class ReversePaymentDto {

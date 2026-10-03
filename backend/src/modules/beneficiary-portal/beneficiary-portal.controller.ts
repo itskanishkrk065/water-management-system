@@ -142,6 +142,18 @@ export class BeneficiaryPortalController {
     return this.portalService.getMyRunningBills(user.user_id);
   }
 
+  @Post('running-bills/:id/pay')
+  @ApiOperation({ summary: 'Self-service: Record payment against a running bill (beneficiary-owned)' })
+  async payMyRunningBill(
+    @CurrentUser() user: RequestUser,
+    @Param('id') runningBillId: string,
+    @Body() dto: { amount: number; paymentMode?: string; paymentReference?: string; paymentDate?: string; remarks?: string },
+    @Req() req: any,
+  ) {
+    const ip = req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+    return this.portalService.payMyRunningBill(user.user_id, runningBillId, dto, ip);
+  }
+
   @Get('extensions')
   @ApiOperation({ summary: 'List quota extension requests' })
   async getMyExtensions(@CurrentUser() user: RequestUser) {

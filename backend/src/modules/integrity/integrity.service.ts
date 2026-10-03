@@ -5,7 +5,7 @@ import { ApplicationStatus, BeneficiaryStatus, LandStatus, PaymentStatus } from 
 
 export interface IntegrityFinding {
   code: string;
-  category: 'WATER_APPLICATION' | 'LAND_HOLDING' | 'WATER_ALLOTMENT' | 'BILLING' | 'INSTALLMENT' | 'PAYMENT' | 'FINANCIAL_BALANCE';
+  category: 'WATER_APPLICATION' | 'LAND_HOLDING' | 'WATER_ALLOTMENT' | 'BILLING' | 'INSTALLMENT' | 'PAYMENT' | 'FINANCIAL_BALANCE' | 'RUNNING_CHARGES';
   severity: 'PASS' | 'WARNING' | 'ERROR';
   entityId?: string;
   title: string;
@@ -41,6 +41,7 @@ export class IntegrityService {
     await this.checkInstallments(findings);
     await this.checkPayments(findings);
     await this.checkFinancialBalances(findings);
+    await this.checkRunningCharges(findings);
 
     const errorCount = findings.filter((f) => f.severity === 'ERROR').length;
     const warningCount = findings.filter((f) => f.severity === 'WARNING').length;
@@ -457,6 +458,76 @@ export class IntegrityService {
         severity: 'PASS',
         title: 'Financial ledgers, total paid and outstanding balances 100% reconciled',
         description: 'All development bills and installment pending amounts match verified posted transactions.',
+      });
+    }
+  }
+
+  private async checkRunningCharges(findings: IntegrityFinding[]) {
+    const runningBills = await this.prisma.runningBill.findMany({
+      include: {
+        payments: { where: { status: 'COMPLETED', is_reversal: false } },
+        waterUsageRecord: true,
+      },
+    });
+
+    let runningErrors = 0;
+    for (const rb of runningBills) {
+      const amountDue = new Decimal(rb.amount_due);
+      const amountPaid = new Decimal(rb.amount_paid);
+      const pendingAmount = new Decimal(rb.pending_amount);
+
+      const paymentsSum = rb.payments.reduce((acc, p) => acc.plus(new Decimal(p.amount)), new Decimal(0));
+
+      if (!amountPaid.equals(paymentsSum)) {
+        runningErrors++;
+        findings.push({
+          code: 'RUNNING_BILL_PAID_MISMATCH',
+          category: 'RUNNING_CHARGES',
+          severity: 'ERROR',
+          entityId: rb.running_bill_id,
+          title: `Running Bill #${rb.bill_number || rb.running_bill_id.slice(0, 8)} paid mismatch`,
+          description: `Stored amount_paid ₹${amountPaid.toFixed(2)} does not match sum of verified payments ₹${paymentsSum.toFixed(2)}.`,
+        });
+      }
+
+      const expectedPending = Decimal.max(0, amountDue.minus(amountPaid));
+      if (!pendingAmount.equals(expectedPending)) {
+        runningErrors++;
+        findings.push({
+          code: 'RUNNING_BILL_PENDING_MISMATCH',
+          category: 'RUNNING_CHARGES',
+          severity: 'ERROR',
+          entityId: rb.running_bill_id,
+          title: `Running Bill #${rb.bill_number || rb.running_bill_id.slice(0, 8)} pending mismatch`,
+          description: `Stored pending_amount ₹${pendingAmount.toFixed(2)} does not match expected pending balance ₹${expectedPending.toFixed(2)}.`,
+        });
+      }
+
+      if (!rb.is_legacy && rb.actual_usage_litres_snapshot && rb.running_cost_per_litre_snapshot) {
+        const expectedDue = new Decimal(rb.actual_usage_litres_snapshot)
+          .times(new Decimal(rb.running_cost_per_litre_snapshot))
+          .toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+        if (!amountDue.equals(expectedDue)) {
+          runningErrors++;
+          findings.push({
+            code: 'RUNNING_BILL_FORMULA_MISMATCH',
+            category: 'RUNNING_CHARGES',
+            severity: 'ERROR',
+            entityId: rb.running_bill_id,
+            title: `Running Bill #${rb.bill_number} amount_due violates actual usage × rate formula`,
+            description: `Amount due ₹${amountDue.toFixed(2)} does not equal ${rb.actual_usage_litres_snapshot} L × ₹${rb.running_cost_per_litre_snapshot}/L = ₹${expectedDue.toFixed(2)}.`,
+          });
+        }
+      }
+    }
+
+    if (runningErrors === 0) {
+      findings.push({
+        code: 'RUNNING_CHARGES_INTEGRITY_PASS',
+        category: 'RUNNING_CHARGES',
+        severity: 'PASS',
+        title: 'Running charges, usage snapshots, and payment ledgers 100% reconciled',
+        description: 'All running bills have verified mathematical integrity and accurate payment allocations.',
       });
     }
   }
