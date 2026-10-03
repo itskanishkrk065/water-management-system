@@ -76,7 +76,10 @@ async function bootstrap() {
     new StructuredLoggerInterceptor(),
   );
 
-  // 6. Swagger OpenAPI Documentation (Enabled in Development & Staging)
+  // 6. Runtime Environment & Swagger OpenAPI Documentation
+  if (!process.env.NODE_ENV && process.env.RENDER) {
+    process.env.NODE_ENV = 'production';
+  }
   const isProduction = process.env.NODE_ENV === 'production';
   if (!isProduction || process.env.ENABLE_SWAGGER === 'true') {
     const config = new DocumentBuilder()
@@ -91,9 +94,9 @@ async function bootstrap() {
     logger.log('📚 Swagger documentation available at /api/docs');
   }
 
-  // 7. Configurable Host Binding
-  const port = process.env.PORT || 4000;
-  const host = process.env.HOST || (isProduction ? '0.0.0.0' : '127.0.0.1');
+  // 7. Configurable Host and Port Binding
+  const port = Number(process.env.PORT) || 4000;
+  const host = isProduction ? '0.0.0.0' : (process.env.HOST || '127.0.0.1');
 
   await app.listen(port, host);
   logger.log(`🚀 WaterGrid Backend running on http://${host}:${port}/api/v1 (ENV: ${process.env.NODE_ENV || 'development'})`);
