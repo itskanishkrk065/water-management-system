@@ -211,14 +211,11 @@ export class DeveloperCleanStateService {
    * Executes the Clean State Protocol with mandatory safety backup and transactional integrity.
    */
   async executeCleanState(dto: CleanStateExecuteDto, userId?: string, ipAddress?: string) {
-    // 1. Production Environment Lock Protection
+    // 1. Production Environment Lock Protection: Permanently blocked in production
     if (this.currentEnvironment === AppEnvironmentEnum.PRODUCTION) {
-      const validBypass = dto.productionBypassKey === 'WATERGRID_PRODUCTION_RESET_OVERRIDE';
-      if (!validBypass) {
-        throw new ForbiddenException(
-          'PRODUCTION PROTECTION ACTIVE: Direct database reset is locked in PRODUCTION mode. To proceed, an explicit production bypass key is required.'
-        );
-      }
+      throw new ForbiddenException(
+        'PRODUCTION SAFETY LOCK: Database clean-state and reset protocols are permanently disabled in PRODUCTION mode to prevent catastrophic data loss.'
+      );
     }
 
     // 2. Strict Confirmation Validation

@@ -4,6 +4,7 @@ import {
   ForbiddenException,
   BadRequestException,
 } from '@nestjs/common';
+import * as path from 'path';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { PaymentsService } from '../payments/payments.service';
@@ -965,15 +966,18 @@ export class BeneficiaryPortalService {
   async uploadDocument(userId: string, dto: UploadDocumentDto) {
     const b = await this.getAuthenticatedBeneficiary(userId);
 
+    const safeFileName = path.basename(dto.fileName.trim());
+    const safeStoragePath = dto.storagePath ? path.basename(dto.storagePath.trim()) : safeFileName;
+
     return this.prisma.beneficiaryDocument.create({
       data: {
         beneficiary_id: b.beneficiary_id,
         category: dto.category,
         title: dto.title.trim(),
-        file_name: dto.fileName.trim(),
+        file_name: safeFileName,
         file_size_bytes: dto.fileSizeBytes || null,
         mime_type: dto.mimeType || 'application/pdf',
-        storage_path: dto.storagePath,
+        storage_path: safeStoragePath,
         reference_id: dto.referenceId || null,
       },
     });

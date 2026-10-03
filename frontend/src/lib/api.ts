@@ -33,6 +33,9 @@ export async function setSecureToken(key: string, value: string | null): Promise
   if ((window as any).electronAPI?.setSecureToken) {
     try {
       await (window as any).electronAPI.setSecureToken(key, value);
+      // Ensure no unencrypted token remains in localStorage when running inside Electron
+      try { localStorage.removeItem(key); } catch {}
+      return;
     } catch {}
   }
   if (value) {

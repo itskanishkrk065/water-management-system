@@ -114,8 +114,10 @@ export class ClientSyncWorkerService {
     });
 
     if (pendingItems.length === 0) {
-      const conflicts = await client.syncOutbox.count({ where: { status: 'CONFLICT' } });
-      this.currentState = conflicts > 0 ? 'ATTENTION_REQUIRED' : 'ONLINE';
+      const issues = await client.syncOutbox.count({
+        where: { status: { in: ['CONFLICT', 'FAILED_PERMANENT'] } },
+      });
+      this.currentState = issues > 0 ? 'ATTENTION_REQUIRED' : 'ONLINE';
       return { processedCount: 0, appliedCount: 0, conflictCount: 0, failedCount: 0 };
     }
 
@@ -195,14 +197,16 @@ export class ClientSyncWorkerService {
       this.currentState = 'OFFLINE';
       this.lastError = err.message;
 
-      // Increment retry counts and mark RETRYING
+      // Increment retry counts and mark RETRYING or FAILED_PERMANENT if max retries exceeded
+      const MAX_RETRIES = 10;
       for (const item of pendingItems) {
         const nextRetry = (item.retry_count || 0) + 1;
+        const newStatus = nextRetry >= MAX_RETRIES ? 'FAILED_PERMANENT' : 'RETRYING';
         await client.syncOutbox.update({
           where: { outbox_id: item.outbox_id },
           data: {
             retry_count: nextRetry,
-            status: 'RETRYING',
+            status: newStatus,
             last_error: err.message,
           },
         });

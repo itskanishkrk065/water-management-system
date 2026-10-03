@@ -40,9 +40,12 @@ export class AuthService {
 
   async refreshTokens(dto: RefreshTokenDto) {
     try {
-      const payload = this.jwtService.verify(dto.refreshToken, {
-        secret: process.env.JWT_REFRESH_SECRET || 'super-secret-refresh-jwt-key-water-mgmt-v1',
-      });
+      const refreshSecret = process.env.JWT_REFRESH_SECRET;
+      if (!refreshSecret && process.env.NODE_ENV === 'production') {
+        throw new UnauthorizedException('JWT_REFRESH_SECRET is not configured in production');
+      }
+      const secret = refreshSecret || 'super-secret-refresh-jwt-key-water-mgmt-v1';
+      const payload = this.jwtService.verify(dto.refreshToken, { secret });
 
       const tokenRecord = await this.prisma.refreshToken.findUnique({
         where: { token_id: payload.jti },
