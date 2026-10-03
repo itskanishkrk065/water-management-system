@@ -141,8 +141,8 @@ export class ApplicationClockService {
   /**
    * Asserts clock is valid. Throws error if clock rollback is active.
    */
-  async assertClockValid(actorUserId?: string, ipAddress?: string): Promise<void> {
-    const { rollbackDetected, lastKnownTimestamp, currentTimestamp } = await this.checkClockRollback(new Date(), actorUserId, ipAddress);
+  async assertClockValid(actorUserId?: string, ipAddress?: string, testDate?: Date): Promise<void> {
+    const { rollbackDetected, lastKnownTimestamp, currentTimestamp } = await this.checkClockRollback(testDate || new Date(), actorUserId, ipAddress);
     if (rollbackDetected) {
       throw new BadRequestException(
         `SYSTEM_CLOCK_ROLLBACK: Sensitive financial and billing operations are restricted because system date rollback was detected (Last known: ${lastKnownTimestamp.toISOString()}, Current: ${currentTimestamp.toISOString()}). Admin review required.`,
