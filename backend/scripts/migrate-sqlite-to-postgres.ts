@@ -3,6 +3,14 @@ import * as path from 'path';
 import { execFileSync } from 'child_process';
 import { Client } from 'pg';
 import { Decimal } from 'decimal.js';
+import * as dotenv from 'dotenv';
+
+const envPostgresPath = path.resolve(__dirname, '../.env.postgres');
+if (fs.existsSync(envPostgresPath)) {
+  dotenv.config({ path: envPostgresPath });
+} else {
+  dotenv.config({ path: path.resolve(__dirname, '../.env') });
+}
 
 interface TableMigrationPlan {
   tableName: string;
@@ -203,8 +211,9 @@ export interface FinancialReconciliationSummary {
 export class SqliteToPostgresMigration {
   private sqliteDbPath: string;
   private postgresUrl?: string;
+  private cleanTarget: boolean;
 
-  constructor(sqliteDbPath?: string, postgresUrl?: string) {
+  constructor(sqliteDbPath?: string, postgresUrl?: string, cleanTarget: boolean = false) {
     this.sqliteDbPath = sqliteDbPath || path.resolve(__dirname, '../prisma/template.db');
     this.postgresUrl =
       postgresUrl ||
@@ -212,10 +221,14 @@ export class SqliteToPostgresMigration {
       process.env.POSTGRES_URL ||
       process.env.DATABASE_URL_UNPOOLED ||
       process.env.DATABASE_URL;
+    this.cleanTarget = cleanTarget;
   }
 
   private querySqliteJson(sql: string): any[] {
-    const raw = execFileSync('sqlite3', ['-json', this.sqliteDbPath, sql], { encoding: 'utf8' }).trim();
+    const raw = execFileSync('sqlite3', ['-json', this.sqliteDbPath, sql], {
+      encoding: 'utf8',
+      maxBuffer: 100 * 1024 * 1024,
+    }).trim();
     if (!raw || raw === '') return [];
     try {
       return JSON.parse(raw);
@@ -294,6 +307,12 @@ export class SqliteToPostgresMigration {
     lines.push('-- Financial Invariant: Zero historical recalculation. Exact preservation.');
     lines.push('-- ====================================================================\n');
     lines.push('BEGIN;\n');
+
+    if (this.cleanTarget) {
+      lines.push('-- Clean target database tables before baseline seed insertion');
+      const tableNames = TABLES.map((t) => `"${t.tableName}"`).reverse().join(', ');
+      lines.push(`TRUNCATE TABLE ${tableNames} CASCADE;\n`);
+    }
 
     const validUsers = new Set(this.querySqliteJson('SELECT user_id FROM users;').map((u: any) => u.user_id));
 
@@ -497,7 +516,8 @@ END $$;
 }
 
 async function main() {
-  const migrator = new SqliteToPostgresMigration();
+  const clean = process.argv.includes('--clean');
+  const migrator = new SqliteToPostgresMigration(undefined, undefined, clean);
   const result = await migrator.executeLiveMigration();
 
   console.log('\n======================================================');
@@ -516,8 +536,40 @@ async function main() {
   console.log('\nPayments:');
   console.log(`  Total Payments:    ${result.sqliteSummary.payments.totalCount} (Sum: ₹${result.sqliteSummary.payments.totalAmount})`);
   console.log(`  Running Payments:  ${result.sqliteSummary.payments.runningCount} (Sum: ₹${result.sqliteSummary.payments.runningAmount})`);
-  console.log(`  Installment Payments: ${result.sqliteSummary.payments.installmentCount} (Sum: ₹${result.sqliteSummary.payments.installmentAmount})`);
   console.log('======================================================\n');
+
+  if (result.postgresSummary) {
+    console.log('======================================================');
+    console.log('PHASE 3 FINANCIAL RECONCILIATION SUMMARY (POSTGRESQL TARGET)');
+    console.log('======================================================');
+    console.log('Development Bills:');
+    console.log(`  Count: ${result.postgresSummary.developmentBills.count}`);
+    console.log(`  Total: ₹${result.postgresSummary.developmentBills.totalAmount}`);
+    console.log(`  Paid:  ₹${result.postgresSummary.developmentBills.totalPaid}`);
+    console.log(`  Pending: ₹${result.postgresSummary.developmentBills.totalPending}`);
+    console.log('\nRunning Bills:');
+    console.log(`  Total Count:  ${result.postgresSummary.runningBills.count} (${result.postgresSummary.runningBills.activeCount} active + ${result.postgresSummary.runningBills.legacyCount} legacy)`);
+    console.log(`  Amount Due:   ₹${result.postgresSummary.runningBills.totalDue}`);
+    console.log(`  Amount Paid:  ₹${result.postgresSummary.runningBills.totalPaid}`);
+    console.log(`  Pending:      ₹${result.postgresSummary.runningBills.totalPending}`);
+    console.log('\nPayments:');
+    console.log(`  Total Payments:    ${result.postgresSummary.payments.totalCount} (Sum: ₹${result.postgresSummary.payments.totalAmount})`);
+    console.log(`  Running Payments:  ${result.postgresSummary.payments.runningCount} (Sum: ₹${result.postgresSummary.payments.runningAmount})`);
+    console.log(`  Installment Payments: ${result.postgresSummary.payments.installmentCount} (Sum: ₹${result.postgresSummary.payments.installmentAmount})`);
+    console.log('======================================================');
+
+    // Assert exact financial match
+    const devMatches = JSON.stringify(result.sqliteSummary.developmentBills) === JSON.stringify(result.postgresSummary.developmentBills);
+    const runMatches = JSON.stringify(result.sqliteSummary.runningBills) === JSON.stringify(result.postgresSummary.runningBills);
+    const payMatches = JSON.stringify(result.sqliteSummary.payments) === JSON.stringify(result.postgresSummary.payments);
+
+    if (devMatches && runMatches && payMatches) {
+      console.log('✅ RECONCILIATION SUCCESS: 100% financial and count parity verified between SQLite and PostgreSQL!\n');
+    } else {
+      console.error('❌ RECONCILIATION FAILURE: Financial discrepancy detected between SQLite and PostgreSQL!');
+      process.exit(1);
+    }
+  }
 }
 
 if (require.main === module) {

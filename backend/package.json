@@ -18,6 +18,8 @@
     "prisma:dev": "prisma migrate dev",
     "prisma:seed": "ts-node prisma/seed.ts",
     "prisma:seed:sqlite": "ts-node prisma/seed-sqlite.ts",
+    "migrate:pg": "ts-node scripts/migrate-sqlite-to-postgres.ts",
+    "migrate:pg:clean": "ts-node scripts/migrate-sqlite-to-postgres.ts --clean",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\"",
     "test": "jest",
     "test:watch": "jest --watch",
