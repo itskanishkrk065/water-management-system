@@ -55,9 +55,12 @@ export class SyncConflictService {
       const payload = envelope.payloadJson;
       const paymentAmount = new Decimal(payload.amount || 0);
 
-      if (payload.runningBillId) {
+      const runningBillId = payload.runningBillId || payload.running_bill_id;
+      const installmentId = payload.installmentId || payload.installment_id;
+
+      if (runningBillId) {
         const runningBill = await (tx as any).runningBill.findUnique({
-          where: { running_bill_id: payload.runningBillId },
+          where: { running_bill_id: runningBillId },
         });
 
         if (runningBill) {
@@ -76,9 +79,9 @@ export class SyncConflictService {
             };
           }
         }
-      } else if (payload.installmentId) {
+      } else if (installmentId) {
         const installment = await (tx as any).installment.findUnique({
-          where: { installment_id: payload.installmentId },
+          where: { installment_id: installmentId },
           include: { bill: true },
         });
 

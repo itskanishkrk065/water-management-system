@@ -35,6 +35,8 @@ export enum ApplicationStatus {
   UNDER_REVIEW = 'UNDER_REVIEW',
   APPROVED = 'APPROVED',
   REJECTED = 'REJECTED',
+  CANCELLED = 'CANCELLED',
+  VOIDED = 'VOIDED',
 }
 
 export enum ApprovalStatus {

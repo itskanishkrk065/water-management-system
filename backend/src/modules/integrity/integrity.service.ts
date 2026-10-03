@@ -21,6 +21,8 @@ export interface IntegrityReport {
     passedChecks: number;
     warningChecks: number;
     errorChecks: number;
+    modernRecordsCount: number;
+    legacyRecordsCount: number;
   };
   findings: IntegrityFinding[];
 }
@@ -33,6 +35,11 @@ export class IntegrityService {
 
   async runFullIntegrityAudit(): Promise<IntegrityReport> {
     const findings: IntegrityFinding[] = [];
+
+    const [totalModernRunning, totalLegacyRunning] = await Promise.all([
+      this.prisma.runningBill.count({ where: { is_legacy: false } }),
+      this.prisma.runningBill.count({ where: { is_legacy: true } }),
+    ]);
 
     await this.checkWaterApplications(findings);
     await this.checkLandHoldings(findings);
@@ -58,6 +65,8 @@ export class IntegrityService {
         passedChecks: passCount,
         warningChecks: warningCount,
         errorChecks: errorCount,
+        modernRecordsCount: totalModernRunning,
+        legacyRecordsCount: totalLegacyRunning,
       },
       findings,
     };
@@ -478,45 +487,79 @@ export class IntegrityService {
 
       const paymentsSum = rb.payments.reduce((acc, p) => acc.plus(new Decimal(p.amount)), new Decimal(0));
 
-      if (!amountPaid.equals(paymentsSum)) {
-        runningErrors++;
-        findings.push({
-          code: 'RUNNING_BILL_PAID_MISMATCH',
-          category: 'RUNNING_CHARGES',
-          severity: 'ERROR',
-          entityId: rb.running_bill_id,
-          title: `Running Bill #${rb.bill_number || rb.running_bill_id.slice(0, 8)} paid mismatch`,
-          description: `Stored amount_paid ₹${amountPaid.toFixed(2)} does not match sum of verified payments ₹${paymentsSum.toFixed(2)}.`,
-        });
-      }
-
-      const expectedPending = Decimal.max(0, amountDue.minus(amountPaid));
-      if (!pendingAmount.equals(expectedPending)) {
-        runningErrors++;
-        findings.push({
-          code: 'RUNNING_BILL_PENDING_MISMATCH',
-          category: 'RUNNING_CHARGES',
-          severity: 'ERROR',
-          entityId: rb.running_bill_id,
-          title: `Running Bill #${rb.bill_number || rb.running_bill_id.slice(0, 8)} pending mismatch`,
-          description: `Stored pending_amount ₹${pendingAmount.toFixed(2)} does not match expected pending balance ₹${expectedPending.toFixed(2)}.`,
-        });
-      }
-
-      if (!rb.is_legacy && rb.actual_usage_litres_snapshot && rb.running_cost_per_litre_snapshot) {
-        const expectedDue = new Decimal(rb.actual_usage_litres_snapshot)
-          .times(new Decimal(rb.running_cost_per_litre_snapshot))
-          .toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
-        if (!amountDue.equals(expectedDue)) {
+      if (rb.is_legacy) {
+        // Legacy running bills: Historical records with pre-tariff balances
+        // Verify mathematical consistency: pending = due - paid
+        const expectedPending = Decimal.max(0, amountDue.minus(amountPaid));
+        if (!pendingAmount.equals(expectedPending)) {
           runningErrors++;
           findings.push({
-            code: 'RUNNING_BILL_FORMULA_MISMATCH',
+            code: 'RUNNING_BILL_PENDING_MISMATCH',
             category: 'RUNNING_CHARGES',
             severity: 'ERROR',
             entityId: rb.running_bill_id,
-            title: `Running Bill #${rb.bill_number} amount_due violates actual usage × rate formula`,
-            description: `Amount due ₹${amountDue.toFixed(2)} does not equal ${rb.actual_usage_litres_snapshot} L × ₹${rb.running_cost_per_litre_snapshot}/L = ₹${expectedDue.toFixed(2)}.`,
+            title: `Legacy Running Bill #${rb.bill_number || rb.running_bill_id.slice(0, 8)} pending mismatch`,
+            description: `Stored pending_amount ₹${pendingAmount.toFixed(2)} does not match expected pending balance ₹${expectedPending.toFixed(2)}.`,
           });
+        }
+
+        // Informational finding for legacy record preservation
+        findings.push({
+          code: 'RUNNING_BILL_LEGACY_PRESERVED',
+          category: 'RUNNING_CHARGES',
+          severity: 'PASS',
+          entityId: rb.running_bill_id,
+          title: `Legacy Running Bill #${rb.bill_number || rb.running_bill_id.slice(0, 8)} preserved`,
+          description: `Historical bill classified as legacy (${rb.legacy_classification || 'V1_HISTORICAL'}). Stored amount_paid ₹${amountPaid.toFixed(2)} preserved without recalculation.`,
+          details: {
+            isLegacy: true,
+            amountPaid: amountPaid.toFixed(2),
+            paymentsSum: paymentsSum.toFixed(2),
+            legacyClassification: rb.legacy_classification,
+          },
+        });
+      } else {
+        // Modern running bills: Strict 1-to-1 payment receipt linkage & single rate formula
+        if (!amountPaid.equals(paymentsSum)) {
+          runningErrors++;
+          findings.push({
+            code: 'RUNNING_BILL_PAID_MISMATCH',
+            category: 'RUNNING_CHARGES',
+            severity: 'ERROR',
+            entityId: rb.running_bill_id,
+            title: `Modern Running Bill #${rb.bill_number || rb.running_bill_id.slice(0, 8)} paid mismatch`,
+            description: `Stored amount_paid ₹${amountPaid.toFixed(2)} does not match sum of verified payments ₹${paymentsSum.toFixed(2)}.`,
+          });
+        }
+
+        const expectedPending = Decimal.max(0, amountDue.minus(amountPaid));
+        if (!pendingAmount.equals(expectedPending)) {
+          runningErrors++;
+          findings.push({
+            code: 'RUNNING_BILL_PENDING_MISMATCH',
+            category: 'RUNNING_CHARGES',
+            severity: 'ERROR',
+            entityId: rb.running_bill_id,
+            title: `Modern Running Bill #${rb.bill_number || rb.running_bill_id.slice(0, 8)} pending mismatch`,
+            description: `Stored pending_amount ₹${pendingAmount.toFixed(2)} does not match expected pending balance ₹${expectedPending.toFixed(2)}.`,
+          });
+        }
+
+        if (rb.actual_usage_litres_snapshot && rb.running_cost_per_litre_snapshot) {
+          const expectedDue = new Decimal(rb.actual_usage_litres_snapshot)
+            .times(new Decimal(rb.running_cost_per_litre_snapshot))
+            .toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+          if (!amountDue.equals(expectedDue)) {
+            runningErrors++;
+            findings.push({
+              code: 'RUNNING_BILL_FORMULA_MISMATCH',
+              category: 'RUNNING_CHARGES',
+              severity: 'ERROR',
+              entityId: rb.running_bill_id,
+              title: `Running Bill #${rb.bill_number} amount_due violates actual usage × rate formula`,
+              description: `Amount due ₹${amountDue.toFixed(2)} does not equal ${rb.actual_usage_litres_snapshot} L × ₹${rb.running_cost_per_litre_snapshot}/L = ₹${expectedDue.toFixed(2)}.`,
+            });
+          }
         }
       }
     }

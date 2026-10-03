@@ -45,6 +45,8 @@ enum ApplicationStatus {
   UNDER_REVIEW
   APPROVED
   REJECTED
+  CANCELLED
+  VOIDED
 }
 
 enum ApprovalStatus {
@@ -110,6 +112,7 @@ enum AuditAction {
   PAYMENT_REVERSED
   RATE_CHANGED
   INSTALLMENT_SCHEDULE_CHANGED
+  INFRASTRUCTURE_STATUS_CHANGED
   EXTENSION_APPROVED
   USAGE_RECORDED
   USAGE_UPDATED
@@ -610,7 +613,7 @@ model Infrastructure {
 }
 
 model BillingPeriod {
-  billing_period_id    String              @id @default(uuid()) @db.Uuid
+  billing_period_id    String              @id @default(uuid())
   period_code          String              @unique
   period_start         DateTime
   period_end           DateTime
@@ -636,7 +639,7 @@ model WaterUsageRecord {
   beneficiary_id           String           @db.Uuid
   allotment_id             String           @db.Uuid
   infrastructure_id        String?          @db.Uuid
-  billing_period_id        String           @db.Uuid
+  billing_period_id        String
   collection_agent_id      String?          @db.Uuid
   usage_period_start       DateTime
   usage_period_end         DateTime
@@ -679,7 +682,7 @@ model RunningBill {
   beneficiary_id                      String      @db.Uuid
   rate_id                             String      @db.Uuid
   billing_period                      String
-  billing_period_id                   String?     @db.Uuid
+  billing_period_id                   String?
   usage_id                            String?     @unique @db.Uuid
   billing_period_start                DateTime?
   billing_period_end                  DateTime?
@@ -718,7 +721,7 @@ model RunningBill {
 }
 
 model SystemClockState {
-  state_id             String    @id @default(uuid()) @db.Uuid
+  state_id             String    @id @default(uuid())
   last_known_timestamp DateTime  @default(now())
   is_rollback_detected Boolean   @default(false)
   rollback_detected_at DateTime?

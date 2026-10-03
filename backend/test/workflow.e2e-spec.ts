@@ -157,6 +157,8 @@ describe('Water Management End-to-End & Authorization Test Suite', () => {
   });
 
   describe('Section 2: Land Holdings & Subdivision Parcels Validation', () => {
+    const dynamicSurvey = 'S' + Math.floor(100000 + Math.random() * 899999);
+
     it('Step 5: Fails when parcel sum does not equal declared total area', async () => {
       await request(app.getHttpServer())
         .post('/api/v1/land/holdings')
@@ -166,8 +168,8 @@ describe('Water Management End-to-End & Authorization Test Suite', () => {
           projectId,
           declaredTotalArea: 4.0, // Declared 4.0
           parcels: [
-            { surveyNumber: '202', subdivisionNumber: '1A', area: 2.0 },
-            { surveyNumber: '202', subdivisionNumber: '1B', area: 1.0 },
+            { surveyNumber: dynamicSurvey, subdivisionNumber: '1A', area: 2.0 },
+            { surveyNumber: dynamicSurvey, subdivisionNumber: '1B', area: 1.0 },
             // Sum is 3.0 != 4.0!
           ],
         })
@@ -183,8 +185,8 @@ describe('Water Management End-to-End & Authorization Test Suite', () => {
           projectId,
           declaredTotalArea: 3.0,
           parcels: [
-            { surveyNumber: '202', subdivisionNumber: '1A', area: 2.0 },
-            { surveyNumber: '202', subdivisionNumber: '1B', area: 1.0 },
+            { surveyNumber: dynamicSurvey, subdivisionNumber: '1A', area: 2.0 },
+            { surveyNumber: dynamicSurvey, subdivisionNumber: '1B', area: 1.0 },
           ],
         })
         .expect(201);
@@ -333,12 +335,13 @@ describe('Water Management End-to-End & Authorization Test Suite', () => {
     });
 
     it('Step 14: Now generating running bill succeeds after commissioning', async () => {
+      const currentPeriod = new Date().toISOString().slice(0, 7); // 'YYYY-MM' matching commissioning date
       const res = await request(app.getHttpServer())
         .post('/api/v1/billing/running-bills/generate')
         .set('Authorization', `Bearer ${adminToken}`)
         .send({
           allotmentId,
-          billingPeriod: '2026-Q1',
+          billingPeriod: currentPeriod,
         })
         .expect(201);
 

@@ -59,7 +59,7 @@ export class AuthService {
         data: { revoked: true },
       });
 
-      return this.generateTokenPair(tokenRecord.user);
+      return this.generateTokenPair(tokenRecord.user, payload.deviceId);
     } catch {
       throw new UnauthorizedException('Invalid refresh token');
     }

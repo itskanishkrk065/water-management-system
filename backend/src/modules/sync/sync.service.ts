@@ -267,6 +267,24 @@ export class SyncService {
           } else if (envelope.operationType === 'UPDATE_BENEFICIARY') {
             appliedData = await this.applyBeneficiaryUpdate(envelope, tx);
             newVersion = appliedData?.version || 1;
+          } else if (envelope.operationType === 'CREATE_BENEFICIARY') {
+            const p = envelope.payloadJson;
+            appliedData = await tx.beneficiary.upsert({
+              where: { beneficiary_id: envelope.entityId },
+              create: {
+                beneficiary_id: envelope.entityId,
+                name: p.name,
+                phone_number: p.phone_number || p.phoneNumber,
+                status: p.status || 'ACTIVE',
+                version: 1,
+              },
+              update: {
+                name: p.name,
+                phone_number: p.phone_number || p.phoneNumber,
+                status: p.status || 'ACTIVE',
+              },
+            });
+            newVersion = appliedData?.version || 1;
           } else {
             // Default generic entity version update
             newVersion = await this.incrementEntityVersion(envelope.entityType, envelope.entityId, tx);
@@ -406,6 +424,14 @@ export class SyncService {
     ipAddress?: string,
   ): Promise<any> {
     const payload = envelope.payloadJson;
+    const runningBillId = payload.runningBillId || payload.running_bill_id || null;
+    const installmentId = payload.installmentId || payload.installment_id || null;
+    const extensionId = payload.extensionId || payload.extension_id || null;
+    const beneficiaryId = payload.beneficiaryId || payload.beneficiary_id || conflictEval.beneficiaryId;
+    const receiptNumber = payload.receiptNumber || payload.receipt_number || `SYNC-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    const paymentMode = payload.paymentMode || payload.payment_mode || PaymentMode.CASH;
+    const recordedBy = payload.recordedBy || payload.recorded_by || 'Field Agent (Sync)';
+
     const totalAmount = new Decimal(payload.amount);
     const applicableAmount = conflictEval.hasOverpayment ? conflictEval.applicableAmount : totalAmount;
     const excessAmount = conflictEval.hasOverpayment ? conflictEval.excessAmount : new Decimal(0);
@@ -413,23 +439,23 @@ export class SyncService {
     // 1. Record primary payment
     const payment = await tx.payment.create({
       data: {
-        beneficiary_id: payload.beneficiaryId || conflictEval.beneficiaryId,
-        running_bill_id: payload.runningBillId || null,
-        installment_id: payload.installmentId || null,
-        extension_id: payload.extensionId || null,
+        beneficiary_id: beneficiaryId,
+        running_bill_id: runningBillId,
+        installment_id: installmentId,
+        extension_id: extensionId,
         amount: applicableAmount,
-        payment_date: payload.paymentDate ? new Date(payload.paymentDate) : new Date(),
-        payment_reference: payload.paymentReference || null,
-        receipt_number: payload.receiptNumber || `SYNC-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-        payment_mode: payload.paymentMode || PaymentMode.CASH,
-        recorded_by: payload.recordedBy || 'Field Agent (Sync)',
+        payment_date: payload.paymentDate || payload.payment_date ? new Date(payload.paymentDate || payload.payment_date) : new Date(),
+        payment_reference: payload.paymentReference || payload.payment_reference || null,
+        receipt_number: receiptNumber,
+        payment_mode: paymentMode,
+        recorded_by: recordedBy,
       },
     });
 
     // 2. Adjust Running Bill Balance if applicable
-    if (payload.runningBillId) {
+    if (runningBillId) {
       const rb = await tx.runningBill.findUnique({
-        where: { running_bill_id: payload.runningBillId },
+        where: { running_bill_id: runningBillId },
       });
       if (rb) {
         const newPaid = DecimalUtil.roundMoney(DecimalUtil.add(new Decimal(rb.amount_paid), applicableAmount));
@@ -453,7 +479,7 @@ export class SyncService {
     if (conflictEval.hasOverpayment && excessAmount.gt(0)) {
       advanceRecord = await tx.beneficiaryAdvanceLedger.create({
         data: {
-          beneficiary_id: payload.beneficiaryId || conflictEval.beneficiaryId,
+          beneficiary_id: beneficiaryId,
           amount: excessAmount,
           consumed_amount: new Decimal(0),
           balance_amount: excessAmount,
@@ -571,10 +597,32 @@ export class SyncService {
    * with current authoritative database state for visual diffing in the UI.
    */
   async getConflicts(): Promise<any[]> {
-    const conflictItems = await (this.prisma as any).syncOutbox.findMany({
-      where: { status: 'CONFLICT' },
-      orderBy: { created_at: 'desc' },
-    });
+    let conflictItems: any[] = [];
+    if ((this.prisma as any).syncOutbox) {
+      conflictItems = await (this.prisma as any).syncOutbox.findMany({
+        where: { status: 'CONFLICT' },
+        orderBy: { created_at: 'desc' },
+      });
+    }
+
+    if (conflictItems.length === 0 && (this.prisma as any).syncOperation) {
+      const serverConflicts = await (this.prisma as any).syncOperation.findMany({
+        where: { status: 'CONFLICT' },
+        orderBy: { created_at: 'desc' },
+      });
+      conflictItems = serverConflicts.map((sc: any) => ({
+        outbox_id: sc.op_id || sc.client_op_id,
+        client_op_id: sc.client_op_id,
+        entity_type: sc.entity_type,
+        entity_id: sc.entity_id,
+        operation_type: sc.operation_type,
+        payload_json: sc.payload_json,
+        schema_version: sc.schema_version,
+        retry_count: 0,
+        last_error: 'Optimistic lock version mismatch',
+        created_at: sc.created_at,
+      }));
+    }
 
     const enriched = [];
     for (const item of conflictItems) {

@@ -18,14 +18,37 @@ describe('WaterGrid V2 — Phase 8: Security & Device Lifecycle (SEC-001 to SEC-
   const syncOperations = new Map<string, any>();
   let systemClockState: any = null;
 
+  const refreshTokensDb = new Map<string, any>();
+
   const mockPrisma: any = {
     $transaction: jest.fn(async (cb) => cb(mockPrisma)),
     user: {
       findUnique: jest.fn(),
     },
     refreshToken: {
-      create: jest.fn().mockResolvedValue({ token_id: 'rt-sec-1' }),
-      update: jest.fn().mockResolvedValue({}),
+      create: jest.fn(async ({ data }) => {
+        const record = { ...data, token_id: `rt-${refreshTokensDb.size + 1}`, revoked: false };
+        refreshTokensDb.set(record.token_id, record);
+        return record;
+      }),
+      findUnique: jest.fn(async ({ where }) => {
+        const r = refreshTokensDb.get(where.token_id);
+        if (!r) return null;
+        return {
+          ...r,
+          user: {
+            user_id: 'officer-u1',
+            email: 'officer@water.gov',
+            full_name: 'Field Officer Tiruppur',
+            role: { name: 'FIELD_OFFICER' },
+          },
+        };
+      }),
+      update: jest.fn(async ({ where, data }) => {
+        const r = refreshTokensDb.get(where.token_id);
+        if (r) Object.assign(r, data);
+        return r;
+      }),
     },
     beneficiary: {
       findUnique: jest.fn().mockResolvedValue({ beneficiary_id: 'ben-sec-1' }),
@@ -126,6 +149,16 @@ describe('WaterGrid V2 — Phase 8: Security & Device Lifecycle (SEC-001 to SEC-
       const jwt = new JwtService();
       const decoded: any = jwt.decode(tokens.accessToken);
       expect(decoded.deviceId).toBe('DEV-WIN-TABLET-007');
+
+      // Refresh token rotation: verify deviceId survives refresh
+      const refreshed = await authService.refreshTokens({
+        refreshToken: tokens.refreshToken,
+      });
+
+      expect(refreshed.accessToken).toBeDefined();
+      expect(refreshed.user.deviceId).toBe('DEV-WIN-TABLET-007');
+      const decodedRefreshed: any = jwt.decode(refreshed.accessToken);
+      expect(decodedRefreshed.deviceId).toBe('DEV-WIN-TABLET-007');
     });
   });
 

@@ -40,14 +40,14 @@ const TABLES: TableMigrationPlan[] = [
     integerFields: ['lgd_block_code'],
     dateFields: ['created_at', 'updated_at'],
   },
-  { tableName: 'panchayats', sourceTable: 'panchayats', primaryKey: 'panchayat_id', dateFields: ['created_at'] },
+  { tableName: 'panchayats', sourceTable: 'panchayats', primaryKey: 'panchayat_id', dateFields: ['created_at', 'updated_at'] },
   {
     tableName: 'villages',
     sourceTable: 'villages',
     primaryKey: 'village_id',
     booleanFields: ['is_active'],
     integerFields: ['lgd_village_code'],
-    dateFields: ['created_at'],
+    dateFields: ['created_at', 'updated_at'],
   },
   {
     tableName: 'projects',
@@ -280,7 +280,7 @@ export class SqliteToPostgresMigration {
     };
   }
 
-  public generateSqlDump(): string {
+  public generateSqlDump(sqliteSummary: FinancialReconciliationSummary): string {
     const lines: string[] = [];
     lines.push('-- ====================================================================');
     lines.push('-- WATERGRID V2: SQLite -> PostgreSQL Full Seed Migration Dump');
@@ -289,6 +289,8 @@ export class SqliteToPostgresMigration {
     lines.push('-- Financial Invariant: Zero historical recalculation. Exact preservation.');
     lines.push('-- ====================================================================\n');
     lines.push('BEGIN;\n');
+
+    const validUsers = new Set(this.querySqliteJson('SELECT user_id FROM users;').map((u: any) => u.user_id));
 
     for (const table of TABLES) {
       const rows = this.querySqliteJson(`SELECT * FROM ${table.sourceTable};`);
@@ -302,6 +304,9 @@ export class SqliteToPostgresMigration {
       for (const row of rows) {
         const formattedValues = colNames.map((col) => {
           let val = row[col];
+          if (table.tableName === 'audit_logs' && col === 'user_id' && val && !validUsers.has(val)) {
+            return 'NULL';
+          }
           if (val === null || val === undefined) {
             // Check default version column
             if (col === 'version') return '1';
@@ -317,7 +322,7 @@ export class SqliteToPostgresMigration {
           if (table.numericFields?.includes(col)) {
             return String(val);
           }
-          if (table.dateFields?.includes(col)) {
+          if (table.dateFields?.includes(col) || col.endsWith('_at') || col.endsWith('_date')) {
             let dt: Date;
             if (typeof val === 'number') {
               dt = new Date(val);
@@ -363,22 +368,34 @@ DECLARE
   v_run_count INT;
   v_inst_paid NUMERIC;
   v_inst_count INT;
+  v_dev_total NUMERIC;
+  v_dev_count INT;
 BEGIN
   SELECT count(*), coalesce(sum(amount), 0) INTO v_run_count, v_run_paid
   FROM payments WHERE running_bill_id IS NOT NULL AND is_reversal = false;
 
-  IF v_run_count != 8 OR v_run_paid != 40000.00 THEN
-    RAISE EXCEPTION 'RECONCILIATION FAILURE: Expected 8 running bill payments totalling 40000.00, found % totalling %', v_run_count, v_run_paid;
+  IF v_run_count != ${sqliteSummary.payments.runningCount} OR v_run_paid != ${sqliteSummary.payments.runningAmount} THEN
+    RAISE EXCEPTION 'RECONCILIATION FAILURE: Expected % running bill payments totalling %, found % totalling %',
+      ${sqliteSummary.payments.runningCount}, ${sqliteSummary.payments.runningAmount}, v_run_count, v_run_paid;
   END IF;
 
   SELECT count(*), coalesce(sum(amount), 0) INTO v_inst_count, v_inst_paid
   FROM payments WHERE installment_id IS NOT NULL AND is_reversal = false;
 
-  IF v_inst_count != 15 OR v_inst_paid != 32612.50 THEN
-    RAISE EXCEPTION 'RECONCILIATION FAILURE: Expected 15 installment payments totalling 32612.50, found % totalling %', v_inst_count, v_inst_paid;
+  IF v_inst_count != ${sqliteSummary.payments.installmentCount} OR v_inst_paid != ${sqliteSummary.payments.installmentAmount} THEN
+    RAISE EXCEPTION 'RECONCILIATION FAILURE: Expected % installment payments totalling %, found % totalling %',
+      ${sqliteSummary.payments.installmentCount}, ${sqliteSummary.payments.installmentAmount}, v_inst_count, v_inst_paid;
   END IF;
 
-  RAISE NOTICE 'SUCCESS: All 23 non-reversal historical payments (₹72,612.50) reconciled with zero discrepancy.';
+  SELECT count(*), coalesce(sum(total_amount), 0) INTO v_dev_count, v_dev_total
+  FROM development_bills;
+
+  IF v_dev_count != ${sqliteSummary.developmentBills.count} OR v_dev_total != ${sqliteSummary.developmentBills.totalAmount} THEN
+    RAISE EXCEPTION 'RECONCILIATION FAILURE: Expected % dev bills totalling %, found % totalling %',
+      ${sqliteSummary.developmentBills.count}, ${sqliteSummary.developmentBills.totalAmount}, v_dev_count, v_dev_total;
+  END IF;
+
+  RAISE NOTICE 'SUCCESS: SQLite source and PostgreSQL target 100%% financially reconciled.';
 END $$;
 `);
 
@@ -393,7 +410,7 @@ END $$;
     dumpFilePath?: string;
   }> {
     const sqliteSummary = this.extractFinancialSummary();
-    const sqlDump = this.generateSqlDump();
+    const sqlDump = this.generateSqlDump(sqliteSummary);
 
     const dumpFilePath = path.resolve(__dirname, '../prisma/postgres-migration-dump.sql');
     fs.writeFileSync(dumpFilePath, sqlDump, 'utf8');
