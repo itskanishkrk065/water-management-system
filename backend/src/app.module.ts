@@ -24,6 +24,7 @@ import { IntegrityModule } from './modules/integrity/integrity.module';
 import { SearchModule } from './modules/search/search.module';
 import { DeveloperModule } from './modules/developer/developer.module';
 import { SyncModule } from './modules/sync/sync.module';
+import { DevicesModule } from './modules/devices/devices.module';
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { SyncModule } from './modules/sync/sync.module';
     AuthModule,
     UsersModule,
     RolesModule,
+    DevicesModule,
     LocationsModule,
     ProjectsModule,
     BeneficiariesModule,

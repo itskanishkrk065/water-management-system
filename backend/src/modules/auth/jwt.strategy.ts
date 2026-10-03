@@ -17,14 +17,20 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     });
   }
 
-  async validate(payload: { sub: string; email: string; role: string }) {
+  async validate(payload: { sub: string; email: string; role: string; tokenVersion?: number; deviceId?: string }) {
     const user = await this.prisma.user.findUnique({
       where: { user_id: payload.sub },
       include: { role: true },
     });
 
-    if (!user || !user.is_active) {
-      throw new UnauthorizedException('User inactive or not found');
+    if (!user || !user.is_active || (user as any).status === 'LOCKED' || (user as any).status === 'DISABLED') {
+      throw new UnauthorizedException('User account is inactive, locked, or disabled');
+    }
+
+    if (payload.tokenVersion !== undefined && (user as any).token_version !== undefined) {
+      if ((user as any).token_version !== payload.tokenVersion) {
+        throw new UnauthorizedException('Session has been revoked. Please sign in again.');
+      }
     }
 
     return {
@@ -32,6 +38,9 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
       email: user.email,
       full_name: user.full_name,
       role: user.role.name,
+      status: (user as any).status || 'ACTIVE',
+      forcePasswordChange: (user as any).force_password_change || false,
+      deviceId: payload.deviceId || null,
     };
   }
 }

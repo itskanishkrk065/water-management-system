@@ -12,9 +12,23 @@ generator client {
 enum RoleName {
   ADMIN
   FIELD_OFFICER
+  COLLECTION_AGENT
   ACCOUNTS
   VIEWER
   BENEFICIARY
+}
+
+enum UserStatus {
+  ACTIVE
+  LOCKED
+  DISABLED
+  ARCHIVED
+}
+
+enum DeviceStatus {
+  ACTIVE
+  REVOKED
+  BLOCKED
 }
 
 enum LocationDirection {
@@ -158,28 +172,82 @@ model Role {
   description String?
   created_at  DateTime @default(now())
 
-  users User[]
+  users           User[]
+  rolePermissions RolePermission[]
 
   @@map("roles")
 }
 
-model User {
-  user_id       String   @id @default(uuid()) @db.Uuid
-  email         String   @unique
-  password_hash String
-  full_name     String
-  role_id       String   @db.Uuid
-  is_active     Boolean  @default(true)
+model Permission {
+  permission_id String   @id @default(uuid()) @db.Uuid
+  code          String   @unique
+  name          String
+  description   String?
+  category      String   @default("GENERAL")
   created_at    DateTime @default(now())
-  updated_at    DateTime @updatedAt
 
-  role          Role           @relation(fields: [role_id], references: [role_id])
-  refreshTokens RefreshToken[]
-  auditLogs     AuditLog[]
-  beneficiary   Beneficiary?
-  collectedWaterUsages WaterUsageRecord[] @relation("UsageCollectionAgent")
+  rolePermissions RolePermission[]
 
+  @@map("permissions")
+}
+
+model RolePermission {
+  role_id       String     @db.Uuid
+  permission_id String     @db.Uuid
+  created_at    DateTime   @default(now())
+
+  role       Role       @relation(fields: [role_id], references: [role_id], onDelete: Cascade)
+  permission Permission @relation(fields: [permission_id], references: [permission_id], onDelete: Cascade)
+
+  @@id([role_id, permission_id])
+  @@map("role_permissions")
+}
+
+model User {
+  user_id               String       @id @default(uuid()) @db.Uuid
+  email                 String       @unique
+  phone                 String?
+  employee_id           String?      @unique
+  username              String?      @unique
+  password_hash         String
+  full_name             String
+  role_id               String       @db.Uuid
+  status                UserStatus   @default(ACTIVE)
+  is_active             Boolean      @default(true)
+  force_password_change Boolean      @default(false)
+  token_version         Int          @default(1)
+  last_login_at         DateTime?
+  created_by            String?
+  disabled_at           DateTime?
+  disabled_by           String?
+  created_at            DateTime     @default(now())
+  updated_at            DateTime     @updatedAt
+
+  role                 Role                 @relation(fields: [role_id], references: [role_id])
+  refreshTokens        RefreshToken[]
+  auditLogs            AuditLog[]
+  beneficiary          Beneficiary?
+  collectedWaterUsages WaterUsageRecord[]   @relation("UsageCollectionAgent")
+  geographicScope      UserGeographicScope?
+  devices              DeviceRegistration[]
+
+  @@index([status])
+  @@index([role_id])
   @@map("users")
+}
+
+model UserGeographicScope {
+  scope_id        String   @id @default(uuid()) @db.Uuid
+  user_id         String   @unique @db.Uuid
+  district_id     String?  @db.Uuid
+  district_name   String?
+  panchayats_json String?
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  user User @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
+
+  @@map("user_geographic_scopes")
 }
 
 model RefreshToken {
@@ -762,22 +830,30 @@ model Extension {
 }
 
 model AuditLog {
-  audit_id    String      @id @default(uuid()) @db.Uuid
-  user_id     String?     @db.Uuid
-  action      AuditAction
-  entity_type String
-  entity_id   String
-  old_values  Json?
-  new_values  Json?
-  reason      String?
-  ip_address  String?
-  created_at  DateTime    @default(now())
+  audit_id     String      @id @default(uuid()) @db.Uuid
+  user_id      String?     @db.Uuid
+  actor_role   String?
+  device_id    String?
+  operation_id String?
+  mode         String?     @default("ONLINE")
+  sync_status  String?     @default("SERVER_CONFIRMED")
+  action       AuditAction
+  entity_type  String
+  entity_id    String
+  old_values   Json?
+  new_values   Json?
+  reason       String?
+  ip_address   String?
+  result       String?     @default("SUCCESS")
+  created_at   DateTime    @default(now())
 
   user User? @relation(fields: [user_id], references: [user_id], onDelete: SetNull)
 
   @@index([entity_type, entity_id, created_at])
   @@index([entity_type, entity_id])
   @@index([user_id])
+  @@index([actor_role])
+  @@index([device_id])
   @@index([created_at])
   @@index([action])
   @@map("audit_logs")
@@ -865,15 +941,25 @@ model ServerChangeFeed {
 }
 
 model DeviceRegistration {
-  device_id        String    @id
-  device_name      String
-  app_version      String
-  registered_at    DateTime  @default(now())
-  last_sync_at     DateTime?
-  last_ack_feed_id BigInt    @default(0)
-  is_active        Boolean   @default(true)
-  revoked_at       DateTime?
+  device_id         String       @id
+  user_id           String?      @db.Uuid
+  device_name       String
+  platform          String?      @default("desktop")
+  status            DeviceStatus @default(ACTIVE)
+  app_version       String
+  registered_at     DateTime     @default(now())
+  last_sync_at      DateTime?
+  last_seen_at      DateTime?
+  last_ack_feed_id  BigInt       @default(0)
+  is_active         Boolean      @default(true)
+  revoked_at        DateTime?
+  revoked_by        String?
+  revocation_reason String?
 
+  user User? @relation(fields: [user_id], references: [user_id], onDelete: SetNull)
+
+  @@index([user_id])
+  @@index([status])
   @@index([is_active])
   @@map("device_registrations")
 }

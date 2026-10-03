@@ -5,9 +5,21 @@ const enums = {
   RoleName: {
     ADMIN: 'ADMIN',
     FIELD_OFFICER: 'FIELD_OFFICER',
+    COLLECTION_AGENT: 'COLLECTION_AGENT',
     ACCOUNTS: 'ACCOUNTS',
     VIEWER: 'VIEWER',
     BENEFICIARY: 'BENEFICIARY',
+  },
+  UserStatus: {
+    ACTIVE: 'ACTIVE',
+    LOCKED: 'LOCKED',
+    DISABLED: 'DISABLED',
+    ARCHIVED: 'ARCHIVED',
+  },
+  DeviceStatus: {
+    ACTIVE: 'ACTIVE',
+    REVOKED: 'REVOKED',
+    BLOCKED: 'BLOCKED',
   },
   LocationDirection: {
     NORTH: 'NORTH',

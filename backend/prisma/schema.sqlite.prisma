@@ -14,28 +14,82 @@ model Role {
   description String?
   created_at  DateTime @default(now())
 
-  users User[]
+  users           User[]
+  rolePermissions RolePermission[]
 
   @@map("roles")
 }
 
-model User {
-  user_id       String   @id @default(uuid())
-  email         String   @unique
-  password_hash String
-  full_name     String
-  role_id       String
-  is_active     Boolean  @default(true)
+model Permission {
+  permission_id String   @id @default(uuid())
+  code          String   @unique
+  name          String
+  description   String?
+  category      String   @default("GENERAL")
   created_at    DateTime @default(now())
-  updated_at    DateTime @updatedAt
 
-  role          Role           @relation(fields: [role_id], references: [role_id])
-  refreshTokens RefreshToken[]
-  auditLogs     AuditLog[]
-  beneficiary   Beneficiary?
-  collectedWaterUsages WaterUsageRecord[] @relation("UsageCollectionAgent")
+  rolePermissions RolePermission[]
 
+  @@map("permissions")
+}
+
+model RolePermission {
+  role_id       String
+  permission_id String
+  created_at    DateTime @default(now())
+
+  role       Role       @relation(fields: [role_id], references: [role_id], onDelete: Cascade)
+  permission Permission @relation(fields: [permission_id], references: [permission_id], onDelete: Cascade)
+
+  @@id([role_id, permission_id])
+  @@map("role_permissions")
+}
+
+model User {
+  user_id               String       @id @default(uuid())
+  email                 String       @unique
+  phone                 String?
+  employee_id           String?      @unique
+  username              String?      @unique
+  password_hash         String
+  full_name             String
+  role_id               String
+  status                String       @default("ACTIVE")
+  is_active             Boolean      @default(true)
+  force_password_change Boolean      @default(false)
+  token_version         Int          @default(1)
+  last_login_at         DateTime?
+  created_by            String?
+  disabled_at           DateTime?
+  disabled_by           String?
+  created_at            DateTime     @default(now())
+  updated_at            DateTime     @updatedAt
+
+  role                 Role                 @relation(fields: [role_id], references: [role_id])
+  refreshTokens        RefreshToken[]
+  auditLogs            AuditLog[]
+  beneficiary          Beneficiary?
+  collectedWaterUsages WaterUsageRecord[]   @relation("UsageCollectionAgent")
+  geographicScope      UserGeographicScope?
+  devices              DeviceRegistration[]
+
+  @@index([status])
+  @@index([role_id])
   @@map("users")
+}
+
+model UserGeographicScope {
+  scope_id        String   @id @default(uuid())
+  user_id         String   @unique
+  district_id     String?
+  district_name   String?
+  panchayats_json String?
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  user User @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
+
+  @@map("user_geographic_scopes")
 }
 
 model RefreshToken {
@@ -609,22 +663,30 @@ model Extension {
 }
 
 model AuditLog {
-  audit_id    String   @id @default(uuid())
-  user_id     String?
-  action      String
-  entity_type String
-  entity_id   String
-  old_values  String?
-  new_values  String?
-  reason      String?
-  ip_address  String?
-  created_at  DateTime @default(now())
+  audit_id     String   @id @default(uuid())
+  user_id      String?
+  actor_role   String?
+  device_id    String?
+  operation_id String?
+  mode         String?  @default("ONLINE")
+  sync_status  String?  @default("SERVER_CONFIRMED")
+  action       String
+  entity_type  String
+  entity_id    String
+  old_values   String?
+  new_values   String?
+  reason       String?
+  ip_address   String?
+  result       String?  @default("SUCCESS")
+  created_at   DateTime @default(now())
 
   user User? @relation(fields: [user_id], references: [user_id], onDelete: SetNull)
 
   @@index([entity_type, entity_id, created_at])
   @@index([entity_type, entity_id])
   @@index([user_id])
+  @@index([actor_role])
+  @@index([device_id])
   @@index([created_at])
   @@index([action])
   @@map("audit_logs")
@@ -672,6 +734,8 @@ model SyncOutbox {
   outbox_id       String   @id @default(uuid())
   client_op_id    String   @unique
   device_id       String
+  actor_user_id   String?
+  actor_role      String?
   entity_type     String
   entity_id       String
   operation_type  String
@@ -692,6 +756,8 @@ model SyncOperation {
   operation_id    String   @id @default(uuid())
   client_op_id    String   @unique
   device_id       String
+  actor_user_id   String?
+  actor_role      String?
   entity_type     String
   entity_id       String
   operation_type  String
@@ -722,15 +788,25 @@ model ServerChangeFeed {
 }
 
 model DeviceRegistration {
-  device_id        String    @id
-  device_name      String
-  app_version      String
-  registered_at    DateTime  @default(now())
-  last_sync_at     DateTime?
-  last_ack_feed_id Int       @default(0)
-  is_active        Boolean   @default(true)
-  revoked_at       DateTime?
+  device_id         String    @id
+  user_id           String?
+  device_name       String
+  platform          String?   @default("desktop")
+  status            String    @default("ACTIVE")
+  app_version       String
+  registered_at     DateTime  @default(now())
+  last_sync_at      DateTime?
+  last_seen_at      DateTime?
+  last_ack_feed_id  Int       @default(0)
+  is_active         Boolean   @default(true)
+  revoked_at        DateTime?
+  revoked_by        String?
+  revocation_reason String?
 
+  user User? @relation(fields: [user_id], references: [user_id], onDelete: SetNull)
+
+  @@index([user_id])
+  @@index([status])
   @@index([is_active])
   @@map("device_registrations")
 }

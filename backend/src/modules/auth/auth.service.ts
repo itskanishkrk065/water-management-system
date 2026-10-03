@@ -228,6 +228,8 @@ export class AuthService {
       email: user.email,
       role: user.role.name,
       name: user.full_name,
+      tokenVersion: user.token_version || 1,
+      forcePasswordChange: user.force_password_change || false,
       deviceId: deviceId || null,
     };
 
