@@ -334,6 +334,7 @@ model Beneficiary {
   location_direction   LocationDirection?
   location_description String?
   status               BeneficiaryStatus  @default(ACTIVE)
+  version              Int                @default(1)
   created_at           DateTime           @default(now())
   updated_at           DateTime           @updatedAt
 
@@ -352,6 +353,7 @@ model Beneficiary {
   payments          Payment[]
   documents         BeneficiaryDocument[]
   waterUsageRecords WaterUsageRecord[]
+  advances          BeneficiaryAdvanceLedger[]
 
   @@index([phone_number])
   @@index([district_id])
@@ -369,6 +371,7 @@ model LandHolding {
   declared_total_area Decimal            @db.Decimal(12, 4)
   area_unit           String             @default("ACRES")
   status              LandStatus         @default(ACTIVE)
+  version             Int                @default(1)
   created_at          DateTime           @default(now())
   updated_at          DateTime           @updatedAt
 
@@ -453,6 +456,7 @@ model WaterApplication {
   status           ApplicationStatus @default(SUBMITTED)
   submitted_at     DateTime          @default(now())
   created_by       String
+  version          Int               @default(1)
   created_at       DateTime          @default(now())
   updated_at       DateTime          @updatedAt
 
@@ -482,6 +486,7 @@ model WaterAllotment {
   approved_by                String
   approved_at                DateTime       @default(now())
   approval_remarks           String?
+  version                    Int            @default(1)
   created_at                 DateTime       @default(now())
   updated_at                 DateTime       @updatedAt
 
@@ -509,6 +514,7 @@ model DevelopmentBill {
   amount_paid                         Decimal    @default(0) @db.Decimal(18, 2)
   pending_amount                      Decimal    @db.Decimal(18, 2)
   status                              BillStatus @default(PENDING)
+  version                             Int        @default(1)
   created_at                          DateTime   @default(now())
   updated_at                          DateTime   @updatedAt
 
@@ -532,6 +538,7 @@ model Installment {
   amount_paid        Decimal           @default(0) @db.Decimal(18, 2)
   pending_amount     Decimal           @db.Decimal(18, 2)
   status             InstallmentStatus @default(PENDING)
+  version            Int               @default(1)
   created_at         DateTime          @default(now())
   updated_at         DateTime          @updatedAt
 
@@ -588,6 +595,7 @@ model Infrastructure {
   commissioned_date         DateTime?
   running_charge_start_date DateTime?
   remarks                   String?
+  version                   Int                  @default(1)
   created_at                DateTime             @default(now())
   updated_at                DateTime             @updatedAt
 
@@ -689,6 +697,7 @@ model RunningBill {
   status                              BillStatus  @default(PENDING)
   is_legacy                           Boolean     @default(false)
   legacy_classification               String?
+  version                             Int         @default(1)
   created_at                          DateTime    @default(now())
   updated_at                          DateTime    @updatedAt
 
@@ -734,6 +743,7 @@ model Extension {
   approved_by                            String?
   approved_at                            DateTime?
   remarks                                String?
+  version                                Int             @default(1)
   created_at                             DateTime        @default(now())
   updated_at                             DateTime        @updatedAt
 
@@ -815,5 +825,69 @@ model ReportPreset {
   @@index([category])
   @@index([is_active])
   @@map("report_presets")
+}
+
+model SyncOperation {
+  operation_id    String   @id @default(uuid()) @db.Uuid
+  client_op_id    String   @unique
+  device_id       String
+  entity_type     String
+  entity_id       String
+  operation_type  String
+  payload_json    Json
+  schema_version  Int      @default(1)
+  status          String   @default("APPLIED")
+  applied_at      DateTime @default(now())
+  created_at      DateTime @default(now())
+
+  @@index([device_id, created_at])
+  @@index([entity_type, entity_id])
+  @@map("sync_operations")
+}
+
+model ServerChangeFeed {
+  feed_id          BigInt   @id @default(autoincrement())
+  entity_type      String
+  entity_id        String
+  operation_type   String
+  payload_json     Json
+  version          Int
+  origin_device_id String?
+  created_at       DateTime @default(now())
+
+  @@index([feed_id])
+  @@index([entity_type, entity_id])
+  @@map("server_change_feed")
+}
+
+model DeviceRegistration {
+  device_id        String    @id
+  device_name      String
+  app_version      String
+  registered_at    DateTime  @default(now())
+  last_sync_at     DateTime?
+  last_ack_feed_id BigInt    @default(0)
+  is_active        Boolean   @default(true)
+  revoked_at       DateTime?
+
+  @@index([is_active])
+  @@map("device_registrations")
+}
+
+model BeneficiaryAdvanceLedger {
+  advance_id      String      @id @default(uuid()) @db.Uuid
+  beneficiary_id  String      @db.Uuid
+  amount          Decimal     @default(0) @db.Decimal(18, 2)
+  consumed_amount Decimal     @default(0) @db.Decimal(18, 2)
+  balance_amount  Decimal     @default(0) @db.Decimal(18, 2)
+  reference_type  String
+  reference_id    String
+  created_at      DateTime    @default(now())
+  updated_at      DateTime    @updatedAt
+
+  beneficiary     Beneficiary @relation(fields: [beneficiary_id], references: [beneficiary_id], onDelete: Restrict)
+
+  @@index([beneficiary_id])
+  @@map("beneficiary_advance_ledger")
 }
 
