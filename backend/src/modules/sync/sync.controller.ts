@@ -8,8 +8,10 @@ import {
   Req,
   HttpCode,
   HttpStatus,
+  Optional,
 } from '@nestjs/common';
 import { SyncService, SyncPushResponse } from './sync.service';
+import { ClientSyncWorkerService } from './client-sync-worker.service';
 import {
   SyncPushDto,
   SyncPullQueryDto,
@@ -24,7 +26,10 @@ import { RoleName } from '../common/enums';
 
 @Controller('sync')
 export class SyncController {
-  constructor(private readonly syncService: SyncService) {}
+  constructor(
+    private readonly syncService: SyncService,
+    @Optional() private readonly clientWorker?: ClientSyncWorkerService,
+  ) {}
 
   /**
    * Health and sync status query. Publicly accessible for network heartbeat.
@@ -32,6 +37,29 @@ export class SyncController {
   @Get('status')
   async getStatus(@Query('deviceId') deviceId?: string) {
     return this.syncService.getSyncStatus(deviceId);
+  }
+
+  /**
+   * Client-side local outbox and synchronization diagnostics.
+   */
+  @Get('client-diagnostics')
+  async getClientDiagnostics() {
+    if (!this.clientWorker) {
+      return { status: 'STANDALONE_SERVER' };
+    }
+    return this.clientWorker.getSyncDiagnostics();
+  }
+
+  /**
+   * Triggers client-side manual outbox drain cycle.
+   */
+  @Post('client-drain')
+  @HttpCode(HttpStatus.OK)
+  async triggerClientDrain(@Query('batchSize') batchSize?: number) {
+    if (!this.clientWorker) {
+      return { processedCount: 0 };
+    }
+    return this.clientWorker.drainOutbox(batchSize ? Number(batchSize) : 50);
   }
 
   /**
