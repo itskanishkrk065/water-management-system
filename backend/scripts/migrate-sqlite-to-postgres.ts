@@ -206,7 +206,12 @@ export class SqliteToPostgresMigration {
 
   constructor(sqliteDbPath?: string, postgresUrl?: string) {
     this.sqliteDbPath = sqliteDbPath || path.resolve(__dirname, '../prisma/template.db');
-    this.postgresUrl = postgresUrl || process.env.DATABASE_URL_POSTGRES || process.env.POSTGRES_URL;
+    this.postgresUrl =
+      postgresUrl ||
+      process.env.DATABASE_URL_POSTGRES ||
+      process.env.POSTGRES_URL ||
+      process.env.DATABASE_URL_UNPOOLED ||
+      process.env.DATABASE_URL;
   }
 
   private querySqliteJson(sql: string): any[] {
