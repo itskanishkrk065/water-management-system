@@ -521,17 +521,19 @@ export class RunningBillingService {
         },
       });
 
-      return created;
-    });
+      // Atomic audit logging inside transaction
+      await this.auditService.log({
+        userId: adminUserId,
+        action: AuditAction.RUNNING_BILL_CREATED,
+        entityType: AuditEntityType.RUNNING_BILL,
+        entityId: created.running_bill_id,
+        newValues: created,
+        reason: `Generated Running Bill ${created.bill_number} for ₹${amountDue.toFixed(2)} from verified usage ${actualUsageLitres.toFixed(2)} L`,
+        ipAddress,
+        tx,
+      });
 
-    await this.auditService.log({
-      userId: adminUserId,
-      action: AuditAction.RUNNING_BILL_CREATED,
-      entityType: AuditEntityType.RUNNING_BILL,
-      entityId: bill.running_bill_id,
-      newValues: bill,
-      reason: `Generated Running Bill ${bill.bill_number} for ₹${amountDue.toFixed(2)} from verified usage ${actualUsageLitres.toFixed(2)} L`,
-      ipAddress,
+      return created;
     });
 
     return bill;

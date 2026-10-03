@@ -122,6 +122,11 @@ describe('WaterGrid V1 — Complete Running Charges Restructure Suite (RUN-NEW-0
     auditService = module.get<AuditService>(AuditService);
 
     jest.clearAllMocks();
+    mockPrisma.systemClockState.findFirst.mockResolvedValue({
+      state_id: 'SYSTEM_CLOCK_TRACKER',
+      last_known_timestamp: new Date('2026-01-01T00:00:00Z'),
+      is_rollback_detected: false,
+    });
   });
 
   function makeTestAllotment(overrides: any = {}) {
@@ -1003,10 +1008,10 @@ describe('WaterGrid V1 — Complete Running Charges Restructure Suite (RUN-NEW-0
 
   describe('RUN-NEW-039: System clock rollback detection', () => {
     it('flags SYSTEM_CLOCK_ROLLBACK when system time moves backwards', async () => {
-      mockPrisma.systemClockState.findFirst.mockResolvedValue({
+      mockPrisma.systemClockState.findFirst.mockResolvedValueOnce({
         state_id: 'SYSTEM_CLOCK_TRACKER',
         last_known_timestamp: new Date('2026-10-15T00:00:00Z'),
-        is_rollback_flagged: false,
+        is_rollback_detected: false,
       });
 
       // System clock set backwards to 2026-09-01

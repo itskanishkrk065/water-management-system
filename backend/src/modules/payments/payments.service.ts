@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException, Optional } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { RecordPaymentDto, ReversePaymentDto } from './dto/payment.dto';
@@ -6,12 +6,14 @@ import { AuditAction, AuditEntityType, BillStatus, InstallmentStatus, PaymentSta
 import { Prisma } from '@prisma/client';
 import { DecimalUtil } from '../common/decimal.util';
 import { Decimal } from 'decimal.js';
+import { ApplicationClockService } from '../system/application-clock.service';
 
 @Injectable()
 export class PaymentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
+    @Optional() private readonly clock?: ApplicationClockService,
   ) {}
 
   /**
@@ -24,6 +26,10 @@ export class PaymentsService {
     userId?: string,
     ipAddress?: string,
   ) {
+    if (this.clock) {
+      await this.clock.assertClockValid(userId, ipAddress);
+    }
+
     if (!dto.installmentId && !dto.runningBillId && !dto.extensionId) {
       throw new BadRequestException('Payment must be associated with an installment, running bill, or extension.');
     }
@@ -58,6 +64,8 @@ export class PaymentsService {
     }
 
     const result = await this.prisma.$transaction(async (tx) => {
+      let createdPayment: any = null;
+
       // 1. Payment for Installment
       if (dto.installmentId) {
         const installment = await tx.installment.findUnique({
@@ -93,7 +101,7 @@ export class PaymentsService {
           : InstallmentStatus.PARTIALLY_PAID;
 
         // Create Payment record
-        const payment = await tx.payment.create({
+        createdPayment = await tx.payment.create({
           data: {
             beneficiary_id: beneficiaryId,
             installment_id: dto.installmentId,
@@ -136,12 +144,8 @@ export class PaymentsService {
             },
           });
         }
-
-        return payment;
-      }
-
-      // 2. Payment for Running Bill
-      if (dto.runningBillId) {
+      } else if (dto.runningBillId) {
+        // 2. Payment for Running Bill
         const runningBill = await tx.runningBill.findUnique({
           where: { running_bill_id: dto.runningBillId },
         });
@@ -174,7 +178,7 @@ export class PaymentsService {
         const newPending = DecimalUtil.roundMoney(DecimalUtil.sub(amountDue, newPaid));
         const newStatus = newPending.isZero() ? BillStatus.PAID : BillStatus.PARTIALLY_PAID;
 
-        const payment = await tx.payment.create({
+        createdPayment = await tx.payment.create({
           data: {
             beneficiary_id: beneficiaryId,
             running_bill_id: dto.runningBillId,
@@ -197,38 +201,39 @@ export class PaymentsService {
             status: newStatus,
           },
         });
-
-        return payment;
+      } else if (dto.extensionId) {
+        // 3. Payment for Extension
+        createdPayment = await tx.payment.create({
+          data: {
+            beneficiary_id: dto.beneficiaryId,
+            extension_id: dto.extensionId,
+            amount: payAmount,
+            payment_date: paymentDate,
+            payment_reference: dto.paymentReference || null,
+            receipt_number: receiptNumber,
+            payment_mode: dto.paymentMode,
+            status: PaymentStatus.COMPLETED,
+            remarks: dto.remarks || null,
+            recorded_by: recordedBy,
+          },
+        });
       }
 
+      if (createdPayment) {
+        // Atomic audit log inside transaction
+        await this.auditService.log({
+          userId,
+          action: AuditAction.PAYMENT_RECORDED,
+          entityType: AuditEntityType.PAYMENT,
+          entityId: createdPayment.payment_id,
+          newValues: createdPayment,
+          reason: `Recorded payment of ₹${dto.amount} with receipt ${receiptNumber}`,
+          ipAddress,
+          tx,
+        });
+      }
 
-      // 3. Payment for Extension
-      const payment = await tx.payment.create({
-        data: {
-          beneficiary_id: dto.beneficiaryId,
-          extension_id: dto.extensionId,
-          amount: payAmount,
-          payment_date: paymentDate,
-          payment_reference: dto.paymentReference || null,
-          receipt_number: receiptNumber,
-          payment_mode: dto.paymentMode,
-          status: PaymentStatus.COMPLETED,
-          remarks: dto.remarks || null,
-          recorded_by: recordedBy,
-        },
-      });
-
-      return payment;
-    });
-
-    await this.auditService.log({
-      userId,
-      action: AuditAction.PAYMENT_RECORDED,
-      entityType: AuditEntityType.PAYMENT,
-      entityId: result.payment_id,
-      newValues: result,
-      reason: `Recorded payment of ₹${dto.amount} with receipt ${receiptNumber}`,
-      ipAddress,
+      return createdPayment;
     });
 
     return result;
@@ -259,6 +264,10 @@ export class PaymentsService {
     userId?: string,
     ipAddress?: string,
   ) {
+    if (this.clock) {
+      await this.clock.assertClockValid(userId, ipAddress);
+    }
+
     if (!runningBillId) {
       throw new BadRequestException('Running bill ID is required.');
     }
@@ -269,49 +278,6 @@ export class PaymentsService {
     const payAmount = DecimalUtil.roundMoney(new Decimal(dto.amount));
     if (payAmount.lte(0)) {
       throw new BadRequestException('Payment amount must be strictly greater than zero.');
-    }
-
-    // Resolve the running bill and validate ownership in a single query
-    const runningBill = await this.prisma.runningBill.findUnique({
-      where: { running_bill_id: runningBillId },
-      include: {
-        allotment: {
-          include: { infrastructure: { select: { status: true } } },
-        },
-      },
-    });
-
-    if (!runningBill) {
-      throw new NotFoundException(`Running bill ${runningBillId} not found.`);
-    }
-
-    // Ownership gate: if beneficiaryId is explicitly provided (self-service portal), verify ownership
-    const effectiveBeneficiaryId = runningBill.beneficiary_id;
-    if (beneficiaryId && beneficiaryId !== effectiveBeneficiaryId) {
-      throw new BadRequestException('Running bill does not belong to your account.');
-    }
-
-    // Status guards
-    if (runningBill.status === BillStatus.PAID) {
-      throw new BadRequestException('Running bill is already fully paid.');
-    }
-    if (runningBill.status === 'VOIDED' || runningBill.status === 'CANCELLED') {
-      throw new BadRequestException('Cannot record payment against a voided or cancelled running bill.');
-    }
-
-    // Infrastructure commissioning guard
-    const infraStatus = runningBill.allotment?.infrastructure?.status;
-    if (infraStatus && infraStatus !== 'COMMISSIONED') {
-      throw new BadRequestException(
-        `Infrastructure is not COMMISSIONED (current: ${infraStatus}). Running charges cannot be collected until commissioning.`,
-      );
-    }
-
-    const pendingAmount = new Decimal(runningBill.pending_amount);
-    if (payAmount.greaterThan(pendingAmount)) {
-      throw new BadRequestException(
-        `Payment amount ₹${payAmount.toFixed(2)} exceeds pending running bill amount ₹${pendingAmount.toFixed(2)}.`,
-      );
     }
 
     const receiptNumber = this.generateReceiptNumber('RRC');
@@ -335,6 +301,49 @@ export class PaymentsService {
     }
 
     const payment = await this.prisma.$transaction(async (tx) => {
+      // 1. Authoritative running bill load INSIDE transaction
+      const runningBill = await tx.runningBill.findUnique({
+        where: { running_bill_id: runningBillId },
+        include: {
+          allotment: {
+            include: { infrastructure: { select: { status: true } } },
+          },
+        },
+      });
+
+      if (!runningBill) {
+        throw new NotFoundException(`Running bill ${runningBillId} not found.`);
+      }
+
+      // Ownership gate: if beneficiaryId is explicitly provided (self-service portal), verify ownership
+      const effectiveBeneficiaryId = runningBill.beneficiary_id;
+      if (beneficiaryId && beneficiaryId !== effectiveBeneficiaryId) {
+        throw new BadRequestException('Running bill does not belong to your account.');
+      }
+
+      // Status guards
+      if (runningBill.status === BillStatus.PAID) {
+        throw new BadRequestException('Running bill is already fully paid.');
+      }
+      if (runningBill.status === 'VOIDED' || runningBill.status === 'CANCELLED') {
+        throw new BadRequestException('Cannot record payment against a voided or cancelled running bill.');
+      }
+
+      // Infrastructure commissioning guard
+      const infraStatus = runningBill.allotment?.infrastructure?.status;
+      if (infraStatus && infraStatus !== 'COMMISSIONED') {
+        throw new BadRequestException(
+          `Infrastructure is not COMMISSIONED (current: ${infraStatus}). Running charges cannot be collected until commissioning.`,
+        );
+      }
+
+      const pendingAmount = new Decimal(runningBill.pending_amount);
+      if (payAmount.greaterThan(pendingAmount)) {
+        throw new BadRequestException(
+          `Payment amount ₹${payAmount.toFixed(2)} exceeds pending running bill amount ₹${pendingAmount.toFixed(2)}.`,
+        );
+      }
+
       const newPaid = DecimalUtil.roundMoney(
         DecimalUtil.add(new Decimal(runningBill.amount_paid), payAmount),
       );
@@ -369,25 +378,26 @@ export class PaymentsService {
         },
       });
 
-      return created;
-    });
+      // Specific audit action distinguishes running bill payments from installment payments
+      await this.auditService.log({
+        userId,
+        action: AuditAction.RUNNING_PAYMENT_RECORDED,
+        entityType: AuditEntityType.PAYMENT,
+        entityId: created.payment_id,
+        newValues: {
+          runningBillId,
+          amount: payAmount.toFixed(2),
+          receiptNumber,
+          beneficiaryId: effectiveBeneficiaryId,
+          paymentMode: mode,
+          billingPeriod: runningBill.billing_period,
+        },
+        reason: `Running bill payment of ₹${payAmount.toFixed(2)} recorded. Receipt: ${receiptNumber}. Period: ${runningBill.billing_period}.`,
+        ipAddress,
+        tx,
+      });
 
-    // Specific audit action distinguishes running bill payments from installment payments
-    await this.auditService.log({
-      userId,
-      action: AuditAction.RUNNING_PAYMENT_RECORDED,
-      entityType: AuditEntityType.PAYMENT,
-      entityId: payment.payment_id,
-      newValues: {
-        runningBillId,
-        amount: payAmount.toFixed(2),
-        receiptNumber,
-        beneficiaryId: effectiveBeneficiaryId,
-        paymentMode: mode,
-        billingPeriod: runningBill.billing_period,
-      },
-      reason: `Running bill payment of ₹${payAmount.toFixed(2)} recorded. Receipt: ${receiptNumber}. Period: ${runningBill.billing_period}.`,
-      ipAddress,
+      return created;
     });
 
     return payment;
@@ -503,18 +513,20 @@ export class PaymentsService {
         }
       }
 
-      return reversalRecord;
-    });
+      // Atomic audit logging inside transaction
+      await this.auditService.log({
+        userId,
+        action: AuditAction.PAYMENT_REVERSED,
+        entityType: AuditEntityType.PAYMENT,
+        entityId: paymentId,
+        oldValues: original,
+        newValues: reversalRecord,
+        reason: dto.reason,
+        ipAddress,
+        tx,
+      });
 
-    await this.auditService.log({
-      userId,
-      action: AuditAction.PAYMENT_REVERSED,
-      entityType: AuditEntityType.PAYMENT,
-      entityId: paymentId,
-      oldValues: original,
-      newValues: result,
-      reason: dto.reason,
-      ipAddress,
+      return reversalRecord;
     });
 
     return result;

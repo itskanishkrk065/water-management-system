@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Optional } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { CreateWaterApplicationDto, ApproveWaterApplicationDto, RejectWaterApplicationDto } from './dto/water.dto';
@@ -13,12 +13,14 @@ import {
 } from '../common/enums';
 import { DecimalUtil } from '../common/decimal.util';
 import { Decimal } from 'decimal.js';
+import { ApplicationClockService } from '../system/application-clock.service';
 
 @Injectable()
 export class WaterService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
+    @Optional() private readonly clock?: ApplicationClockService,
   ) {}
 
   /**
@@ -202,6 +204,10 @@ export class WaterService {
    * CORE BUSINESS RULE #1: ONE WATER APPLICATION PER LAND HOLDING (CONCURRENCY SAFE)
    */
   async createApplication(dto: CreateWaterApplicationDto, createdBy: string, userId?: string, ipAddress?: string) {
+    if (this.clock) {
+      await this.clock.assertClockValid(userId, ipAddress);
+    }
+
     const beneficiary = await this.prisma.beneficiary.findUnique({
       where: { beneficiary_id: dto.beneficiaryId },
       include: { landHoldings: { where: { status: LandStatus.ACTIVE }, include: { parcels: true } } },
@@ -483,6 +489,10 @@ export class WaterService {
     userId?: string,
     ipAddress?: string,
   ) {
+    if (this.clock) {
+      await this.clock.assertClockValid(userId, ipAddress);
+    }
+
     const application = await this.prisma.waterApplication.findUnique({
       where: { application_id: dto.applicationId },
       include: {
@@ -662,24 +672,25 @@ export class WaterService {
         data: { status: ApplicationStatus.APPROVED },
       });
 
-      return { allotment, bill };
-    });
+      // 6. Record Audit Log inside transaction
+      await this.auditService.log({
+        userId,
+        action: AuditAction.APPROVE,
+        entityType: 'WaterApplication',
+        entityId: application.application_id,
+        oldValues: { status: application.status },
+        newValues: {
+          status: ApplicationStatus.APPROVED,
+          allotment_id: allotment.allotment_id,
+          bill_id: bill.bill_id,
+          approved_litres: dto.approvedLitres,
+        },
+        reason: dto.approvalRemarks || 'Approved water application and created allotment with 5 installments',
+        ipAddress,
+        tx,
+      });
 
-    // Record Audit Log
-    await this.auditService.log({
-      userId,
-      action: AuditAction.APPROVE,
-      entityType: 'WaterApplication',
-      entityId: application.application_id,
-      oldValues: { status: application.status },
-      newValues: {
-        status: ApplicationStatus.APPROVED,
-        allotment_id: transactionResult.allotment.allotment_id,
-        bill_id: transactionResult.bill.bill_id,
-        approved_litres: dto.approvedLitres,
-      },
-      reason: dto.approvalRemarks || 'Approved water application and created allotment with 5 installments',
-      ipAddress,
+      return { allotment, bill };
     });
 
     return this.findOneAllotment(transactionResult.allotment.allotment_id);

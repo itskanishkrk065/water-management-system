@@ -56,12 +56,13 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
 
       // SQLite Runtime Performance Tuning
       try {
+        await this.$queryRawUnsafe('PRAGMA foreign_keys = ON;');
         await this.$queryRawUnsafe('PRAGMA journal_mode = WAL;');
         await this.$queryRawUnsafe('PRAGMA synchronous = NORMAL;');
         await this.$queryRawUnsafe('PRAGMA cache_size = -64000;'); // 64 MB cache
         await this.$queryRawUnsafe('PRAGMA temp_store = MEMORY;');
         await this.$queryRawUnsafe('PRAGMA busy_timeout = 5000;');
-        this.logger.log('[Prisma] SQLite Performance PRAGMAs configured (WAL, cache=64MB, temp_store=MEMORY)');
+        this.logger.log('[Prisma] SQLite Performance PRAGMAs configured (FK=ON, WAL, cache=64MB, temp_store=MEMORY)');
       } catch (pragmaErr: any) {
         // Non-fatal if using PostgreSQL dev mode
       }
@@ -89,12 +90,13 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     try {
       await this.$disconnect();
       await this.$connect();
+      await this.$queryRawUnsafe('PRAGMA foreign_keys = ON;');
       await this.$queryRawUnsafe('PRAGMA journal_mode = WAL;');
       await this.$queryRawUnsafe('PRAGMA synchronous = NORMAL;');
       await this.$queryRawUnsafe('PRAGMA cache_size = -64000;');
       await this.$queryRawUnsafe('PRAGMA temp_store = MEMORY;');
       await this.$queryRawUnsafe('PRAGMA busy_timeout = 5000;');
-      this.logger.log('[Prisma] Database connection reinitialized successfully with performance PRAGMAs');
+      this.logger.log('[Prisma] Database connection reinitialized successfully with performance PRAGMAs (FK=ON)');
     } catch (err: any) {
       this.logger.warn(`[Prisma] Warning during database reinitialization: ${err?.message || err}`);
     }
