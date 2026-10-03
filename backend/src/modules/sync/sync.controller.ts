@@ -9,6 +9,7 @@ import {
   HttpCode,
   HttpStatus,
   Optional,
+  Param,
 } from '@nestjs/common';
 import { SyncService, SyncPushResponse } from './sync.service';
 import { ClientSyncWorkerService } from './client-sync-worker.service';
@@ -112,5 +113,50 @@ export class SyncController {
   @UseGuards(JwtAuthGuard)
   async processAck(@Body() dto: SyncAckDto) {
     return this.syncService.processAck(dto);
+  }
+
+  /**
+   * Lists items in the local client outbox queue.
+   */
+  @Get('outbox')
+  @UseGuards(JwtAuthGuard)
+  async getOutboxItems(
+    @Query('status') status?: string,
+    @Query('limit') limit?: number,
+  ) {
+    return this.syncService.getOutboxItems(status, limit ? Number(limit) : 100);
+  }
+
+  /**
+   * Lists all operations currently in CONFLICT status with server state comparison.
+   */
+  @Get('conflicts')
+  @UseGuards(JwtAuthGuard)
+  async getConflicts() {
+    return this.syncService.getConflicts();
+  }
+
+  /**
+   * Resolves a conflict using ACCEPT_SERVER, FORCE_CLIENT, or MERGE strategy.
+   */
+  @Post('conflicts/:clientOpId/resolve')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  async resolveConflict(
+    @Param('clientOpId') clientOpId: string,
+    @Body() body: { strategy: 'ACCEPT_SERVER' | 'FORCE_CLIENT' | 'MERGE'; mergedPayload?: any },
+    @Req() req: any,
+  ) {
+    const actorUserId = req.user?.userId;
+    return this.syncService.resolveConflict(clientOpId, body, actorUserId);
+  }
+
+  /**
+   * Retrieves records from the BeneficiaryAdvanceLedger for overpayment arbitration audit.
+   */
+  @Get('advance-ledger')
+  @UseGuards(JwtAuthGuard)
+  async getAdvanceLedger(@Query('beneficiaryId') beneficiaryId?: string) {
+    return this.syncService.getAdvanceLedger(beneficiaryId);
   }
 }

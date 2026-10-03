@@ -545,4 +545,154 @@ export class SyncService {
     }
     return 1;
   }
+
+  /**
+   * Retrieves items currently in the local sync outbox queue with optional status filtering.
+   */
+  async getOutboxItems(status?: string, limit: number = 100): Promise<any[]> {
+    const where: any = {};
+    if (status && status !== 'ALL') {
+      where.status = status;
+    }
+    const items = await (this.prisma as any).syncOutbox.findMany({
+      where,
+      orderBy: { created_at: 'desc' },
+      take: Math.min(limit, 200),
+    });
+
+    return items.map((item: any) => ({
+      ...item,
+      payload: typeof item.payload_json === 'string' ? JSON.parse(item.payload_json) : item.payload_json,
+    }));
+  }
+
+  /**
+   * Retrieves active conflicts in the outbox, pairing client attempted updates
+   * with current authoritative database state for visual diffing in the UI.
+   */
+  async getConflicts(): Promise<any[]> {
+    const conflictItems = await (this.prisma as any).syncOutbox.findMany({
+      where: { status: 'CONFLICT' },
+      orderBy: { created_at: 'desc' },
+    });
+
+    const enriched = [];
+    for (const item of conflictItems) {
+      let clientPayload = null;
+      try {
+        clientPayload = typeof item.payload_json === 'string' ? JSON.parse(item.payload_json) : item.payload_json;
+      } catch {}
+
+      let serverRecord = null;
+      try {
+        const modelName = item.entity_type.charAt(0).toLowerCase() + item.entity_type.slice(1);
+        const client = this.prisma as any;
+        if (client[modelName] && client[modelName].findUnique) {
+          serverRecord = await client[modelName].findUnique({
+            where: { [`${modelName}_id`]: item.entity_id },
+          });
+        }
+      } catch {}
+
+      enriched.push({
+        outboxId: item.outbox_id,
+        clientOpId: item.client_op_id,
+        entityType: item.entity_type,
+        entityId: item.entity_id,
+        operationType: item.operation_type,
+        clientPayload,
+        serverRecord,
+        schemaVersion: item.schema_version,
+        retryCount: item.retry_count,
+        lastError: item.last_error,
+        createdAt: item.created_at,
+      });
+    }
+
+    return enriched;
+  }
+
+  /**
+   * Resolves a conflict using one of three strategies:
+   * 1. ACCEPT_SERVER: Mark outbox item resolved/discarded.
+   * 2. FORCE_CLIENT: Re-queue as PENDING for authoritative sync push.
+   * 3. MERGE: Apply updated merged payload and re-queue as PENDING.
+   */
+  async resolveConflict(
+    clientOpId: string,
+    dto: { strategy: 'ACCEPT_SERVER' | 'FORCE_CLIENT' | 'MERGE'; mergedPayload?: any },
+    actorUserId?: string,
+  ): Promise<any> {
+    const item = await (this.prisma as any).syncOutbox.findUnique({
+      where: { client_op_id: clientOpId },
+    });
+
+    if (!item) {
+      throw new NotFoundException(`Outbox conflict item '${clientOpId}' not found`);
+    }
+
+    let updateData: any = {};
+    if (dto.strategy === 'ACCEPT_SERVER') {
+      updateData = {
+        status: 'RESOLVED',
+        last_error: 'Conflict resolved: Accepted server state',
+      };
+    } else if (dto.strategy === 'FORCE_CLIENT') {
+      updateData = {
+        status: 'PENDING',
+        retry_count: 0,
+        last_error: 'Conflict resolved: Force client override queued',
+      };
+    } else if (dto.strategy === 'MERGE') {
+      updateData = {
+        status: 'PENDING',
+        retry_count: 0,
+        payload_json: JSON.stringify(dto.mergedPayload || {}),
+        last_error: 'Conflict resolved: Merged payload queued for sync',
+      };
+    }
+
+    const updated = await (this.prisma as any).syncOutbox.update({
+      where: { client_op_id: clientOpId },
+      data: updateData,
+    });
+
+    await this.auditService.log({
+      userId: actorUserId,
+      action: AuditAction.UPDATE,
+      entityType: 'SyncOutbox',
+      entityId: item.outbox_id,
+      oldValues: { status: item.status, last_error: item.last_error },
+      newValues: updateData,
+      reason: `Conflict resolution: Strategy ${dto.strategy} applied to operation ${clientOpId}`,
+    });
+
+    return updated;
+  }
+
+  /**
+   * Retrieves records from the BeneficiaryAdvanceLedger to inspect overpayments.
+   */
+  async getAdvanceLedger(beneficiaryId?: string): Promise<any[]> {
+    const where: any = {};
+    if (beneficiaryId) {
+      where.beneficiary_id = beneficiaryId;
+    }
+
+    return (this.prisma as any).beneficiaryAdvanceLedger.findMany({
+      where,
+      include: {
+        beneficiary: {
+          select: {
+            beneficiary_id: true,
+            name: true,
+            phone_number: true,
+            district: { select: { name: true } },
+            village: { select: { name: true } },
+          },
+        },
+      },
+      orderBy: { created_at: 'desc' },
+    });
+  }
 }
