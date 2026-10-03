@@ -23,6 +23,7 @@ import { BackupModule } from './modules/backup/backup.module';
 import { IntegrityModule } from './modules/integrity/integrity.module';
 import { SearchModule } from './modules/search/search.module';
 import { DeveloperModule } from './modules/developer/developer.module';
+import { SyncModule } from './modules/sync/sync.module';
 
 @Module({
   imports: [
@@ -50,6 +51,7 @@ import { DeveloperModule } from './modules/developer/developer.module';
     IntegrityModule,
     SearchModule,
     DeveloperModule,
+    SyncModule,
   ],
 })
 export class AppModule {}

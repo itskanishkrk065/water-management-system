@@ -204,6 +204,7 @@ model Beneficiary {
   payments          Payment[]
   documents         BeneficiaryDocument[]
   waterUsageRecords WaterUsageRecord[]
+  advances          BeneficiaryAdvanceLedger[]
 
   @@index([phone_number])
   @@index([district_id])
@@ -685,5 +686,69 @@ model SyncOutbox {
   @@index([status, created_at])
   @@index([entity_type, entity_id])
   @@map("sync_outbox")
+}
+
+model SyncOperation {
+  operation_id    String   @id @default(uuid())
+  client_op_id    String   @unique
+  device_id       String
+  entity_type     String
+  entity_id       String
+  operation_type  String
+  payload_json    String
+  schema_version  Int      @default(1)
+  status          String   @default("APPLIED")
+  applied_at      DateTime @default(now())
+  created_at      DateTime @default(now())
+
+  @@index([device_id, created_at])
+  @@index([entity_type, entity_id])
+  @@map("sync_operations")
+}
+
+model ServerChangeFeed {
+  feed_id          Int      @id @default(autoincrement())
+  entity_type      String
+  entity_id        String
+  operation_type   String
+  payload_json     String
+  version          Int
+  origin_device_id String?
+  created_at       DateTime @default(now())
+
+  @@index([feed_id])
+  @@index([entity_type, entity_id])
+  @@map("server_change_feed")
+}
+
+model DeviceRegistration {
+  device_id        String    @id
+  device_name      String
+  app_version      String
+  registered_at    DateTime  @default(now())
+  last_sync_at     DateTime?
+  last_ack_feed_id Int       @default(0)
+  is_active        Boolean   @default(true)
+  revoked_at       DateTime?
+
+  @@index([is_active])
+  @@map("device_registrations")
+}
+
+model BeneficiaryAdvanceLedger {
+  advance_id      String      @id @default(uuid())
+  beneficiary_id  String
+  amount          Decimal     @default(0)
+  consumed_amount Decimal     @default(0)
+  balance_amount  Decimal     @default(0)
+  reference_type  String
+  reference_id    String
+  created_at      DateTime    @default(now())
+  updated_at      DateTime    @updatedAt
+
+  beneficiary     Beneficiary @relation(fields: [beneficiary_id], references: [beneficiary_id], onDelete: Restrict)
+
+  @@index([beneficiary_id])
+  @@map("beneficiary_advance_ledger")
 }
 
