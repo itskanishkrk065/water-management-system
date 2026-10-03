@@ -13,7 +13,7 @@ import {
 } from './dto/beneficiary.dto';
 import { DecimalUtil } from '../common/decimal.util';
 import { Prisma } from '@prisma/client';
-import { AuditAction, BeneficiaryStatus, LandStatus, InfrastructureStatus } from '../common/enums';
+import { ApplicationStatus, AuditAction, BeneficiaryStatus, LandStatus, InfrastructureStatus } from '../common/enums';
 import { Decimal } from 'decimal.js';
 
 @Injectable()
@@ -491,7 +491,7 @@ export class BeneficiariesService {
       this.prisma.waterApplication.aggregate({
         where: {
           beneficiary_id: id,
-          status: { notIn: ['REJECTED', 'CANCELLED', 'VOIDED', 'ARCHIVED'] },
+          status: { notIn: [ApplicationStatus.REJECTED, ApplicationStatus.CANCELLED, ApplicationStatus.VOIDED] },
         },
         _sum: { required_litres: true },
       }),
@@ -506,13 +506,13 @@ export class BeneficiariesService {
       this.prisma.waterApplication.count({
         where: {
           beneficiary_id: id,
-          status: { notIn: ['REJECTED', 'CANCELLED', 'VOIDED', 'ARCHIVED'] },
+          status: { notIn: [ApplicationStatus.REJECTED, ApplicationStatus.CANCELLED, ApplicationStatus.VOIDED] },
         },
       }),
       this.prisma.waterApplication.count({
         where: {
           beneficiary_id: id,
-          status: { in: ['REJECTED', 'CANCELLED', 'VOIDED', 'ARCHIVED'] },
+          status: { in: [ApplicationStatus.REJECTED, ApplicationStatus.CANCELLED, ApplicationStatus.VOIDED] },
         },
       }),
       this.prisma.infrastructure.count({ where: { beneficiary_id: id } }),

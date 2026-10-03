@@ -10,6 +10,7 @@ import { AppModule } from '../src/app.module';
 import { AllExceptionsFilter } from '../src/modules/common/filters/http-exception.filter';
 import { TransformDecimalInterceptor } from '../src/modules/common/interceptors/transform-decimal.interceptor';
 import { PrismaService } from '../src/modules/prisma/prisma.service';
+import { ApplicationStatus } from '../src/modules/common/enums';
 
 describe('WaterGrid Targeted Fixes E2E Test Suite', () => {
   let app: INestApplication;
@@ -414,10 +415,10 @@ describe('WaterGrid Targeted Fixes E2E Test Suite', () => {
         .expect(201);
       draftAppId = draftRes.body.application_id;
 
-      // Update status to DRAFT directly
+      // Ensure status is pre-approval (SUBMITTED)
       await prisma.waterApplication.update({
         where: { application_id: draftAppId },
-        data: { status: 'DRAFT' },
+        data: { status: ApplicationStatus.SUBMITTED },
       });
 
       // Create and approve application on referenced holding

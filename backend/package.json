@@ -10,7 +10,7 @@
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/src/main",
-    "build:render": "npm run prisma:generate:sqlite && nest build",
+    "build:render": "prisma generate --schema=prisma/schema.prisma && nest build",
     "prisma:generate": "prisma generate",
     "prisma:generate:sqlite": "prisma generate --schema=prisma/schema.sqlite.prisma && node scripts/patch-prisma-client.js",
     "prisma:migrate": "prisma migrate deploy",

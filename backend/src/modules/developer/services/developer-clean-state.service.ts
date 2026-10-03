@@ -13,7 +13,7 @@ import {
   CleanStatePreviewDto,
   AppEnvironmentEnum,
 } from '../dto/developer.dto';
-import { AuditAction, RoleName } from '../../common/enums';
+import { AuditAction, RoleName, InfrastructureStatus } from '../../common/enums';
 import { Decimal } from 'decimal.js';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -499,7 +499,7 @@ export class DeveloperCleanStateService {
       data: {
         allotment_id: allot.allotment_id,
         beneficiary_id: ben.beneficiary_id,
-        status: 'IN_PROGRESS',
+        status: InfrastructureStatus.UNDER_CONSTRUCTION,
       },
     });
   }

@@ -1,6 +1,7 @@
 import { Injectable, ConflictException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateProjectDto, UpdateProjectDto } from './dto/project.dto';
+import { ProjectStatus } from '../common/enums';
 
 @Injectable()
 export class ProjectsService {
@@ -110,7 +111,7 @@ export class ProjectsService {
     if (!existing) {
       throw new NotFoundException('Project scheme not found');
     }
-    const newStatus = existing.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
+    const newStatus = existing.status === ProjectStatus.ACTIVE ? ProjectStatus.SUSPENDED : ProjectStatus.ACTIVE;
     return this.prisma.project.update({
       where: { project_id: id },
       data: { status: newStatus },

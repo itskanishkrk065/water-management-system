@@ -433,13 +433,13 @@ async function runQASuite() {
     const dbActiveWaterCount = await prisma.waterApplication.count({
       where: {
         beneficiary_id: targetId,
-        status: { notIn: ['REJECTED', 'CANCELLED', 'VOIDED', 'ARCHIVED'] },
+        status: { notIn: ['REJECTED', 'CANCELLED', 'VOIDED'] },
       },
     });
     const dbHistoricalWaterCount = await prisma.waterApplication.count({
       where: {
         beneficiary_id: targetId,
-        status: { in: ['REJECTED', 'CANCELLED', 'VOIDED', 'ARCHIVED'] },
+        status: { in: ['REJECTED', 'CANCELLED', 'VOIDED'] },
       },
     });
 

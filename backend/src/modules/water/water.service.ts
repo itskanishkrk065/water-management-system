@@ -309,7 +309,7 @@ export class WaterService {
       where.status = query.status;
     } else if (query.scope === 'HISTORY') {
       where.OR = [
-        { status: { in: ['CANCELLED', 'REJECTED', 'VOIDED', 'ARCHIVED', 'SUPERSEDED'] as any } },
+        { status: { in: [ApplicationStatus.CANCELLED, ApplicationStatus.REJECTED, ApplicationStatus.VOIDED] } },
         { landHolding: { status: { not: LandStatus.ACTIVE } } },
       ];
     } else if (query.scope === 'ALL') {
