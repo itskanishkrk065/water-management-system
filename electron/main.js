@@ -630,6 +630,73 @@ ipcMain.handle('app:open-storage-folder', () => {
   return true;
 });
 
+// Persistent Device Identity
+function getOrCreateDeviceId() {
+  const configDir = path.join(appDataDir, 'config');
+  if (!fs.existsSync(configDir)) {
+    try { fs.mkdirSync(configDir, { recursive: true }); } catch {}
+  }
+  const configPath = path.join(configDir, 'device.json');
+  try {
+    if (fs.existsSync(configPath)) {
+      const data = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+      if (data.deviceId) return data.deviceId;
+    }
+  } catch {}
+  const newId = `DEV-${process.platform.toUpperCase()}-${require('crypto').randomUUID()}`;
+  try {
+    fs.writeFileSync(configPath, JSON.stringify({ deviceId: newId, createdAt: new Date().toISOString() }, null, 2));
+  } catch {}
+  return newId;
+}
+
+const currentDeviceId = getOrCreateDeviceId();
+
+ipcMain.handle('app:get-device-id', () => {
+  return currentDeviceId;
+});
+
+ipcMain.handle('app:get-secure-token', async (event, key) => {
+  const tokenFile = path.join(appDataDir, 'config', `${key}.bin`);
+  if (!fs.existsSync(tokenFile)) return null;
+  try {
+    const encrypted = fs.readFileSync(tokenFile);
+    const { safeStorage } = require('electron');
+    if (safeStorage && safeStorage.isEncryptionAvailable()) {
+      return safeStorage.decryptString(encrypted);
+    }
+    return encrypted.toString('utf8');
+  } catch (err) {
+    logDesktop(`Failed to decrypt secure token ${key}: ${err.message}`);
+    return null;
+  }
+});
+
+ipcMain.handle('app:set-secure-token', async (event, key, token) => {
+  const configDir = path.join(appDataDir, 'config');
+  if (!fs.existsSync(configDir)) {
+    try { fs.mkdirSync(configDir, { recursive: true }); } catch {}
+  }
+  const tokenFile = path.join(configDir, `${key}.bin`);
+  try {
+    if (!token) {
+      if (fs.existsSync(tokenFile)) fs.unlinkSync(tokenFile);
+      return true;
+    }
+    const { safeStorage } = require('electron');
+    if (safeStorage && safeStorage.isEncryptionAvailable()) {
+      const encrypted = safeStorage.encryptString(token);
+      fs.writeFileSync(tokenFile, encrypted);
+    } else {
+      fs.writeFileSync(tokenFile, Buffer.from(token, 'utf8'));
+    }
+    return true;
+  } catch (err) {
+    logDesktop(`Failed to encrypt secure token ${key}: ${err.message}`);
+    return false;
+  }
+});
+
 // 12. Graceful Application Shutdown
 app.on('before-quit', () => {
   logDesktop('Application closing. Initiating graceful shutdown...');

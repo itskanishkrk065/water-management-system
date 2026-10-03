@@ -627,6 +627,7 @@ export class PaymentsService {
     const doc = new PDFDocument({
       size: 'A4',
       margin: 40,
+      compress: false,
       info: {
         Title: `Payment Receipt ${payment.receipt_number}`,
         Author: 'Kongu Basin Water Management Authority',
@@ -642,6 +643,20 @@ export class PaymentsService {
 
     const isReversed = payment.status === 'REVERSED' || payment.is_reversal;
 
+    // Watermark & Sync Verification Status Check
+    let isPendingSync = false;
+    try {
+      const outboxItem = await (this.prisma as any).syncOutbox?.findFirst({
+        where: {
+          entity_id: payment.payment_id,
+          entity_type: 'Payment',
+        },
+      });
+      isPendingSync = !!outboxItem && outboxItem.status !== 'ACKNOWLEDGED';
+    } catch {}
+
+    const confirmationText = isPendingSync ? 'OFFLINE (AWAITING SERVER CONFIRMATION)' : 'SERVER CONFIRMED';
+
     // Header Banner
     doc.rect(40, 40, 515, 65).fill(isReversed ? '#7f1d1d' : '#0f172a');
     doc.fillColor('#ffffff').fontSize(15).font('Helvetica-Bold').text('KONGU BASIN WATER MANAGEMENT AUTHORITY', 55, 52);
@@ -651,10 +666,19 @@ export class PaymentsService {
 
     doc.moveDown(3);
 
+    // Diagonal Watermark for unconfirmed offline payments
+    if (isPendingSync) {
+      doc.save();
+      doc.fontSize(20).font('Helvetica-Bold').fillColor('#b45309', 0.20);
+      doc.rotate(-28, { origin: [297, 421] });
+      doc.text('OFFLINE RECEIPT — AWAITING SERVER CONFIRMATION', 40, 410, { align: 'center', width: 515 });
+      doc.restore();
+    }
+
     // Status Ribbon
-    doc.rect(40, 115, 515, 24).fill(isReversed ? '#fee2e2' : '#ecfdf5');
-    doc.fillColor(isReversed ? '#991b1b' : '#065f46').fontSize(9).font('Helvetica-Bold').text(
-      `STATUS: ${payment.status} ${payment.is_reversal ? '(REVERSAL ENTRY)' : ''} | PAYMENT MODE: ${payment.payment_mode}`,
+    doc.rect(40, 115, 515, 24).fill(isReversed ? '#fee2e2' : isPendingSync ? '#fef3c7' : '#ecfdf5');
+    doc.fillColor(isReversed ? '#991b1b' : isPendingSync ? '#92400e' : '#065f46').fontSize(9).font('Helvetica-Bold').text(
+      `STATUS: ${payment.status} ${payment.is_reversal ? '(REVERSAL ENTRY)' : ''} | ${confirmationText} | MODE: ${payment.payment_mode}`,
       55,
       122,
     );

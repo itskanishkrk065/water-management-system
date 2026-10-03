@@ -17,6 +17,31 @@ export interface ClientSyncStatus {
   nextRetryMs?: number;
 }
 
+export const ENTITY_DEPENDENCY_ORDER: Record<string, number> = {
+  role: 1,
+  user: 2,
+  district: 3,
+  block: 4,
+  panchayat: 5,
+  village: 6,
+  project: 7,
+  rateconfiguration: 8,
+  installmenttemplate: 9,
+  beneficiary: 10,
+  landholding: 11,
+  landparcel: 12,
+  waterapplication: 13,
+  waterallotment: 14,
+  developmentbill: 15,
+  installment: 16,
+  infrastructure: 17,
+  billingperiod: 18,
+  waterusagerecord: 19,
+  runningbill: 20,
+  extension: 21,
+  payment: 22,
+};
+
 @Injectable()
 export class ClientSyncWorkerService {
   private readonly logger = new Logger(ClientSyncWorkerService.name);
@@ -193,13 +218,45 @@ export class ClientSyncWorkerService {
   }
 
   /**
-   * Pulls incremental server deltas and advances local sync cursor.
+   * Pulls incremental server deltas, suppresses loopback echoes, sorts by
+   * foreign key dependencies, and advances local sync cursor.
    */
-  async pullDeltas(lastAckFeedId: number = 0): Promise<{ appliedDeltasCount: number; latestFeedId: number }> {
+  async pullDeltas(lastAckFeedId: number = 0): Promise<{
+    appliedDeltasCount: number;
+    latestFeedId: number;
+    skippedEchoCount: number;
+  }> {
     try {
       const pullResult = await this.syncService.processPull(lastAckFeedId, 100);
+      let appliedCount = 0;
+      let skippedEchoCount = 0;
 
       if (pullResult.changes.length > 0) {
+        // 1. Separate echo changes from foreign server changes
+        const foreignChanges: any[] = [];
+        for (const change of pullResult.changes) {
+          if (change.originDeviceId === this.deviceId) {
+            skippedEchoCount++;
+          } else {
+            foreignChanges.push(change);
+          }
+        }
+
+        // 2. Sort foreign changes by topological dependency rank
+        foreignChanges.sort((a, b) => {
+          const rankA = ENTITY_DEPENDENCY_ORDER[a.entityType.toLowerCase()] || 999;
+          const rankB = ENTITY_DEPENDENCY_ORDER[b.entityType.toLowerCase()] || 999;
+          if (rankA !== rankB) return rankA - rankB;
+          return a.feedId - b.feedId;
+        });
+
+        // 3. Apply foreign changes locally
+        for (const change of foreignChanges) {
+          await this.applyLocalDelta(change);
+          appliedCount++;
+        }
+
+        // 4. Acknowledge highest processed feed ID
         await this.syncService.processAck({
           deviceId: this.deviceId,
           acknowledgedFeedId: pullResult.latestFeedId,
@@ -207,14 +264,35 @@ export class ClientSyncWorkerService {
       }
 
       return {
-        appliedDeltasCount: pullResult.changes.length,
+        appliedDeltasCount: appliedCount,
         latestFeedId: pullResult.latestFeedId,
+        skippedEchoCount,
       };
     } catch (err: any) {
       this.logger.warn(`Sync worker pull failed: ${err.message}`);
       this.currentState = 'OFFLINE';
       this.lastError = err.message;
-      return { appliedDeltasCount: 0, latestFeedId: lastAckFeedId };
+      return { appliedDeltasCount: 0, latestFeedId: lastAckFeedId, skippedEchoCount: 0 };
+    }
+  }
+
+  private async applyLocalDelta(change: any): Promise<void> {
+    try {
+      const modelName = change.entityType.charAt(0).toLowerCase() + change.entityType.slice(1);
+      const client = this.prisma as any;
+      if (client[modelName] && client[modelName].upsert) {
+        const idField = `${modelName}_id`;
+        const payload = change.payload;
+        if (payload && payload[idField]) {
+          await client[modelName].upsert({
+            where: { [idField]: payload[idField] },
+            create: payload,
+            update: payload,
+          });
+        }
+      }
+    } catch (err: any) {
+      this.logger.error(`Error applying local delta for ${change.entityType} (feed #${change.feedId}): ${err.message}`);
     }
   }
 

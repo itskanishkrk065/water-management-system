@@ -29,13 +29,13 @@ export class AuthService {
     return user;
   }
 
-  async login(loginDto: LoginDto) {
+  async login(loginDto: LoginDto, deviceId?: string) {
     const user = await this.validateUser(loginDto.email, loginDto.password);
     if (!user) {
       throw new UnauthorizedException('Invalid email or password');
     }
 
-    return this.generateTokenPair(user);
+    return this.generateTokenPair(user, deviceId);
   }
 
   async refreshTokens(dto: RefreshTokenDto) {
@@ -207,16 +207,29 @@ export class AuthService {
     return { success: true, message: 'Password has been reset successfully. Please log in with your new password.' };
   }
 
-  private async generateTokenPair(user: any) {
+  private async generateTokenPair(user: any, deviceId?: string) {
+    const secret = process.env.JWT_SECRET;
+    if (!secret && process.env.NODE_ENV === 'production') {
+      throw new Error('JWT_SECRET must be explicitly configured in production environment.');
+    }
+    const jwtSecret = secret || 'super-secret-jwt-key-for-water-management-v1-32chars';
+
+    const refreshSecret = process.env.JWT_REFRESH_SECRET;
+    if (!refreshSecret && process.env.NODE_ENV === 'production') {
+      throw new Error('JWT_REFRESH_SECRET must be explicitly configured in production environment.');
+    }
+    const jwtRefreshSecret = refreshSecret || 'super-secret-refresh-jwt-key-water-mgmt-v1';
+
     const payload = {
       sub: user.user_id,
       email: user.email,
       role: user.role.name,
       name: user.full_name,
+      deviceId: deviceId || null,
     };
 
     const accessToken = this.jwtService.sign(payload, {
-      secret: process.env.JWT_SECRET || 'super-secret-jwt-key-for-water-management-v1-32chars',
+      secret: jwtSecret,
       expiresIn: '1h',
     });
 
@@ -233,9 +246,9 @@ export class AuthService {
     });
 
     const refreshToken = this.jwtService.sign(
-      { sub: user.user_id, jti: refreshTokenRecord.token_id },
+      { sub: user.user_id, jti: refreshTokenRecord.token_id, deviceId: deviceId || null },
       {
-        secret: process.env.JWT_REFRESH_SECRET || 'super-secret-refresh-jwt-key-water-mgmt-v1',
+        secret: jwtRefreshSecret,
         expiresIn: '7d',
       },
     );
@@ -259,6 +272,7 @@ export class AuthService {
         full_name: user.full_name,
         role: user.role.name,
         beneficiary_id: beneficiaryRecord?.beneficiary_id || null,
+        deviceId: deviceId || null,
       },
     };
   }

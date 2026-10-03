@@ -9,9 +9,42 @@ export const apiClient = axios.create({
   },
 });
 
-apiClient.interceptors.request.use((config) => {
+/**
+ * Retrieves a stored token, prioritizing Electron SafeStorage (DPAPI/Keychain)
+ * with graceful fallback to localStorage in browser environments.
+ */
+export async function getSecureToken(key: string): Promise<string | null> {
+  if (typeof window === 'undefined') return null;
+  if ((window as any).electronAPI?.getSecureToken) {
+    try {
+      const token = await (window as any).electronAPI.getSecureToken(key);
+      if (token) return token;
+    } catch {}
+  }
+  return localStorage.getItem(key);
+}
+
+/**
+ * Stores a token securely via Electron SafeStorage (DPAPI/Keychain)
+ * with graceful fallback to localStorage.
+ */
+export async function setSecureToken(key: string, value: string | null): Promise<void> {
+  if (typeof window === 'undefined') return;
+  if ((window as any).electronAPI?.setSecureToken) {
+    try {
+      await (window as any).electronAPI.setSecureToken(key, value);
+    } catch {}
+  }
+  if (value) {
+    localStorage.setItem(key, value);
+  } else {
+    localStorage.removeItem(key);
+  }
+}
+
+apiClient.interceptors.request.use(async (config) => {
   if (typeof window !== 'undefined') {
-    const token = localStorage.getItem('water_access_token');
+    const token = await getSecureToken('water_access_token');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -26,22 +59,22 @@ apiClient.interceptors.response.use(
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
       if (typeof window !== 'undefined') {
-        const refreshToken = localStorage.getItem('water_refresh_token');
+        const refreshToken = await getSecureToken('water_refresh_token');
         if (refreshToken) {
           try {
             const { data } = await axios.post(`${API_BASE_URL}/auth/refresh`, { refreshToken });
-            localStorage.setItem('water_access_token', data.accessToken);
-            localStorage.setItem('water_refresh_token', data.refreshToken);
+            await setSecureToken('water_access_token', data.accessToken);
+            await setSecureToken('water_refresh_token', data.refreshToken);
             originalRequest.headers.Authorization = `Bearer ${data.accessToken}`;
             return apiClient(originalRequest);
           } catch (refreshError) {
-            localStorage.removeItem('water_access_token');
-            localStorage.removeItem('water_refresh_token');
+            await setSecureToken('water_access_token', null);
+            await setSecureToken('water_refresh_token', null);
             localStorage.removeItem('water_user');
             window.location.href = '/login';
           }
         } else {
-          localStorage.removeItem('water_access_token');
+          await setSecureToken('water_access_token', null);
           localStorage.removeItem('water_user');
           if (window.location.pathname !== '/login') {
             window.location.href = '/login';
