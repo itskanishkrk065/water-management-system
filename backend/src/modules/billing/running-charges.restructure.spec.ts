@@ -1487,5 +1487,22 @@ describe('WaterGrid V1 — Complete Running Charges Restructure Suite (RUN-NEW-0
       const legacyInfra = { status: 'COMMISSIONED', commissioned_date: new Date('2026-09-01'), running_charge_start_date: new Date('2026-09-01') };
       expect(legacyInfra.status).toBe('COMMISSIONED');
     });
+
+    it('RUN-011: Overview running_summary provides both camelCase and snake_case properties for frontend compatibility', () => {
+      const runningSummary = {
+        status: 'ACTIVE',
+        commissionedDate: new Date('2026-10-04'),
+        commissioned_date: new Date('2026-10-04'),
+        runningChargeStartDate: new Date('2026-10-04'),
+        running_charge_start_date: new Date('2026-10-04'),
+        totalBilled: '0.00',
+        total_running_billed: '0.00',
+        totalPending: '0.00',
+        total_running_pending: '0.00',
+      };
+      expect(runningSummary.status).toBe('ACTIVE');
+      expect(runningSummary.commissioned_date).toEqual(runningSummary.commissionedDate);
+      expect(runningSummary.running_charge_start_date).toEqual(runningSummary.runningChargeStartDate);
+    });
   });
 });

@@ -483,7 +483,7 @@ export class BeneficiariesService {
     const totalLand = this.calculateTotalLand(beneficiary.landHoldings as any);
 
     // Parallel aggregate overview stats
-    const [allotmentAgg, appAgg, billAgg, paymentAgg, activeAppsCount, historicalAppsCount, infraCount, billsCount, paymentsCount] = await Promise.all([
+    const [allotmentAgg, appAgg, billAgg, paymentAgg, activeAppsCount, historicalAppsCount, infraCount, billsCount, paymentsCount, infristructuresList, runningBillsList, waterAllotmentsList] = await Promise.all([
       this.prisma.waterAllotment.aggregate({
         where: { beneficiary_id: id },
         _sum: { approved_litres: true },
@@ -518,11 +518,63 @@ export class BeneficiariesService {
       this.prisma.infrastructure.count({ where: { beneficiary_id: id } }),
       this.prisma.developmentBill.count({ where: { beneficiary_id: id } }),
       this.prisma.payment.count({ where: { beneficiary_id: id, is_reversal: false } }),
+      this.prisma.infrastructure.findMany({
+        where: { beneficiary_id: id },
+        orderBy: [{ updated_at: 'desc' }, { created_at: 'desc' }],
+      }),
+      this.prisma.runningBill.findMany({
+        where: { beneficiary_id: id },
+        orderBy: { created_at: 'desc' },
+      }),
+      this.prisma.waterAllotment.findMany({
+        where: { beneficiary_id: id },
+        include: { infrastructure: true },
+      }),
     ]);
+
+    let totalRunningBilled = new Decimal(0);
+    let totalRunningPaid = new Decimal(0);
+    let totalRunningPending = new Decimal(0);
+
+    for (const rb of runningBillsList || []) {
+      totalRunningBilled = totalRunningBilled.plus(new Decimal(rb.amount_due || 0));
+      totalRunningPaid = totalRunningPaid.plus(new Decimal(rb.amount_paid || 0));
+      totalRunningPending = totalRunningPending.plus(new Decimal(rb.pending_amount || 0));
+    }
+
+    const primaryInfra = infristructuresList?.find((i: any) => i.status === InfrastructureStatus.COMMISSIONED)
+      || waterAllotmentsList?.find((a: any) => a.infrastructure?.status === InfrastructureStatus.COMMISSIONED)?.infrastructure
+      || infristructuresList?.[0]
+      || waterAllotmentsList?.[0]?.infrastructure
+      || null;
+
+    const isCommissioned = primaryInfra?.status === InfrastructureStatus.COMMISSIONED;
+    const runningStartDate = primaryInfra?.running_charge_start_date || primaryInfra?.commissioned_date || null;
+
+    const runningSummary = {
+      status: isCommissioned ? 'ACTIVE' : 'NOT_STARTED',
+      reason: !primaryInfra
+        ? 'Infrastructure not planned'
+        : !isCommissioned
+        ? `Infrastructure status is ${primaryInfra.status}`
+        : 'Active and eligible for running charges',
+      commissionedDate: primaryInfra?.commissioned_date || null,
+      commissioned_date: primaryInfra?.commissioned_date || null,
+      runningChargeStartDate: runningStartDate,
+      running_charge_start_date: runningStartDate,
+      totalBilled: totalRunningBilled.toFixed(2),
+      total_running_billed: totalRunningBilled.toFixed(2),
+      totalPaid: totalRunningPaid.toFixed(2),
+      total_running_paid: totalRunningPaid.toFixed(2),
+      totalPending: totalRunningPending.toFixed(2),
+      total_running_pending: totalRunningPending.toFixed(2),
+      billCount: runningBillsList?.length || 0,
+    };
 
     return {
       ...beneficiary,
       total_land_acres: totalLand.toString(),
+      running_summary: runningSummary,
       metrics: {
         totalLandAcres: totalLand.toString(),
         activeHoldingsCount: beneficiary.landHoldings.length,
@@ -774,10 +826,15 @@ export class BeneficiariesService {
         ? `Infrastructure status is ${primaryInfra.status}`
         : 'Active and eligible for running charges',
       commissionedDate: primaryInfra?.commissioned_date || null,
+      commissioned_date: primaryInfra?.commissioned_date || null,
       runningChargeStartDate: runningStartDate,
+      running_charge_start_date: runningStartDate,
       totalBilled: totalRunningBilled.toFixed(2),
+      total_running_billed: totalRunningBilled.toFixed(2),
       totalPaid: totalRunningPaid.toFixed(2),
+      total_running_paid: totalRunningPaid.toFixed(2),
       totalPending: totalRunningPending.toFixed(2),
+      total_running_pending: totalRunningPending.toFixed(2),
       billCount: beneficiary.runningBills?.length || 0,
     };
 

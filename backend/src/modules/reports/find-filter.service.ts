@@ -129,22 +129,22 @@ export class FindFilterService {
       const q = dto.search.trim();
       andConditions.push({
         OR: [
-          { name: { contains: q } },
-          { phone_number: { contains: q } },
-          { village: { name: { contains: q } } },
-          { district: { name: { contains: q } } },
-          { landHoldings: { some: { parcels: { some: { survey_number: { contains: q } } } } } },
+          { name: { contains: q, mode: 'insensitive' } as any },
+          { phone_number: { contains: q, mode: 'insensitive' } as any },
+          { village: { name: { contains: q, mode: 'insensitive' } as any } },
+          { district: { name: { contains: q, mode: 'insensitive' } as any } },
+          { landHoldings: { some: { parcels: { some: { survey_number: { contains: q, mode: 'insensitive' } as any } } } } },
         ],
       });
     }
     if (dto.beneficiaryName) {
       andConditions.push({
-        name: { contains: dto.beneficiaryName.trim() },
+        name: { contains: dto.beneficiaryName.trim(), mode: 'insensitive' } as any,
       });
     }
     if (dto.phoneNumber) {
       andConditions.push({
-        phone_number: { contains: dto.phoneNumber.trim() },
+        phone_number: { contains: dto.phoneNumber.trim(), mode: 'insensitive' } as any,
       });
     }
     const targetStatus = dto.beneficiaryStatus || dto.status;
@@ -465,6 +465,8 @@ export class FindFilterService {
         approved_litres: activeAllotment.approved_litres,
         infrastructure: infra,
       } : null,
+      allotment_id: activeAllotment?.allotment_id || null,
+      beneficiary_id: b.beneficiary_id,
     } as any;
   }
 
