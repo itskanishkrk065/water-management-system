@@ -210,4 +210,96 @@ describe('Operator Efficiency & Quality-of-Life Pass Tests', () => {
       expect(dupResult.duplicates[0].matchedFactors).toContain('Exact name match');
     });
   });
+
+  describe('5. Beneficiary Search (BEN-SEARCH-001 to BEN-SEARCH-010)', () => {
+    it('BEN-SEARCH-001 & BEN-SEARCH-009: Search by beneficiary name (exact & partial)', async () => {
+      mockPrismaService.beneficiary.findMany.mockResolvedValue([]);
+      mockPrismaService.beneficiary.count.mockResolvedValue(0);
+
+      await beneficiariesService.findAll({ search: 'Jeevan' });
+
+      expect(mockPrismaService.beneficiary.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            OR: expect.arrayContaining([
+              { name: { contains: 'Jeevan' } },
+            ]),
+          }),
+        }),
+      );
+    });
+
+    it('BEN-SEARCH-003: Search by exact UUID uses equality matching on beneficiary_id', async () => {
+      mockPrismaService.beneficiary.findMany.mockResolvedValue([]);
+      mockPrismaService.beneficiary.count.mockResolvedValue(0);
+
+      const testUuid = '123e4567-e89b-12d3-a456-426614174000';
+      await beneficiariesService.findAll({ search: testUuid });
+
+      expect(mockPrismaService.beneficiary.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            beneficiary_id: testUuid,
+          }),
+        }),
+      );
+    });
+
+    it('BEN-SEARCH-004: Non-UUID text does not attempt contains filter on beneficiary_id', async () => {
+      mockPrismaService.beneficiary.findMany.mockResolvedValue([]);
+      mockPrismaService.beneficiary.count.mockResolvedValue(0);
+
+      await beneficiariesService.findAll({ search: 'NonUuidText' });
+
+      const lastCall = mockPrismaService.beneficiary.findMany.mock.calls.slice(-1)[0][0];
+      expect(lastCall.where.beneficiary_id).toBeUndefined();
+      expect(lastCall.where.OR).toBeDefined();
+    });
+
+    it('BEN-SEARCH-005: Search by phone number', async () => {
+      mockPrismaService.beneficiary.findMany.mockResolvedValue([]);
+      mockPrismaService.beneficiary.count.mockResolvedValue(0);
+
+      await beneficiariesService.findAll({ search: '9876543210' });
+
+      expect(mockPrismaService.beneficiary.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            OR: expect.arrayContaining([
+              { phone_number: { contains: '9876543210' } },
+            ]),
+          }),
+        }),
+      );
+    });
+
+    it('BEN-SEARCH-006: Search by survey number through relation', async () => {
+      mockPrismaService.beneficiary.findMany.mockResolvedValue([]);
+      mockPrismaService.beneficiary.count.mockResolvedValue(0);
+
+      await beneficiariesService.findAll({ search: '142/3' });
+
+      expect(mockPrismaService.beneficiary.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            OR: expect.arrayContaining([
+              { landHoldings: { some: { parcels: { some: { survey_number: { contains: '142/3' } } } } } },
+            ]),
+          }),
+        }),
+      );
+    });
+
+    it('BEN-SEARCH-008: Empty search parameter', async () => {
+      mockPrismaService.beneficiary.findMany.mockResolvedValue([]);
+      mockPrismaService.beneficiary.count.mockResolvedValue(0);
+
+      await beneficiariesService.findAll({ search: '' });
+
+      const lastCall = mockPrismaService.beneficiary.findMany.mock.calls.slice(-1)[0][0];
+      expect(lastCall.where.OR).toBeUndefined();
+      expect(lastCall.where.beneficiary_id).toBeUndefined();
+    });
+  });
 });
+

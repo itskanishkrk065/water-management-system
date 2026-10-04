@@ -410,12 +410,17 @@ export class BeneficiariesService {
 
     if (query.search) {
       const trimmed = query.search.trim();
-      where.OR = [
-        { name: { contains: trimmed } },
-        { phone_number: { contains: trimmed } },
-        { beneficiary_id: { contains: trimmed } },
-        { landHoldings: { some: { parcels: { some: { survey_number: { contains: trimmed } } } } } },
-      ];
+      const isUuid = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(trimmed);
+
+      if (isUuid) {
+        where.beneficiary_id = trimmed;
+      } else {
+        where.OR = [
+          { name: { contains: trimmed } },
+          { phone_number: { contains: trimmed } },
+          { landHoldings: { some: { parcels: { some: { survey_number: { contains: trimmed } } } } } },
+        ];
+      }
     }
 
     const [items, total] = await Promise.all([
@@ -1465,15 +1470,21 @@ export class BeneficiariesService {
 
     if (query.search) {
       const s = query.search.trim();
-      where.AND = [
-        {
-          OR: [
-            { name: { contains: s } },
-            { phone_number: { contains: s } },
-            { beneficiary_id: { contains: s } },
-          ],
-        },
-      ];
+      const isUuid = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(s);
+
+      if (isUuid) {
+        where.beneficiary_id = s;
+      } else {
+        where.AND = [
+          {
+            OR: [
+              { name: { contains: s } },
+              { phone_number: { contains: s } },
+              { landHoldings: { some: { parcels: { some: { survey_number: { contains: s } } } } } },
+            ],
+          },
+        ];
+      }
     }
 
     const beneficiaries = await this.prisma.beneficiary.findMany({
