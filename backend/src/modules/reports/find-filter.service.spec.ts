@@ -150,7 +150,7 @@ describe('FindFilterService', () => {
       const where = service.buildBeneficiaryWhere(dto);
 
       expect(where.AND).toBeDefined();
-      const infraCondition = (where.AND as any[])?.find((c: any) => c.infrastructures);
+      const infraCondition = (where.AND as any[])?.find((c: any) => c.infrastructures || c.OR?.some((o: any) => o.infrastructures));
       const extCondition = (where.AND as any[])?.find((c: any) => c.extensions);
       expect(infraCondition).toBeDefined();
       expect(extCondition).toBeDefined();

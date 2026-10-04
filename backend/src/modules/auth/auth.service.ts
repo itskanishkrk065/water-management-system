@@ -1,7 +1,7 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
-import * as bcrypt from 'bcryptjs';
+import { hashPassword, verifyPassword } from '../common/password.util';
 import { LoginDto, RefreshTokenDto } from './dto/auth.dto';
 
 @Injectable()
@@ -21,7 +21,7 @@ export class AuthService {
       return null;
     }
 
-    const isMatch = await bcrypt.compare(pass, user.password_hash);
+    const isMatch = await verifyPassword(pass, user.password_hash);
     if (!isMatch) {
       return null;
     }
@@ -126,7 +126,7 @@ export class AuthService {
       });
     }
 
-    const passwordHash = await bcrypt.hash(dto.password, 10);
+    const passwordHash = await hashPassword(dto.password);
 
     // Create User and Beneficiary in transaction
     const { user, beneficiary } = await this.prisma.$transaction(async (tx) => {
@@ -202,7 +202,7 @@ export class AuthService {
     if (!user) {
       throw new (await import('@nestjs/common')).BadRequestException('Invalid or expired reset token');
     }
-    const passwordHash = await bcrypt.hash(dto.newPassword, 10);
+    const passwordHash = await hashPassword(dto.newPassword);
     await this.prisma.user.update({
       where: { user_id: user.user_id },
       data: { password_hash: passwordHash },

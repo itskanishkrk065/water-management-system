@@ -125,26 +125,28 @@ export class FindFilterService {
     }
 
     // 2. Beneficiary & Search Filters
+    const isPg = typeof this.prisma?.isPostgres === 'function' ? this.prisma.isPostgres() : false;
+    const modeOpt = isPg ? { mode: 'insensitive' as const } : {};
     if (dto.search && dto.search.trim()) {
       const q = dto.search.trim();
       andConditions.push({
         OR: [
-          { name: { contains: q, mode: 'insensitive' } as any },
-          { phone_number: { contains: q, mode: 'insensitive' } as any },
-          { village: { name: { contains: q, mode: 'insensitive' } as any } },
-          { district: { name: { contains: q, mode: 'insensitive' } as any } },
-          { landHoldings: { some: { parcels: { some: { survey_number: { contains: q, mode: 'insensitive' } as any } } } } },
+          { name: { contains: q, ...modeOpt } as any },
+          { phone_number: { contains: q, ...modeOpt } as any },
+          { village: { name: { contains: q, ...modeOpt } as any } },
+          { district: { name: { contains: q, ...modeOpt } as any } },
+          { landHoldings: { some: { parcels: { some: { survey_number: { contains: q, ...modeOpt } as any } } } } },
         ],
       });
     }
     if (dto.beneficiaryName) {
       andConditions.push({
-        name: { contains: dto.beneficiaryName.trim(), mode: 'insensitive' } as any,
+        name: { contains: dto.beneficiaryName.trim(), ...modeOpt } as any,
       });
     }
     if (dto.phoneNumber) {
       andConditions.push({
-        phone_number: { contains: dto.phoneNumber.trim(), mode: 'insensitive' } as any,
+        phone_number: { contains: dto.phoneNumber.trim(), ...modeOpt } as any,
       });
     }
     const targetStatus = dto.beneficiaryStatus || dto.status;

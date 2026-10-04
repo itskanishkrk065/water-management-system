@@ -178,6 +178,7 @@ export default function Sidebar() {
       heading: 'SYSTEM',
       items: [
         { label: 'Sync Center', href: '/sync-center', icon: RefreshCw },
+        ...(isAdmin ? [{ label: 'User Management', href: '/admin/users', icon: Users }] : []),
         ...((isAdmin || isAccounts) ? [{ label: 'Data Integrity', href: '/admin/integrity', icon: ShieldCheck }] : []),
         { label: 'Audit History', href: '/audit', icon: History },
         ...(isAdmin ? [{ label: 'Backup & Restore', href: '/settings/backup', icon: Database }] : []),

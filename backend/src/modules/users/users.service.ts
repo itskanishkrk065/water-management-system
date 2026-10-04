@@ -14,7 +14,7 @@ import {
   AssignScopeDto,
 } from './dto/user.dto';
 import { AuditAction, UserStatus, RoleName } from '../common/enums';
-import * as bcrypt from 'bcryptjs';
+import { hashPassword, verifyPassword } from '../common/password.util';
 import * as crypto from 'crypto';
 
 @Injectable()
@@ -67,7 +67,7 @@ export class UsersService {
       plainPassword = `WG#${crypto.randomBytes(4).toString('hex')}!`;
       isTemporaryPassword = true;
     }
-    const passwordHash = await bcrypt.hash(plainPassword, 10);
+    const passwordHash = await hashPassword(plainPassword);
 
     // 4. Create User and Geographic Scope atomically
     const user = await this.prisma.$transaction(async (tx) => {

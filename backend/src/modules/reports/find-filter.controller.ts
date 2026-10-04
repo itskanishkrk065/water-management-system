@@ -32,7 +32,7 @@ export class FindFilterController {
 
   @Post()
   @HttpCode(HttpStatus.OK)
-  @Roles(RoleName.ADMIN, RoleName.FIELD_OFFICER, RoleName.ACCOUNTS, RoleName.VIEWER)
+  @Roles(RoleName.ADMIN, RoleName.FIELD_OFFICER, RoleName.COLLECTION_AGENT, RoleName.ACCOUNTS, RoleName.VIEWER)
   @ApiOperation({
     summary: 'Execute dynamic multi-entity filter and aggregate metrics across the entire matched population',
   })
@@ -44,6 +44,30 @@ export class FindFilterController {
   ) {
     const userId = user.user_id;
     return this.findFilterService.executeFilterQuery(dto, userId, ipAddress);
+  }
+
+  @Get()
+  @HttpCode(HttpStatus.OK)
+  @Roles(RoleName.ADMIN, RoleName.FIELD_OFFICER, RoleName.COLLECTION_AGENT, RoleName.ACCOUNTS, RoleName.VIEWER)
+  @ApiOperation({
+    summary: 'Execute beneficiary search for usage/billing using query params',
+  })
+  @ApiResponse({ status: 200, description: 'Filtered beneficiary items matching query params' })
+  async executeFilterGet(
+    @Query('search') search: string,
+    @Query('page') page: string,
+    @Query('limit') limit: string,
+    @Query('beneficiaryStatus') beneficiaryStatus: string,
+    @CurrentUser() user: RequestUser,
+    @Ip() ipAddress: string,
+  ) {
+    const dto: FindFilterDto = {
+      search: search ? search.trim() : undefined,
+      page: page ? parseInt(page, 10) : 1,
+      limit: limit ? parseInt(limit, 10) : 10,
+      beneficiaryStatus: (beneficiaryStatus as any) || undefined,
+    };
+    return this.findFilterService.executeFilterQuery(dto, user.user_id, ipAddress);
   }
 
   @Get('metadata')
