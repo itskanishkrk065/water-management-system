@@ -13,6 +13,24 @@ const BACKEND_HOST = '127.0.0.1';
 const FRONTEND_PORT = process.env.FRONTEND_PORT || 3000;
 const FRONTEND_HOST = '127.0.0.1';
 
+const RENDER_PRODUCTION_API_URL = 'https://water-management-system-kt4z.onrender.com/api/v1';
+
+function getProductionApiUrl() {
+  const envUrl = process.env.WATERGRID_API_URL || process.env.NEXT_PUBLIC_API_URL;
+  if (envUrl && envUrl.trim()) {
+    return envUrl.trim().replace(/\/+$/, '');
+  }
+  if (process.env.NODE_ENV === 'development') {
+    return `http://${BACKEND_HOST}:${BACKEND_PORT}/api/v1`;
+  }
+  return RENDER_PRODUCTION_API_URL;
+}
+
+function isLocalBackendUrl(url) {
+  const target = url || getProductionApiUrl();
+  return target.includes('localhost') || target.includes('127.0.0.1');
+}
+
 // 1. Resolve User AppData Storage Directory
 function getAppDataDirectory() {
   const localAppData = process.env.LOCALAPPDATA || process.env.APPDATA || app.getPath('userData');
@@ -254,6 +272,12 @@ function spawnNodeScript(scriptPath, args = [], options = {}) {
 
 // 6. Start Embedded NestJS Backend Process
 function startBackendService() {
+  const targetApiUrl = getProductionApiUrl();
+  if (!isLocalBackendUrl(targetApiUrl)) {
+    logDesktop(`[Desktop] Target API URL is remote (${targetApiUrl}). Skipping local embedded NestJS backend process spawn.`);
+    return;
+  }
+
   logDesktop('Initializing embedded NestJS backend service on 127.0.0.1...');
 
   const backendDistCandidates = [
@@ -329,7 +353,8 @@ function startFrontendService() {
   logDesktop(`Frontend standalone path: ${standaloneServer}`);
   logDesktop(`Frontend standalone working dir: ${standaloneCwd}`);
 
-  const targetApiUrl = (process.env.WATERGRID_API_URL || process.env.NEXT_PUBLIC_API_URL || `http://${BACKEND_HOST}:${BACKEND_PORT}/api/v1`).trim().replace(/\/+$/, '');
+  const targetApiUrl = getProductionApiUrl();
+  logDesktop(`Frontend target API URL: ${targetApiUrl}`);
 
   const frontendEnv = {
     PORT: String(FRONTEND_PORT),
@@ -553,12 +578,19 @@ app.whenReady().then(async () => {
   await createMainWindow();
 
   // 1. Show startup screen while initializing services
-  mainWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(getStartupHtml('Starting Offline Database & Services...'))}`);
+  mainWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(getStartupHtml('Starting Services...'))}`);
 
   const isDev = process.env.NODE_ENV === 'development';
+  const targetApiUrl = getProductionApiUrl();
+  const requiresLocalBackend = isLocalBackendUrl(targetApiUrl);
 
-  // 2. Start embedded backend
-  startBackendService();
+  logDesktop(`[Startup] Target API URL: ${targetApiUrl}`);
+  logDesktop(`[Startup] Local NestJS Backend Spawn Required: ${requiresLocalBackend}`);
+
+  // 2. Start embedded backend if targeting local backend
+  if (requiresLocalBackend) {
+    startBackendService();
+  }
 
   // 3. Start embedded frontend in production
   if (!isDev) {
@@ -566,16 +598,8 @@ app.whenReady().then(async () => {
   }
 
   // 4. Await health checks
-  logDesktop('Awaiting backend and frontend services readiness...');
-  const [backendStatus, frontendStatus] = await Promise.all([
-    waitForHttpService(
-      BACKEND_HOST,
-      BACKEND_PORT,
-      '/api/docs',
-      75,
-      400,
-      () => (backendExitedState.exited ? backendExitedState : null)
-    ),
+  logDesktop('Awaiting frontend service readiness...');
+  const healthChecks = [
     waitForHttpService(
       FRONTEND_HOST,
       FRONTEND_PORT,
@@ -584,11 +608,28 @@ app.whenReady().then(async () => {
       400,
       () => (frontendExitedState.exited ? frontendExitedState : null)
     ),
-  ]);
+  ];
+
+  if (requiresLocalBackend) {
+    healthChecks.push(
+      waitForHttpService(
+        BACKEND_HOST,
+        BACKEND_PORT,
+        '/api/docs',
+        75,
+        400,
+        () => (backendExitedState.exited ? backendExitedState : null)
+      )
+    );
+  }
+
+  const results = await Promise.all(healthChecks);
+  const frontendStatus = results[0];
+  const backendStatus = requiresLocalBackend ? results[1] : { success: true };
 
   if (backendStatus.success && frontendStatus.success) {
     const frontendUrl = `http://${FRONTEND_HOST}:${FRONTEND_PORT}/login`;
-    logDesktop(`Both services ready! Loading application URL: ${frontendUrl}`);
+    logDesktop(`Services ready! Loading application URL: ${frontendUrl}`);
     mainWindow.loadURL(frontendUrl).catch((err) => {
       logDesktop(`Navigation error to ${frontendUrl}: ${err.message}`);
       mainWindow.loadURL(
@@ -701,7 +742,7 @@ ipcMain.handle('app:set-secure-token', async (event, key, token) => {
 });
 
 ipcMain.handle('app:get-api-url', () => {
-  return (process.env.WATERGRID_API_URL || process.env.NEXT_PUBLIC_API_URL || `http://${BACKEND_HOST}:${BACKEND_PORT}/api/v1`).trim().replace(/\/+$/, '');
+  return getProductionApiUrl();
 });
 
 // 12. Graceful Application Shutdown

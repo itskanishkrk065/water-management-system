@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://water-management-system-kt4z.onrender.com/api/v1';
 
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
@@ -73,7 +73,8 @@ apiClient.interceptors.response.use(
         const refreshToken = await getSecureToken('water_refresh_token');
         if (refreshToken) {
           try {
-            const { data } = await axios.post(`${API_BASE_URL}/auth/refresh`, { refreshToken });
+            const currentBaseUrl = apiClient.defaults.baseURL || API_BASE_URL;
+            const { data } = await axios.post(`${currentBaseUrl}/auth/refresh`, { refreshToken });
             await setSecureToken('water_access_token', data.accessToken);
             await setSecureToken('water_refresh_token', data.refreshToken);
             originalRequest.headers.Authorization = `Bearer ${data.accessToken}`;
