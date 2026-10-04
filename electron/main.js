@@ -382,7 +382,7 @@ function getStartupHtml(statusText = 'Starting Services...', error = null) {
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>Kongu Water Management System</title>
+  <title>WaterGrid</title>
   <style>
     body {
       margin: 0;
@@ -488,7 +488,7 @@ function getStartupHtml(statusText = 'Starting Services...', error = null) {
 <body>
   <div class="card">
     <div class="logo">💧</div>
-    <h1>Kongu Water Management</h1>
+    <h1>WaterGrid</h1>
     <p>Offline Administrative & Beneficiary Control System</p>
     
     ${
@@ -523,13 +523,15 @@ app.commandLine.appendSwitch('disable-http-cache', 'false');
 
 // 9. Create Native Main Desktop Window
 async function createMainWindow() {
+  const windowIconPath = resolveAppPath(path.join('build', process.platform === 'win32' ? 'icon.ico' : 'icon.png'));
   mainWindow = new BrowserWindow({
     width: 1366,
     height: 860,
     minWidth: 1024,
     minHeight: 700,
     backgroundColor: '#0f172a',
-    title: 'Kongu Water Management System',
+    title: 'WaterGrid',
+    icon: fs.existsSync(windowIconPath) ? windowIconPath : undefined,
     show: false,
     autoHideMenuBar: true,
     webPreferences: {

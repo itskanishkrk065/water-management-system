@@ -21,6 +21,7 @@
     "desktop:installer:x64": "npm run build && electron-builder --win nsis --x64",
     "desktop:installer:all": "npm run build && electron-builder --win nsis --x64 --ia32"
   },
+  "author": "WaterGrid Development Authority",
   "devDependencies": {
     "concurrently": "^8.2.2",
     "cross-env": "^7.0.3",
@@ -29,14 +30,17 @@
   },
   "build": {
     "appId": "in.gov.water.management",
-    "productName": "WaterManagement",
+    "productName": "WaterGrid",
+    "executableName": "WaterManagement",
     "directories": {
       "output": "dist",
-      "buildResources": "electron/resources"
+      "buildResources": "build"
     },
+    "icon": "build/icon.png",
     "asar": false,
     "files": [
       "electron/**/*",
+      "build/**/*",
       "village_eng1.xls"
     ],
     "extraResources": [
@@ -66,6 +70,8 @@
       }
     ],
     "win": {
+      "icon": "build/icon.ico",
+      "publisherName": "WaterGrid Development Authority",
       "target": [
         {
           "target": "nsis",
@@ -78,6 +84,7 @@
       "artifactName": "${productName}-Setup-${version}-${arch}.${ext}"
     },
     "mac": {
+      "icon": "build/icon.icns",
       "target": [
         "dmg",
         "zip"
@@ -90,9 +97,13 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Water Management System",
-      "uninstallDisplayName": "Water Management System",
-      "deleteAppDataOnUninstall": false
+      "shortcutName": "WaterGrid",
+      "uninstallDisplayName": "Uninstall WaterGrid",
+      "deleteAppDataOnUninstall": false,
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico",
+      "runAfterFinish": true
     }
   },
   "dependencies": {
