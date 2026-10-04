@@ -544,7 +544,7 @@ describe('WaterGrid V1 — Complete Running Charges Restructure Suite (RUN-NEW-0
       expect(mockPrisma.waterUsageRecord.update).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { usage_id: 'use-1' },
-          data: expect.objectContaining({ status: 'BILLED' }),
+          data: expect.objectContaining({ status: 'VERIFIED' }),
         }),
       );
     });

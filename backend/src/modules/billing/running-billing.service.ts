@@ -308,8 +308,8 @@ export class RunningBillingService {
       include: { runningBill: true },
     });
 
-    if (existing && existing.status === WaterUsageStatus.BILLED) {
-      throw new BadRequestException(`Usage for period ${dto.billingPeriod} has already been billed (Bill #${existing.runningBill?.bill_number}). Cannot overwrite billed usage.`);
+    if (existing && existing.runningBill) {
+      throw new BadRequestException(`Usage for period ${dto.billingPeriod} has already been billed (Bill #${existing.runningBill.bill_number}). Cannot overwrite billed usage.`);
     }
 
     let record: any;
@@ -460,11 +460,11 @@ export class RunningBillingService {
       },
     });
     if (existingBill) {
-      if (usage.status !== WaterUsageStatus.BILLED) {
+      if (usage.status !== WaterUsageStatus.VERIFIED) {
         await this.prisma.waterUsageRecord.update({
           where: { usage_id: usage.usage_id },
           data: {
-            status: WaterUsageStatus.BILLED,
+            status: WaterUsageStatus.VERIFIED,
             verified_at: this.clock.now(),
             verified_by: adminUserId || null,
           },
@@ -568,7 +568,7 @@ export class RunningBillingService {
       await tx.waterUsageRecord.update({
         where: { usage_id: usage.usage_id },
         data: {
-          status: WaterUsageStatus.BILLED,
+          status: WaterUsageStatus.VERIFIED,
           verified_at: this.clock.now(),
           verified_by: adminUserId || null,
         },
