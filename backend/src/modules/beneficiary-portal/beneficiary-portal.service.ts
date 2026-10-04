@@ -23,6 +23,7 @@ import {
   ExtensionStatus,
   LandStatus,
   BeneficiaryStatus,
+  InfrastructureStatus,
 } from '../common/enums';
 
 @Injectable()
