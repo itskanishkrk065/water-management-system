@@ -355,14 +355,23 @@ export class DeveloperCleanStateService {
     let activeProjectsCount = 0;
     let adminUserExists = false;
 
-    try {
-      const integrity: any[] = await this.prisma.$queryRawUnsafe('PRAGMA integrity_check;');
-      integrityCheck = integrity[0]?.integrity_check || 'ok';
-    } catch {}
+    if (this.prisma.isSqlite()) {
+      try {
+        const integrity: any[] = await this.prisma.$queryRawUnsafe('PRAGMA integrity_check;');
+        integrityCheck = integrity[0]?.integrity_check || 'ok';
+      } catch {}
 
-    try {
-      fkCheck = await this.prisma.$queryRawUnsafe('PRAGMA foreign_key_check;');
-    } catch {}
+      try {
+        fkCheck = await this.prisma.$queryRawUnsafe('PRAGMA foreign_key_check;');
+      } catch {}
+    } else {
+      try {
+        await this.prisma.$queryRawUnsafe('SELECT 1;');
+        integrityCheck = 'ok';
+      } catch {
+        integrityCheck = 'failed';
+      }
+    }
 
     try {
       activeDistrictsCount = await this.prisma.district.count({ where: { is_active: true } });

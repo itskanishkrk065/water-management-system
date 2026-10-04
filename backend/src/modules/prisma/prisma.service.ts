@@ -49,6 +49,22 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     });
   }
 
+  public getProvider(): 'postgresql' | 'sqlite' {
+    const dbUrl = process.env.DATABASE_URL || '';
+    if (dbUrl.startsWith('postgres://') || dbUrl.startsWith('postgresql://')) {
+      return 'postgresql';
+    }
+    return 'sqlite';
+  }
+
+  public isPostgres(): boolean {
+    return this.getProvider() === 'postgresql';
+  }
+
+  public isSqlite(): boolean {
+    return this.getProvider() === 'sqlite';
+  }
+
   async onModuleInit() {
     const dbUrl = process.env.DATABASE_URL || 'DEFAULT';
     this.logger.log(`[Prisma] Initializing connection to: ${sanitizeDbUrl(dbUrl)}`);
@@ -59,17 +75,21 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
       await this.$connect();
       this.logger.log('[Prisma] Database connection OK');
 
-      // SQLite Runtime Performance Tuning
-      try {
-        await this.$queryRawUnsafe('PRAGMA foreign_keys = ON;');
-        await this.$queryRawUnsafe('PRAGMA journal_mode = WAL;');
-        await this.$queryRawUnsafe('PRAGMA synchronous = NORMAL;');
-        await this.$queryRawUnsafe('PRAGMA cache_size = -64000;'); // 64 MB cache
-        await this.$queryRawUnsafe('PRAGMA temp_store = MEMORY;');
-        await this.$queryRawUnsafe('PRAGMA busy_timeout = 5000;');
-        this.logger.log('[Prisma] SQLite Performance PRAGMAs configured (FK=ON, WAL, cache=64MB, temp_store=MEMORY)');
-      } catch (pragmaErr: any) {
-        // Non-fatal if using PostgreSQL / Neon mode
+      // SQLite Runtime Performance Tuning — ONLY executed when dialect is SQLite
+      if (this.isSqlite()) {
+        try {
+          await this.$queryRawUnsafe('PRAGMA foreign_keys = ON;');
+          await this.$queryRawUnsafe('PRAGMA journal_mode = WAL;');
+          await this.$queryRawUnsafe('PRAGMA synchronous = NORMAL;');
+          await this.$queryRawUnsafe('PRAGMA cache_size = -64000;'); // 64 MB cache
+          await this.$queryRawUnsafe('PRAGMA temp_store = MEMORY;');
+          await this.$queryRawUnsafe('PRAGMA busy_timeout = 5000;');
+          this.logger.log('[Prisma] SQLite Performance PRAGMAs configured (FK=ON, WAL, cache=64MB, temp_store=MEMORY)');
+        } catch (pragmaErr: any) {
+          this.logger.warn(`[Prisma] SQLite PRAGMA configuration note: ${pragmaErr?.message || pragmaErr}`);
+        }
+      } else {
+        this.logger.log('[Prisma] PostgreSQL engine active — native connection pooling and foreign keys enforced.');
       }
 
       // Controlled startup health check
@@ -95,16 +115,18 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     try {
       await this.$disconnect();
       await this.$connect();
-      try {
-        await this.$queryRawUnsafe('PRAGMA foreign_keys = ON;');
-        await this.$queryRawUnsafe('PRAGMA journal_mode = WAL;');
-        await this.$queryRawUnsafe('PRAGMA synchronous = NORMAL;');
-        await this.$queryRawUnsafe('PRAGMA cache_size = -64000;');
-        await this.$queryRawUnsafe('PRAGMA temp_store = MEMORY;');
-        await this.$queryRawUnsafe('PRAGMA busy_timeout = 5000;');
-        this.logger.log('[Prisma] SQLite Performance PRAGMAs configured (FK=ON, WAL)');
-      } catch (pragmaErr: any) {
-        // Non-fatal if using PostgreSQL / Neon mode
+      if (this.isSqlite()) {
+        try {
+          await this.$queryRawUnsafe('PRAGMA foreign_keys = ON;');
+          await this.$queryRawUnsafe('PRAGMA journal_mode = WAL;');
+          await this.$queryRawUnsafe('PRAGMA synchronous = NORMAL;');
+          await this.$queryRawUnsafe('PRAGMA cache_size = -64000;');
+          await this.$queryRawUnsafe('PRAGMA temp_store = MEMORY;');
+          await this.$queryRawUnsafe('PRAGMA busy_timeout = 5000;');
+          this.logger.log('[Prisma] SQLite Performance PRAGMAs configured (FK=ON, WAL)');
+        } catch (pragmaErr: any) {
+          // Ignore
+        }
       }
       this.logger.log('[Prisma] Database connection reinitialized successfully');
     } catch (err: any) {

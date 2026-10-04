@@ -57,18 +57,22 @@ export class BackupService {
       let healthy = true;
       let details = 'Database integrity check passed (ok)';
 
-      // Run raw PRAGMA integrity_check if supported by provider
-      try {
-        const result: any = await this.prisma.$queryRawUnsafe('PRAGMA integrity_check;');
-        if (result && result.length > 0) {
-          const status = result[0]?.integrity_check || result[0]?.['integrity_check'] || 'ok';
-          healthy = status.toLowerCase() === 'ok';
-          details = healthy ? 'SQLite database file is consistent and healthy.' : `Integrity error: ${status}`;
+      // Dialect-aware integrity check
+      if (this.prisma.isSqlite()) {
+        try {
+          const result: any = await this.prisma.$queryRawUnsafe('PRAGMA integrity_check;');
+          if (result && result.length > 0) {
+            const status = result[0]?.integrity_check || result[0]?.['integrity_check'] || 'ok';
+            healthy = status.toLowerCase() === 'ok';
+            details = healthy ? 'SQLite database file is consistent and healthy.' : `Integrity error: ${status}`;
+          }
+        } catch {
+          await this.prisma.$queryRawUnsafe('SELECT 1;');
+          details = 'Database engine is active and reachable.';
         }
-      } catch {
-        // In PostgreSQL dev mode, simple query check
+      } else {
         await this.prisma.$queryRawUnsafe('SELECT 1;');
-        details = 'Database engine is active and reachable.';
+        details = 'PostgreSQL database engine is active and healthy.';
       }
 
       let databaseSize = 0;
@@ -102,10 +106,12 @@ export class BackupService {
     const backupFilePath = path.join(this.backupsDir, backupFileName);
 
     // 1. Flush SQLite WAL Checkpoint if SQLite
-    try {
-      await this.prisma.$queryRawUnsafe('PRAGMA wal_checkpoint(FULL);');
-    } catch {
-      // Ignore if PostgreSQL
+    if (this.prisma.isSqlite()) {
+      try {
+        await this.prisma.$queryRawUnsafe('PRAGMA wal_checkpoint(FULL);');
+      } catch {
+        // Ignore if SQLite is locked
+      }
     }
 
     // 2. Collect Statistics
@@ -288,14 +294,18 @@ export class BackupService {
     await this.prisma.reinitializeConnection();
 
     // Verify foreign key and database integrity immediately
-    try {
-      const integrity: any = await this.prisma.$queryRawUnsafe('PRAGMA integrity_check;');
-      const integrityResult = Array.isArray(integrity) && integrity.length > 0 ? Object.values(integrity[0])[0] : 'ok';
-      if (integrityResult !== 'ok') {
-        throw new BadRequestException(`Restored database integrity check failed: ${integrityResult}`);
+    if (this.prisma.isSqlite()) {
+      try {
+        const integrity: any = await this.prisma.$queryRawUnsafe('PRAGMA integrity_check;');
+        const integrityResult = Array.isArray(integrity) && integrity.length > 0 ? Object.values(integrity[0])[0] : 'ok';
+        if (integrityResult !== 'ok') {
+          throw new BadRequestException(`Restored database integrity check failed: ${integrityResult}`);
+        }
+      } catch (checkErr: any) {
+        if (checkErr instanceof BadRequestException) throw checkErr;
       }
-    } catch (checkErr: any) {
-      if (checkErr instanceof BadRequestException) throw checkErr;
+    } else {
+      await this.prisma.$queryRawUnsafe('SELECT 1;');
     }
 
     await this.auditService.log({

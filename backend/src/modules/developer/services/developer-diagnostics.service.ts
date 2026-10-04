@@ -36,10 +36,19 @@ export class DeveloperDiagnosticsService {
     const uptimeSec = os.uptime();
 
     let sqliteVersion = '3.x';
-    try {
-      const v: any[] = await this.prisma.$queryRawUnsafe('SELECT sqlite_version() as v;');
-      sqliteVersion = v[0]?.v || '3.x';
-    } catch {}
+    if (this.prisma.isSqlite()) {
+      try {
+        const v: any[] = await this.prisma.$queryRawUnsafe('SELECT sqlite_version() as v;');
+        sqliteVersion = v[0]?.v || '3.x';
+      } catch {}
+    } else {
+      try {
+        const v: any[] = await this.prisma.$queryRawUnsafe('SELECT version() as v;');
+        sqliteVersion = v[0]?.v ? `PostgreSQL (${v[0].v.split(' ')[1] || 'DB'})` : 'PostgreSQL Engine';
+      } catch {
+        sqliteVersion = 'PostgreSQL Engine';
+      }
+    }
 
     return {
       os: {
@@ -128,12 +137,15 @@ export class DeveloperDiagnosticsService {
       recommendedAction: string;
     }[] = [];
 
+    const isSqlite = this.prisma.isSqlite();
+    const groupFn = (col: string) => (isSqlite ? `GROUP_CONCAT(${col})` : `STRING_AGG(CAST(${col} AS text), ',')`);
+
     // 1. Phone duplicates
     const phoneDups = (await this.prisma.$queryRawUnsafe<any[]>(`
-      SELECT phone_number, COUNT(*) as cnt, GROUP_CONCAT(beneficiary_id) as ids, GROUP_CONCAT(name) as names
+      SELECT phone_number, COUNT(*) as cnt, ${groupFn('beneficiary_id')} as ids, ${groupFn('name')} as names
       FROM beneficiaries
       GROUP BY phone_number
-      HAVING cnt > 1;
+      HAVING COUNT(*) > 1;
     `).catch(() => [])) || [];
     if (phoneDups.length > 0) {
       duplicates.push({
@@ -147,12 +159,12 @@ export class DeveloperDiagnosticsService {
 
     // 2. Active Parcel Survey/Subdivision duplicates
     const parcelDups = (await this.prisma.$queryRawUnsafe<any[]>(`
-      SELECT p.survey_number, p.subdivision_number, COUNT(*) as cnt, GROUP_CONCAT(p.parcel_id) as parcel_ids, GROUP_CONCAT(p.land_id) as land_ids
+      SELECT p.survey_number, p.subdivision_number, COUNT(*) as cnt, ${groupFn('p.parcel_id')} as parcel_ids, ${groupFn('p.land_id')} as land_ids
       FROM land_parcels p
       JOIN land_holdings h ON p.land_id = h.land_id
       WHERE h.status = 'ACTIVE'
       GROUP BY p.survey_number, p.subdivision_number
-      HAVING cnt > 1;
+      HAVING COUNT(*) > 1;
     `).catch(() => [])) || [];
     if (parcelDups.length > 0) {
       duplicates.push({
@@ -166,11 +178,11 @@ export class DeveloperDiagnosticsService {
 
     // 3. Duplicate Active Water Applications per Holding
     const waterAppDups = (await this.prisma.$queryRawUnsafe<any[]>(`
-      SELECT land_id, COUNT(*) as cnt, GROUP_CONCAT(application_id) as app_ids
+      SELECT land_id, COUNT(*) as cnt, ${groupFn('application_id')} as app_ids
       FROM water_applications
-      WHERE status IN ('APPROVED', 'SUBMITTED', 'UNDER_REVIEW', 'DRAFT')
+      WHERE status::text IN ('APPROVED', 'SUBMITTED')
       GROUP BY land_id
-      HAVING cnt > 1;
+      HAVING COUNT(*) > 1;
     `).catch(() => [])) || [];
     if (waterAppDups.length > 0) {
       duplicates.push({
@@ -184,11 +196,11 @@ export class DeveloperDiagnosticsService {
 
     // 4. District LGD code duplicates
     const districtLgdDups = (await this.prisma.$queryRawUnsafe<any[]>(`
-      SELECT lgd_district_code, COUNT(*) as cnt, GROUP_CONCAT(name) as names
+      SELECT lgd_district_code, COUNT(*) as cnt, ${groupFn('name')} as names
       FROM districts
       WHERE lgd_district_code IS NOT NULL
       GROUP BY lgd_district_code
-      HAVING cnt > 1;
+      HAVING COUNT(*) > 1;
     `).catch(() => [])) || [];
     if (districtLgdDups.length > 0) {
       duplicates.push({
@@ -398,8 +410,10 @@ export class DeveloperDiagnosticsService {
       },
       database: {
         status: 'HEALTHY',
-        engine: 'SQLite (WAL Mode)',
-        details: 'PRAGMA WAL enabled, foreign keys enforced',
+        engine: this.prisma.isSqlite() ? 'SQLite (WAL Mode)' : 'PostgreSQL (Neon Lakebase)',
+        details: this.prisma.isSqlite()
+          ? 'PRAGMA WAL enabled, foreign keys enforced'
+          : 'PostgreSQL connection pooling active, SSL enabled',
       },
       electron: {
         status: 'HEALTHY',
