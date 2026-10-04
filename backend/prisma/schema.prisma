@@ -242,13 +242,19 @@ model User {
 }
 
 model UserGeographicScope {
-  scope_id        String   @id @default(uuid()) @db.Uuid
-  user_id         String   @unique @db.Uuid
-  district_id     String?  @db.Uuid
-  district_name   String?
-  panchayats_json String?
-  created_at      DateTime @default(now())
-  updated_at      DateTime @updatedAt
+  scope_id             String   @id @default(uuid()) @db.Uuid
+  user_id              String   @unique @db.Uuid
+  district_id          String?  @db.Uuid
+  district_name        String?
+  block_id             String?  @db.Uuid
+  block_name           String?
+  revenue_village_id   String?  @db.Uuid
+  revenue_village_name String?
+  village_id           String?  @db.Uuid
+  village_name         String?
+  panchayats_json      String?
+  created_at           DateTime @default(now())
+  updated_at           DateTime @updatedAt
 
   user User @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
 
@@ -323,9 +329,10 @@ model Block {
   created_at     DateTime @default(now())
   updated_at     DateTime @updatedAt @default(now())
 
-  district      District      @relation(fields: [district_id], references: [district_id], onDelete: Restrict)
-  villages      Village[]
-  beneficiaries Beneficiary[]
+  district        District         @relation(fields: [district_id], references: [district_id], onDelete: Restrict)
+  revenueVillages RevenueVillage[]
+  villages        Village[]
+  beneficiaries   Beneficiary[]
 
   @@index([district_id])
   @@index([lgd_block_code])
@@ -347,21 +354,43 @@ model Panchayat {
   @@map("panchayats")
 }
 
-model Village {
-  village_id       String   @id @default(uuid()) @db.Uuid
-  block_id         String?  @db.Uuid
-  panchayat_id     String?  @db.Uuid
-  lgd_village_code Int?     @unique
-  name             String
-  is_active        Boolean  @default(true)
-  created_at       DateTime @default(now())
-  updated_at       DateTime @updatedAt @default(now())
+model RevenueVillage {
+  revenue_village_id       String   @id @default(uuid()) @db.Uuid
+  block_id                 String   @db.Uuid
+  lgd_revenue_village_code Int?     @unique
+  name                     String
+  is_active                Boolean  @default(true)
+  created_at               DateTime @default(now())
+  updated_at               DateTime @updatedAt @default(now())
 
-  block         Block?        @relation(fields: [block_id], references: [block_id], onDelete: Restrict)
-  panchayat     Panchayat?    @relation(fields: [panchayat_id], references: [panchayat_id], onDelete: Restrict)
+  block         Block         @relation(fields: [block_id], references: [block_id], onDelete: Restrict)
+  villages      Village[]
   beneficiaries Beneficiary[]
 
   @@index([block_id])
+  @@index([lgd_revenue_village_code])
+  @@index([name])
+  @@map("revenue_villages")
+}
+
+model Village {
+  village_id         String   @id @default(uuid()) @db.Uuid
+  block_id           String?  @db.Uuid
+  revenue_village_id String?  @db.Uuid
+  panchayat_id       String?  @db.Uuid
+  lgd_village_code   Int?     @unique
+  name               String
+  is_active          Boolean  @default(true)
+  created_at         DateTime @default(now())
+  updated_at         DateTime @updatedAt @default(now())
+
+  block          Block?          @relation(fields: [block_id], references: [block_id], onDelete: Restrict)
+  revenueVillage RevenueVillage? @relation(fields: [revenue_village_id], references: [revenue_village_id], onDelete: Restrict)
+  panchayat      Panchayat?      @relation(fields: [panchayat_id], references: [panchayat_id], onDelete: Restrict)
+  beneficiaries  Beneficiary[]
+
+  @@index([block_id])
+  @@index([revenue_village_id])
   @@index([panchayat_id])
   @@index([lgd_village_code])
   @@index([name])
@@ -405,6 +434,7 @@ model Beneficiary {
   address_line_3       String?
   district_id          String?            @db.Uuid
   block_id             String?            @db.Uuid
+  revenue_village_id   String?            @db.Uuid
   panchayat_id         String?            @db.Uuid
   village_id           String?            @db.Uuid
   pincode              String?
@@ -420,6 +450,7 @@ model Beneficiary {
   user              User?                  @relation(fields: [user_id], references: [user_id])
   district          District?              @relation(fields: [district_id], references: [district_id], onDelete: Restrict)
   block             Block?                 @relation(fields: [block_id], references: [block_id], onDelete: Restrict)
+  revenueVillage    RevenueVillage?        @relation(fields: [revenue_village_id], references: [revenue_village_id], onDelete: Restrict)
   panchayat         Panchayat?             @relation(fields: [panchayat_id], references: [panchayat_id], onDelete: Restrict)
   village           Village?               @relation(fields: [village_id], references: [village_id], onDelete: Restrict)
   landHoldings      LandHolding[]

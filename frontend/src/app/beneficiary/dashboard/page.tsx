@@ -19,6 +19,7 @@ import {
   Layers,
   ChevronRight,
 } from 'lucide-react';
+import { FinancialMetricCard } from '@/components/ui/FinancialMetricCard';
 import Link from 'next/link';
 
 export default function BeneficiaryDashboardPage() {
@@ -200,89 +201,14 @@ export default function BeneficiaryDashboardPage() {
           </div>
         </div>
 
-        {/* Metric 3: Total Development Cost */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-              Total Development Bill
-            </span>
-            <div className="p-2 bg-indigo-50 text-indigo-700 rounded-xl">
-              <Layers className="w-5 h-5" />
-            </div>
-          </div>
-          <div className="mt-3">
-            <div className="text-2xl font-bold text-slate-900">
-              {formatCurrency(metrics?.totalDevelopmentCost)}
-            </div>
-            <div className="text-xs text-slate-500 mt-1">
-              Fixed 5-Stage Milestone Installments
-            </div>
-          </div>
-          <div className="mt-4 pt-3 border-t border-slate-100 flex justify-end">
-            <Link
-              href="/beneficiary/payments"
-              className="text-xs text-indigo-700 hover:text-indigo-800 font-semibold inline-flex items-center"
-            >
-              Milestone Schedule &rarr;
-            </Link>
-          </div>
-        </div>
-
-        {/* Metric 4: Total Paid */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-              Paid Amount
-            </span>
-            <div className="p-2 bg-emerald-50 text-emerald-700 rounded-xl">
-              <CheckCircle2 className="w-5 h-5" />
-            </div>
-          </div>
-          <div className="mt-3">
-            <div className="text-2xl font-bold text-emerald-600">
-              {formatCurrency(metrics?.totalPaid)}
-            </div>
-            <div className="text-xs text-slate-500 mt-1">
-              Verified Receipts Available
-            </div>
-          </div>
-          <div className="mt-4 pt-3 border-t border-slate-100 flex justify-end">
-            <Link
-              href="/beneficiary/payments"
-              className="text-xs text-emerald-700 hover:text-emerald-800 font-semibold inline-flex items-center"
-            >
-              View Receipts &rarr;
-            </Link>
-          </div>
-        </div>
-
-        {/* Metric 5: Pending Balance */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-              Pending Balance
-            </span>
-            <div className="p-2 bg-rose-50 text-rose-700 rounded-xl">
-              <CreditCard className="w-5 h-5" />
-            </div>
-          </div>
-          <div className="mt-3">
-            <div className="text-2xl font-bold text-slate-900">
-              {formatCurrency(metrics?.pendingBalance)}
-            </div>
-            <div className="text-xs text-slate-500 mt-1">
-              Due across remaining milestones
-            </div>
-          </div>
-          <div className="mt-4 pt-3 border-t border-slate-100 flex justify-end">
-            <Link
-              href="/beneficiary/payments"
-              className="text-xs text-rose-700 hover:text-rose-800 font-semibold inline-flex items-center"
-            >
-              Pay Installment &rarr;
-            </Link>
-          </div>
-        </div>
+        {/* Financial Metric Card with mandatory 1. PENDING, 2. PAID, 3. TOTAL */}
+        <FinancialMetricCard
+          title="Development Bill Summary"
+          pendingAmount={metrics?.pendingBalance ?? 0}
+          paidAmount={metrics?.totalPaid ?? 0}
+          totalAmount={metrics?.totalDevelopmentCost ?? 0}
+          icon={CreditCard}
+        />
 
         {/* Metric 6: Infrastructure Status */}
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition">

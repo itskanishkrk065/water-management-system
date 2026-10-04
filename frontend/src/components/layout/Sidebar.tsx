@@ -28,6 +28,7 @@ import {
   ShieldCheck,
   RefreshCw,
   Terminal,
+  Sparkles,
 } from 'lucide-react';
 
 interface NavGroup {
@@ -148,6 +149,7 @@ export default function Sidebar() {
     {
       heading: 'FINANCE',
       items: [
+        { label: 'Collection Queue', href: '/collection/queue', icon: Sparkles },
         { label: 'Development Bills', href: '/billing/development', icon: Receipt },
         { label: '5-Stage Installments', href: '/billing/installments', icon: Layers },
         { label: 'Running Charges', href: '/billing/running', icon: CalendarDays },

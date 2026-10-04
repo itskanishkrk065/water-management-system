@@ -14,12 +14,15 @@ import { LocationsService } from './locations.service';
 import {
   CreateDistrictDto,
   CreateBlockDto,
+  CreateRevenueVillageDto,
   CreateVillageDto,
   CreatePanchayatDto,
   UpdateDistrictDto,
   UpdateBlockDto,
+  UpdateRevenueVillageDto,
   UpdateVillageDto,
   UpdatePanchayatDto,
+  QueryRevenueVillagesDto,
   QueryVillagesDto,
   QueryBlocksDto,
   LocationSearchQueryDto,
@@ -181,6 +184,89 @@ export class LocationsController {
   @ApiOperation({ summary: 'Safe delete unused village (Admin only)' })
   async deleteVillage(@Param('villageId') villageId: string) {
     return this.locationsService.deleteVillage(villageId);
+  }
+
+  @Patch('districts/:districtId/toggle-active')
+  @Roles(RoleName.ADMIN)
+  @ApiOperation({ summary: 'Toggle active status of district (Admin only)' })
+  async toggleDistrictActive(@Param('districtId') districtId: string) {
+    return this.locationsService.toggleDistrictActive(districtId);
+  }
+
+  @Patch('blocks/:blockId/toggle-active')
+  @Roles(RoleName.ADMIN)
+  @ApiOperation({ summary: 'Toggle active status of block (Admin only)' })
+  async toggleBlockActive(@Param('blockId') blockId: string) {
+    return this.locationsService.toggleBlockActive(blockId);
+  }
+
+  @Patch('revenue-villages/:revenueVillageId/toggle-active')
+  @Roles(RoleName.ADMIN)
+  @ApiOperation({ summary: 'Toggle active status of revenue village (Admin only)' })
+  async toggleRevenueVillageActive(@Param('revenueVillageId') revenueVillageId: string) {
+    return this.locationsService.toggleRevenueVillageActive(revenueVillageId);
+  }
+
+  @Patch('villages/:villageId/toggle-active')
+  @Roles(RoleName.ADMIN)
+  @ApiOperation({ summary: 'Toggle active status of village (Admin only)' })
+  async toggleVillageActive(@Param('villageId') villageId: string) {
+    return this.locationsService.toggleVillageActive(villageId);
+  }
+
+  // --- REVENUE VILLAGES ---
+
+  @Get('revenue-villages')
+  @ApiOperation({ summary: 'Get revenue villages (optionally filtered by blockId or search)' })
+  async getRevenueVillages(@Query() query: QueryRevenueVillagesDto) {
+    return this.locationsService.findRevenueVillages(query.blockId, query);
+  }
+
+  @Get('revenue-villages/:revenueVillageId')
+  @ApiOperation({ summary: 'Get single revenue village details' })
+  async getRevenueVillageById(@Param('revenueVillageId') id: string) {
+    return this.locationsService.getRevenueVillageById(id);
+  }
+
+  @Post('revenue-villages')
+  @Roles(RoleName.ADMIN)
+  @ApiOperation({ summary: 'Create revenue village manually (Admin only)' })
+  async createRevenueVillage(@Body() dto: CreateRevenueVillageDto) {
+    return this.locationsService.createRevenueVillage(dto);
+  }
+
+  @Patch('revenue-villages/:revenueVillageId')
+  @Roles(RoleName.ADMIN)
+  @ApiOperation({ summary: 'Update revenue village (Admin only)' })
+  async updateRevenueVillage(
+    @Param('revenueVillageId') id: string,
+    @Body() dto: UpdateRevenueVillageDto,
+  ) {
+    return this.locationsService.updateRevenueVillage(id, dto);
+  }
+
+  @Delete('revenue-villages/:revenueVillageId')
+  @Roles(RoleName.ADMIN)
+  @ApiOperation({ summary: 'Safe delete unused revenue village (Admin only)' })
+  async deleteRevenueVillage(@Param('revenueVillageId') id: string) {
+    return this.locationsService.deleteRevenueVillage(id);
+  }
+
+  @Get('blocks/:blockId/revenue-villages')
+  @ApiOperation({ summary: 'Get cascading revenue villages belonging to a specific block' })
+  async getRevenueVillagesForBlock(
+    @Param('blockId') blockId: string,
+    @Query() query: QueryRevenueVillagesDto,
+  ) {
+    return this.locationsService.findRevenueVillages(blockId, query);
+  }
+
+  @Post('validate-hierarchy')
+  @ApiOperation({ summary: 'Validate parent-child relationship across location levels' })
+  async validateHierarchy(
+    @Body() body: { districtId?: string; blockId?: string; revenueVillageId?: string; villageId?: string },
+  ) {
+    return this.locationsService.validateHierarchy(body);
   }
 
   // --- LEGACY PANCHAYAT ROUTES ---

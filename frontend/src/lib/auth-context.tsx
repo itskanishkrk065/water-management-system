@@ -103,6 +103,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await setSecureToken('water_access_token', null);
       await setSecureToken('water_refresh_token', null);
       localStorage.removeItem('water_user');
+      localStorage.removeItem('water_user_scope');
+      localStorage.removeItem('water_sync_cursor');
+      localStorage.removeItem('water_sync_state');
       setUser(null);
       router.push('/login');
     }

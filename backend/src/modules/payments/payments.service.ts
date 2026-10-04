@@ -1,7 +1,7 @@
 import { Injectable, BadRequestException, NotFoundException, Optional } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
-import { RecordPaymentDto, ReversePaymentDto } from './dto/payment.dto';
+import { RecordPaymentDto, ReversePaymentDto, RecordBulkBillPaymentDto } from './dto/payment.dto';
 import { AuditAction, AuditEntityType, BillStatus, InstallmentStatus, PaymentStatus, PaymentMode, ExtensionStatus } from '../common/enums';
 import { Prisma } from '@prisma/client';
 import { DecimalUtil } from '../common/decimal.util';
@@ -957,5 +957,155 @@ export class PaymentsService {
     const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
     const randomHex = Math.floor(100000 + Math.random() * 900000).toString();
     return `${prefix}-${year}-${randomHex}`;
+  }
+
+  /**
+   * Previews allocation of a bulk payment amount against outstanding installments of a development bill
+   * without mutating database state. (Part D: Five-Installment Bulk Payment Allocation)
+   */
+  async previewBulkBillPayment(billId: string, amount: number) {
+    if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
+      throw new BadRequestException('A valid positive payment amount is required');
+    }
+    const payAmount = DecimalUtil.roundMoney(new Decimal(amount));
+
+    const bill = await this.prisma.developmentBill.findUnique({
+      where: { bill_id: billId },
+      include: {
+        installments: {
+          orderBy: { installment_number: 'asc' },
+        },
+      },
+    });
+
+    if (!bill) {
+      throw new NotFoundException(`Development bill with ID ${billId} not found`);
+    }
+
+    if (bill.status === BillStatus.PAID) {
+      throw new BadRequestException('Development bill is already fully paid');
+    }
+
+    const totalPending = new Decimal(bill.pending_amount);
+    if (payAmount.greaterThan(totalPending)) {
+      throw new BadRequestException(
+        `Payment amount ₹${payAmount.toFixed(2)} exceeds total outstanding bill balance ₹${totalPending.toFixed(2)}.`,
+      );
+    }
+
+    let remainingPay = payAmount;
+    const allocations: Array<{
+      installmentNumber: number;
+      installmentId: string;
+      dueDate: Date | null;
+      originalAmount: number;
+      currentPaid: number;
+      currentPending: number;
+      allocatedPayment: number;
+      newPaid: number;
+      newPending: number;
+      resultingStatus: InstallmentStatus;
+    }> = [];
+
+    for (const inst of bill.installments) {
+      const instPending = new Decimal(inst.pending_amount);
+      if (instPending.isZero() || instPending.lessThanOrEqualTo(0)) {
+        continue;
+      }
+
+      if (remainingPay.isZero() || remainingPay.lessThanOrEqualTo(0)) {
+        break;
+      }
+
+      const alloc = Decimal.min(remainingPay, instPending);
+      const currentPaid = new Decimal(inst.amount_paid);
+      const amountDue = new Decimal(inst.amount_due);
+      const newPaid = DecimalUtil.roundMoney(DecimalUtil.add(currentPaid, alloc));
+      const newPending = DecimalUtil.roundMoney(DecimalUtil.sub(amountDue, newPaid));
+      const resultingStatus = newPending.isZero() ? InstallmentStatus.PAID : InstallmentStatus.PARTIALLY_PAID;
+
+      allocations.push({
+        installmentNumber: inst.installment_number,
+        installmentId: inst.installment_id,
+        dueDate: inst.due_date || null,
+        originalAmount: new Decimal(inst.amount_due).toNumber(),
+        currentPaid: currentPaid.toNumber(),
+        currentPending: instPending.toNumber(),
+        allocatedPayment: alloc.toNumber(),
+        newPaid: newPaid.toNumber(),
+        newPending: newPending.toNumber(),
+        resultingStatus,
+      });
+
+      remainingPay = DecimalUtil.roundMoney(DecimalUtil.sub(remainingPay, alloc));
+    }
+
+    const newBillPaid = DecimalUtil.roundMoney(DecimalUtil.add(new Decimal(bill.amount_paid), payAmount));
+    const newBillPending = DecimalUtil.roundMoney(DecimalUtil.sub(new Decimal(bill.total_amount), newBillPaid));
+
+    return {
+      billId: bill.bill_id,
+      totalBillAmount: new Decimal(bill.total_amount).toNumber(),
+      currentBillPaid: new Decimal(bill.amount_paid).toNumber(),
+      currentBillPending: new Decimal(bill.pending_amount).toNumber(),
+      paymentAmount: payAmount.toNumber(),
+      allocations,
+      newBillPaid: newBillPaid.toNumber(),
+      newBillPending: newBillPending.toNumber(),
+      resultingBillStatus: newBillPending.isZero() ? BillStatus.PAID : BillStatus.PARTIALLY_PAID,
+    };
+  }
+
+  /**
+   * Atomically records a bulk payment against a development bill, allocating across outstanding
+   * installments in order (earliest outstanding first).
+   */
+  async recordBulkBillPayment(
+    dto: RecordBulkBillPaymentDto,
+    recordedBy: string,
+    userId?: string,
+    ipAddress?: string,
+  ) {
+    if (this.clock) {
+      await this.clock.assertClockValid(userId, ipAddress);
+    }
+
+    const preview = await this.previewBulkBillPayment(dto.billId, dto.amount);
+
+    return this.prisma.$transaction(async (tx) => {
+      const createdPayments: any[] = [];
+
+      for (const alloc of preview.allocations) {
+        const instPayment = await this.recordPayment(
+          {
+            beneficiaryId: (await tx.developmentBill.findUnique({ where: { bill_id: dto.billId } }))?.beneficiary_id,
+            installmentId: alloc.installmentId,
+            amount: alloc.allocatedPayment,
+            paymentMode: dto.paymentMode || PaymentMode.CASH,
+            paymentReference: dto.paymentReference,
+            paymentDate: dto.paymentDate,
+            remarks: dto.remarks || `Bulk payment allocation for Stage ${alloc.installmentNumber}`,
+            collectorName: recordedBy,
+            idempotencyKey: dto.idempotencyKey ? `${dto.idempotencyKey}-inst-${alloc.installmentNumber}` : undefined,
+          },
+          recordedBy,
+          userId,
+          ipAddress,
+        );
+        createdPayments.push(instPayment);
+      }
+
+      const updatedBill = await tx.developmentBill.findUnique({
+        where: { bill_id: dto.billId },
+        include: { installments: { orderBy: { installment_number: 'asc' } } },
+      });
+
+      return {
+        success: true,
+        bill: updatedBill,
+        paymentsCreated: createdPayments,
+        summary: preview,
+      };
+    });
   }
 }

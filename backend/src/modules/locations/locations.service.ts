@@ -3,12 +3,15 @@ import { PrismaService } from '../prisma/prisma.service';
 import {
   CreateDistrictDto,
   CreateBlockDto,
+  CreateRevenueVillageDto,
   CreateVillageDto,
   CreatePanchayatDto,
   UpdateDistrictDto,
   UpdateBlockDto,
+  UpdateRevenueVillageDto,
   UpdateVillageDto,
   UpdatePanchayatDto,
+  QueryRevenueVillagesDto,
   QueryVillagesDto,
   QueryBlocksDto,
   LocationSearchQueryDto,
@@ -603,6 +606,196 @@ export class LocationsService {
 
     await this.prisma.panchayat.delete({ where: { panchayat_id: panchayatId } });
     return { success: true, message: `Panchayat '${panchayat.name}' was permanently deleted.` };
+  }
+
+  // --- REVENUE VILLAGES ---
+
+  async findRevenueVillages(blockId?: string, query?: QueryRevenueVillagesDto) {
+    const where: Prisma.RevenueVillageWhereInput = {};
+    const bId = blockId || query?.blockId;
+    if (bId) {
+      where.block_id = bId;
+    }
+    if (query?.activeOnly !== undefined) {
+      where.is_active = query.activeOnly;
+    }
+    if (query?.search) {
+      where.name = { contains: query.search.trim() };
+    }
+
+    const page = query?.page || 1;
+    const limit = query?.limit || 50;
+    const skip = (page - 1) * limit;
+
+    const [items, total] = await Promise.all([
+      this.prisma.revenueVillage.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { name: 'asc' },
+        include: {
+          block: { include: { district: true } },
+          _count: { select: { villages: true, beneficiaries: true } },
+        },
+      }),
+      this.prisma.revenueVillage.count({ where }),
+    ]);
+
+    return {
+      items,
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit) || 1,
+      },
+    };
+  }
+
+  async getRevenueVillageById(id: string) {
+    const rv = await this.prisma.revenueVillage.findUnique({
+      where: { revenue_village_id: id },
+      include: {
+        block: { include: { district: true } },
+        villages: { orderBy: { name: 'asc' } },
+      },
+    });
+    if (!rv) throw new NotFoundException(`Revenue Village with ID ${id} not found`);
+    return rv;
+  }
+
+  async createRevenueVillage(dto: CreateRevenueVillageDto) {
+    const block = await this.prisma.block.findUnique({ where: { block_id: dto.blockId } });
+    if (!block) throw new NotFoundException(`Block with ID ${dto.blockId} not found`);
+
+    if (dto.lgdRevenueVillageCode) {
+      const codeCheck = await this.prisma.revenueVillage.findUnique({
+        where: { lgd_revenue_village_code: dto.lgdRevenueVillageCode },
+      });
+      if (codeCheck) {
+        throw new ConflictException(`Revenue Village with LGD Code ${dto.lgdRevenueVillageCode} already exists`);
+      }
+    }
+
+    return this.prisma.revenueVillage.create({
+      data: {
+        block_id: dto.blockId,
+        name: dto.name.trim(),
+        lgd_revenue_village_code: dto.lgdRevenueVillageCode || null,
+        is_active: true,
+      },
+      include: { block: { include: { district: true } } },
+    });
+  }
+
+  async updateRevenueVillage(id: string, dto: UpdateRevenueVillageDto) {
+    const existing = await this.prisma.revenueVillage.findUnique({ where: { revenue_village_id: id } });
+    if (!existing) throw new NotFoundException(`Revenue Village with ID ${id} not found`);
+
+    return this.prisma.revenueVillage.update({
+      where: { revenue_village_id: id },
+      data: {
+        name: dto.name !== undefined ? dto.name.trim() : undefined,
+        block_id: dto.blockId !== undefined ? dto.blockId : undefined,
+        lgd_revenue_village_code: dto.lgdRevenueVillageCode !== undefined ? dto.lgdRevenueVillageCode : undefined,
+        is_active: dto.isActive !== undefined ? dto.isActive : undefined,
+      },
+      include: { block: { include: { district: true } } },
+    });
+  }
+
+  async deleteRevenueVillage(id: string) {
+    const rv = await this.prisma.revenueVillage.findUnique({
+      where: { revenue_village_id: id },
+      include: { _count: { select: { villages: true, beneficiaries: true } } },
+    });
+    if (!rv) throw new NotFoundException(`Revenue Village with ID ${id} not found`);
+
+    const { villages, beneficiaries } = rv._count;
+    if (villages > 0 || beneficiaries > 0) {
+      throw new BadRequestException(
+        `Cannot delete Revenue Village '${rv.name}' because historical records reference it (${villages} village(s), ${beneficiaries} beneficiary(ies)). Please deactivate it instead.`,
+      );
+    }
+
+    await this.prisma.revenueVillage.delete({ where: { revenue_village_id: id } });
+    return { success: true, message: `Revenue Village '${rv.name}' was permanently deleted.` };
+  }
+
+  // --- TOGGLE ACTIVE ENDPOINTS ---
+
+  async toggleDistrictActive(id: string) {
+    const district = await this.prisma.district.findUnique({ where: { district_id: id } });
+    if (!district) throw new NotFoundException(`District with ID ${id} not found`);
+
+    return this.prisma.district.update({
+      where: { district_id: id },
+      data: { is_active: !district.is_active },
+    });
+  }
+
+  async toggleBlockActive(id: string) {
+    const block = await this.prisma.block.findUnique({ where: { block_id: id } });
+    if (!block) throw new NotFoundException(`Block with ID ${id} not found`);
+
+    return this.prisma.block.update({
+      where: { block_id: id },
+      data: { is_active: !block.is_active },
+    });
+  }
+
+  async toggleRevenueVillageActive(id: string) {
+    const rv = await this.prisma.revenueVillage.findUnique({ where: { revenue_village_id: id } });
+    if (!rv) throw new NotFoundException(`Revenue Village with ID ${id} not found`);
+
+    return this.prisma.revenueVillage.update({
+      where: { revenue_village_id: id },
+      data: { is_active: !rv.is_active },
+    });
+  }
+
+  async toggleVillageActive(id: string) {
+    const village = await this.prisma.village.findUnique({ where: { village_id: id } });
+    if (!village) throw new NotFoundException(`Village with ID ${id} not found`);
+
+    return this.prisma.village.update({
+      where: { village_id: id },
+      data: { is_active: !village.is_active },
+    });
+  }
+
+  // --- HIERARCHY VALIDATION ---
+
+  async validateHierarchy(params: {
+    districtId?: string;
+    blockId?: string;
+    revenueVillageId?: string;
+    villageId?: string;
+  }) {
+    const { districtId, blockId, revenueVillageId, villageId } = params;
+
+    if (blockId && districtId) {
+      const block = await this.prisma.block.findUnique({ where: { block_id: blockId } });
+      if (!block || block.district_id !== districtId) {
+        throw new BadRequestException('Selected Block does not belong to the selected District');
+      }
+    }
+
+    if (revenueVillageId && blockId) {
+      const rv = await this.prisma.revenueVillage.findUnique({ where: { revenue_village_id: revenueVillageId } });
+      if (!rv || rv.block_id !== blockId) {
+        throw new BadRequestException('Selected Revenue Village does not belong to the selected Block');
+      }
+    }
+
+    if (villageId && revenueVillageId) {
+      const village = await this.prisma.village.findUnique({ where: { village_id: villageId } });
+      if (!village || village.revenue_village_id !== revenueVillageId) {
+        throw new BadRequestException('Selected Village does not belong to the selected Revenue Village');
+      }
+    }
+
+    return { valid: true };
   }
 }
 

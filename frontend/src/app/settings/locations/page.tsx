@@ -11,7 +11,6 @@ import {
   History,
   Plus,
   Search,
-  ChevronRight,
   X,
   AlertCircle,
   CheckCircle2,
@@ -24,13 +23,15 @@ export default function LocationsPage() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
 
-  const [activeTab, setActiveTab] = useState<'districts' | 'blocks' | 'villages' | 'import' | 'history'>('districts');
+  const [activeTab, setActiveTab] = useState<'districts' | 'blocks' | 'revenue-villages' | 'villages' | 'import' | 'history'>('districts');
 
   // Filters & Search
   const [districtSearch, setDistrictSearch] = useState('');
   const [selectedDistrictId, setSelectedDistrictId] = useState('');
   const [blockSearch, setBlockSearch] = useState('');
   const [selectedBlockId, setSelectedBlockId] = useState('');
+  const [rvSearch, setRvSearch] = useState('');
+  const [selectedRvId, setSelectedRvId] = useState('');
   const [villageSearch, setVillageSearch] = useState('');
   const [villagePage, setVillagePage] = useState(1);
 
@@ -44,8 +45,14 @@ export default function LocationsPage() {
   const [blockName, setBlockName] = useState('');
   const [blockLgdCode, setBlockLgdCode] = useState('');
 
+  const [showRvModal, setShowRvModal] = useState(false);
+  const [targetRvBlockId, setTargetRvBlockId] = useState('');
+  const [rvName, setRvName] = useState('');
+  const [rvLgdCode, setRvLgdCode] = useState('');
+
   const [showVillageModal, setShowVillageModal] = useState(false);
   const [targetBlockId, setTargetBlockId] = useState('');
+  const [targetRevenueVillageId, setTargetRevenueVillageId] = useState('');
   const [villageName, setVillageName] = useState('');
   const [villageLgdCode, setVillageLgdCode] = useState('');
 
@@ -76,13 +83,29 @@ export default function LocationsPage() {
     },
   });
 
-  // 3. Fetch Villages with Pagination & Search
+  // 3. Fetch Revenue Villages
+  const { data: rvData, isLoading: rvLoading } = useQuery({
+    queryKey: ['revenue-villages-admin', selectedBlockId, rvSearch],
+    queryFn: async () => {
+      const res = await apiClient.get('/locations/revenue-villages', {
+        params: {
+          blockId: selectedBlockId || undefined,
+          search: rvSearch || undefined,
+        },
+      });
+      return res.data;
+    },
+  });
+  const revenueVillages = rvData?.items || (Array.isArray(rvData) ? rvData : []);
+
+  // 4. Fetch Villages with Pagination & Search
   const { data: villageData, isLoading: villagesLoading } = useQuery({
-    queryKey: ['villages-admin', selectedBlockId, villageSearch, villagePage],
+    queryKey: ['villages-admin', selectedBlockId, selectedRvId, villageSearch, villagePage],
     queryFn: async () => {
       const res = await apiClient.get('/locations/villages', {
         params: {
           blockId: selectedBlockId || undefined,
+          revenueVillageId: selectedRvId || undefined,
           search: villageSearch || undefined,
           page: villagePage,
           limit: 25,
@@ -137,11 +160,34 @@ export default function LocationsPage() {
     },
   });
 
+  // Create Revenue Village Mutation
+  const createRvMutation = useMutation({
+    mutationFn: async () => {
+      await apiClient.post('/locations/revenue-villages', {
+        blockId: targetRvBlockId,
+        name: rvName.trim(),
+        lgdRevenueVillageCode: rvLgdCode ? parseInt(rvLgdCode, 10) : undefined,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['revenue-villages-admin'] });
+      queryClient.invalidateQueries({ queryKey: ['blocks'] });
+      setShowRvModal(false);
+      setRvName('');
+      setRvLgdCode('');
+      setError(null);
+    },
+    onError: (err: any) => {
+      setError(err.response?.data?.message || 'Failed to create revenue village');
+    },
+  });
+
   // Create Village Mutation
   const createVillageMutation = useMutation({
     mutationFn: async () => {
       await apiClient.post('/locations/villages', {
-        blockId: targetBlockId,
+        blockId: targetBlockId || undefined,
+        revenueVillageId: targetRevenueVillageId || undefined,
         lgdVillageCode: villageLgdCode ? parseInt(villageLgdCode, 10) : undefined,
         name: villageName.trim(),
       });
@@ -149,6 +195,7 @@ export default function LocationsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['villages-admin'] });
       queryClient.invalidateQueries({ queryKey: ['blocks'] });
+      queryClient.invalidateQueries({ queryKey: ['revenue-villages-admin'] });
       setShowVillageModal(false);
       setVillageName('');
       setVillageLgdCode('');
@@ -159,20 +206,15 @@ export default function LocationsPage() {
     },
   });
 
-  // Toggle District Active
+  // Toggle Mutations
   const toggleDistrictMutation = useMutation({
     mutationFn: async (districtId: string) => {
       await apiClient.patch(`/locations/districts/${districtId}/toggle-active`);
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['districts'] });
-    },
-    onError: (err: any) => {
-      setError(err.response?.data?.message || 'Failed to toggle district status');
-    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['districts'] }),
+    onError: (err: any) => setError(err.response?.data?.message || 'Failed to toggle district status'),
   });
 
-  // Delete District
   const deleteDistrictMutation = useMutation({
     mutationFn: async (districtId: string) => {
       await apiClient.delete(`/locations/districts/${districtId}`);
@@ -181,25 +223,17 @@ export default function LocationsPage() {
       queryClient.invalidateQueries({ queryKey: ['districts'] });
       setError(null);
     },
-    onError: (err: any) => {
-      setError(err.response?.data?.message || 'Cannot delete this district because it is referenced by existing records.');
-    },
+    onError: (err: any) => setError(err.response?.data?.message || 'Cannot delete this district. Please deactivate instead.'),
   });
 
-  // Toggle Block Active
   const toggleBlockMutation = useMutation({
     mutationFn: async (blockId: string) => {
       await apiClient.patch(`/locations/blocks/${blockId}/toggle-active`);
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['blocks'] });
-    },
-    onError: (err: any) => {
-      setError(err.response?.data?.message || 'Failed to toggle block status');
-    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['blocks'] }),
+    onError: (err: any) => setError(err.response?.data?.message || 'Failed to toggle block status'),
   });
 
-  // Delete Block
   const deleteBlockMutation = useMutation({
     mutationFn: async (blockId: string) => {
       await apiClient.delete(`/locations/blocks/${blockId}`);
@@ -208,12 +242,28 @@ export default function LocationsPage() {
       queryClient.invalidateQueries({ queryKey: ['blocks'] });
       setError(null);
     },
-    onError: (err: any) => {
-      setError(err.response?.data?.message || 'Cannot delete this block because it is referenced by existing records.');
-    },
+    onError: (err: any) => setError(err.response?.data?.message || 'Cannot delete this block. Please deactivate instead.'),
   });
 
-  // Toggle Village Active
+  const toggleRvMutation = useMutation({
+    mutationFn: async (rvId: string) => {
+      await apiClient.patch(`/locations/revenue-villages/${rvId}/toggle-active`);
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['revenue-villages-admin'] }),
+    onError: (err: any) => setError(err.response?.data?.message || 'Failed to toggle revenue village status'),
+  });
+
+  const deleteRvMutation = useMutation({
+    mutationFn: async (rvId: string) => {
+      await apiClient.delete(`/locations/revenue-villages/${rvId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['revenue-villages-admin'] });
+      setError(null);
+    },
+    onError: (err: any) => setError(err.response?.data?.message || 'Cannot delete this revenue village. Please deactivate instead.'),
+  });
+
   const toggleVillageMutation = useMutation({
     mutationFn: async (villageId: string) => {
       await apiClient.patch(`/locations/villages/${villageId}/toggle-active`);
@@ -222,12 +272,9 @@ export default function LocationsPage() {
       queryClient.invalidateQueries({ queryKey: ['villages-admin'] });
       queryClient.invalidateQueries({ queryKey: ['villages'] });
     },
-    onError: (err: any) => {
-      setError(err.response?.data?.message || 'Failed to toggle village status');
-    },
+    onError: (err: any) => setError(err.response?.data?.message || 'Failed to toggle village status'),
   });
 
-  // Delete Village
   const deleteVillageMutation = useMutation({
     mutationFn: async (villageId: string) => {
       await apiClient.delete(`/locations/villages/${villageId}`);
@@ -237,9 +284,7 @@ export default function LocationsPage() {
       queryClient.invalidateQueries({ queryKey: ['villages'] });
       setError(null);
     },
-    onError: (err: any) => {
-      setError(err.response?.data?.message || 'Cannot delete this village because it is referenced by existing records.');
-    },
+    onError: (err: any) => setError(err.response?.data?.message || 'Cannot delete this village. Please deactivate instead.'),
   });
 
   return (
@@ -249,21 +294,17 @@ export default function LocationsPage() {
         <div>
           <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Location Master Data</h1>
           <p className="text-sm text-slate-500 mt-1">
-            Official LGD administrative hierarchy: District 1 &rarr; N Block 1 &rarr; N Village
+            Canonical 4-Level Hierarchy: District &rarr; Block &rarr; Revenue Village &rarr; Village
           </p>
         </div>
 
         {user?.role === 'ADMIN' && (
           <div className="flex flex-wrap gap-2">
             <button
-              onClick={() => {
-                setError(null);
-                setShowDistrictModal(true);
-              }}
-              className="px-3 py-1.5 bg-sky-600 hover:bg-sky-700 text-white rounded-lg text-xs font-semibold shadow-xs transition inline-flex items-center space-x-1"
+              onClick={() => { setError(null); setShowDistrictModal(true); }}
+              className="px-3 py-1.5 bg-sky-600 hover:bg-sky-700 text-white rounded-lg text-xs font-semibold shadow-xs transition flex items-center gap-1"
             >
-              <Plus className="w-3.5 h-3.5" />
-              <span>+ District</span>
+              <Plus className="w-3.5 h-3.5" /> + District
             </button>
             <button
               onClick={() => {
@@ -271,21 +312,30 @@ export default function LocationsPage() {
                 setTargetDistrictId(districts?.[0]?.district_id || '');
                 setShowBlockModal(true);
               }}
-              className="px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-semibold shadow-xs transition inline-flex items-center space-x-1"
+              className="px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-semibold shadow-xs transition flex items-center gap-1"
             >
-              <Plus className="w-3.5 h-3.5" />
-              <span>+ Block</span>
+              <Plus className="w-3.5 h-3.5" /> + Block
+            </button>
+            <button
+              onClick={() => {
+                setError(null);
+                setTargetRvBlockId(blocks?.[0]?.block_id || '');
+                setShowRvModal(true);
+              }}
+              className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-semibold shadow-xs transition flex items-center gap-1"
+            >
+              <Plus className="w-3.5 h-3.5" /> + Revenue Village
             </button>
             <button
               onClick={() => {
                 setError(null);
                 setTargetBlockId(blocks?.[0]?.block_id || '');
+                setTargetRevenueVillageId(revenueVillages?.[0]?.revenue_village_id || '');
                 setShowVillageModal(true);
               }}
-              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold shadow-xs transition inline-flex items-center space-x-1"
+              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold shadow-xs transition flex items-center gap-1"
             >
-              <Plus className="w-3.5 h-3.5" />
-              <span>+ Village</span>
+              <Plus className="w-3.5 h-3.5" /> + Village
             </button>
           </div>
         )}
@@ -299,146 +349,123 @@ export default function LocationsPage() {
       )}
 
       {/* Tabs */}
-      <div className="flex items-center space-x-1 border-b border-slate-200">
+      <div className="border-b border-slate-200 flex space-x-8">
         <button
           onClick={() => setActiveTab('districts')}
-          className={`px-4 py-2.5 text-xs font-semibold border-b-2 flex items-center space-x-2 transition ${
-            activeTab === 'districts'
-              ? 'border-sky-600 text-sky-600'
-              : 'border-transparent text-slate-500 hover:text-slate-800'
-          }`}
-        >
-          <Building className="w-4 h-4" />
-          <span>Districts ({districts?.length || 0})</span>
-        </button>
-        <button
-          onClick={() => setActiveTab('blocks')}
-          className={`px-4 py-2.5 text-xs font-semibold border-b-2 flex items-center space-x-2 transition ${
-            activeTab === 'blocks'
-              ? 'border-sky-600 text-sky-600'
-              : 'border-transparent text-slate-500 hover:text-slate-800'
-          }`}
-        >
-          <Layers className="w-4 h-4" />
-          <span>Blocks ({blocks?.length || 0})</span>
-        </button>
-        <button
-          onClick={() => setActiveTab('villages')}
-          className={`px-4 py-2.5 text-xs font-semibold border-b-2 flex items-center space-x-2 transition ${
-            activeTab === 'villages'
-              ? 'border-sky-600 text-sky-600'
-              : 'border-transparent text-slate-500 hover:text-slate-800'
+          className={`pb-3 text-sm font-semibold flex items-center space-x-2 transition ${
+            activeTab === 'districts' ? 'border-b-2 border-sky-600 text-sky-600' : 'text-slate-500 hover:text-slate-800'
           }`}
         >
           <MapPin className="w-4 h-4" />
-          <span>Villages ({villageMeta.total || 0})</span>
+          <span>Districts</span>
         </button>
+
         <button
-          onClick={() => setActiveTab('import')}
-          className={`px-4 py-2.5 text-xs font-semibold border-b-2 flex items-center space-x-2 transition ${
-            activeTab === 'import'
-              ? 'border-sky-600 text-sky-600'
-              : 'border-transparent text-slate-500 hover:text-slate-800'
+          onClick={() => setActiveTab('blocks')}
+          className={`pb-3 text-sm font-semibold flex items-center space-x-2 transition ${
+            activeTab === 'blocks' ? 'border-b-2 border-sky-600 text-sky-600' : 'text-slate-500 hover:text-slate-800'
           }`}
         >
-          <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
-          <span>Excel Import &amp; Preview</span>
+          <Building className="w-4 h-4" />
+          <span>Blocks</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('revenue-villages')}
+          className={`pb-3 text-sm font-semibold flex items-center space-x-2 transition ${
+            activeTab === 'revenue-villages' ? 'border-b-2 border-sky-600 text-sky-600' : 'text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          <Layers className="w-4 h-4" />
+          <span>Revenue Villages</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('villages')}
+          className={`pb-3 text-sm font-semibold flex items-center space-x-2 transition ${
+            activeTab === 'villages' ? 'border-b-2 border-sky-600 text-sky-600' : 'text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          <Layers className="w-4 h-4" />
+          <span>Villages</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('import')}
+          className={`pb-3 text-sm font-semibold flex items-center space-x-2 transition ${
+            activeTab === 'import' ? 'border-b-2 border-sky-600 text-sky-600' : 'text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          <FileSpreadsheet className="w-4 h-4" />
+          <span>Excel Import</span>
         </button>
       </div>
 
-      {/* TAB 1: DISTRICTS */}
+      {/* Tab 1: Districts */}
       {activeTab === 'districts' && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <div className="relative w-72">
-              <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
+              <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
               <input
                 type="text"
-                placeholder="Search districts..."
                 value={districtSearch}
                 onChange={(e) => setDistrictSearch(e.target.value)}
-                className="w-full pl-9 pr-3 py-1.5 border border-slate-300 rounded-lg text-xs"
+                placeholder="Search districts..."
+                className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-sky-500"
               />
             </div>
-            <span className="text-xs text-slate-500 font-mono">
-              Total Districts: {districts?.length || 0}
-            </span>
           </div>
 
-          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-xs">
-            <table className="w-full text-xs text-left">
-              <thead className="bg-slate-50 text-slate-600 font-semibold uppercase">
+          <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold uppercase tracking-wider">
                 <tr>
-                  <th className="p-3">LGD Code</th>
                   <th className="p-3">District Name</th>
-                  <th className="p-3">Blocks Count</th>
-                  <th className="p-3">Beneficiaries</th>
-                  <th className="p-3">Status</th>
-                  <th className="p-3 text-right">Actions</th>
+                  <th className="p-3">LGD Code</th>
+                  <th className="p-3 text-center">Blocks</th>
+                  <th className="p-3 text-center">Beneficiaries</th>
+                  <th className="p-3 text-center">Status</th>
+                  {user?.role === 'ADMIN' && <th className="p-3 text-right">Actions</th>}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 font-sans">
+              <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
                 {districtsLoading ? (
-                  <tr>
-                    <td colSpan={6} className="p-8 text-center text-slate-400">Loading districts...</td>
-                  </tr>
-                ) : districts && districts.length > 0 ? (
-                  districts.map((d: any) => (
-                    <tr key={d.district_id} className="hover:bg-slate-50/70">
-                      <td className="p-3 font-mono font-bold text-slate-700">
-                        {d.lgd_district_code || '—'}
-                      </td>
+                  <tr><td colSpan={6} className="p-4 text-center text-slate-400">Loading districts...</td></tr>
+                ) : (Array.isArray(districts) ? districts : []).length === 0 ? (
+                  <tr><td colSpan={6} className="p-4 text-center text-slate-400">No districts found</td></tr>
+                ) : (
+                  (Array.isArray(districts) ? districts : []).map((d: any) => (
+                    <tr key={d.district_id} className="hover:bg-slate-50">
                       <td className="p-3 font-semibold text-slate-900">{d.name}</td>
-                      <td className="p-3 font-mono text-slate-600">{d._count?.blocks || 0} Blocks</td>
-                      <td className="p-3 font-mono text-slate-600">{d._count?.beneficiaries || 0} Farmers</td>
-                      <td className="p-3">
-                        <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ${d.is_active ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600'}`}>
-                          {d.is_active ? 'ACTIVE' : 'INACTIVE'}
+                      <td className="p-3 font-mono">{d.lgd_district_code || '---'}</td>
+                      <td className="p-3 text-center">{d._count?.blocks || 0}</td>
+                      <td className="p-3 text-center">{d._count?.beneficiaries || 0}</td>
+                      <td className="p-3 text-center">
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                          d.is_active ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600'
+                        }`}>
+                          {d.is_active ? 'Active' : 'Inactive'}
                         </span>
                       </td>
-                      <td className="p-3 text-right">
-                        <div className="flex items-center justify-end space-x-2">
+                      {user?.role === 'ADMIN' && (
+                        <td className="p-3 text-right space-x-2">
                           <button
-                            onClick={() => {
-                              setSelectedDistrictId(d.district_id);
-                              setActiveTab('blocks');
-                            }}
-                            className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-xs font-semibold"
+                            onClick={() => toggleDistrictMutation.mutate(d.district_id)}
+                            className="text-sky-600 hover:text-sky-800 font-semibold"
                           >
-                            View Blocks &rarr;
+                            {d.is_active ? 'Deactivate' : 'Activate'}
                           </button>
-                          {user?.role === 'ADMIN' && (
-                            <>
-                              <button
-                                onClick={() => toggleDistrictMutation.mutate(d.district_id)}
-                                className={`px-2 py-1 rounded text-xs font-semibold ${
-                                  d.is_active ? 'bg-amber-50 text-amber-700 hover:bg-amber-100' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
-                                }`}
-                                title={d.is_active ? 'Deactivate district' : 'Activate district'}
-                              >
-                                {d.is_active ? 'Deactivate' : 'Activate'}
-                              </button>
-                              <button
-                                onClick={() => {
-                                  if (confirm(`Delete district "${d.name}"? If referenced by blocks or beneficiaries, deletion will be blocked.`)) {
-                                    deleteDistrictMutation.mutate(d.district_id);
-                                  }
-                                }}
-                                className="px-2 py-1 bg-rose-50 text-rose-700 hover:bg-rose-100 rounded text-xs font-semibold"
-                                title="Delete district"
-                              >
-                                Delete
-                              </button>
-                            </>
-                          )}
-                        </div>
-                      </td>
+                          <button
+                            onClick={() => deleteDistrictMutation.mutate(d.district_id)}
+                            className="text-rose-600 hover:text-rose-800 font-semibold"
+                          >
+                            Delete
+                          </button>
+                        </td>
+                      )}
                     </tr>
                   ))
-                ) : (
-                  <tr>
-                    <td colSpan={6} className="p-8 text-center text-slate-400">No districts match search.</td>
-                  </tr>
                 )}
               </tbody>
             </table>
@@ -446,119 +473,79 @@ export default function LocationsPage() {
         </div>
       )}
 
-      {/* TAB 2: BLOCKS */}
+      {/* Tab 2: Blocks */}
       {activeTab === 'blocks' && (
         <div className="space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center space-x-3">
-              <div className="relative w-60">
-                <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
-                <input
-                  type="text"
-                  placeholder="Search blocks..."
-                  value={blockSearch}
-                  onChange={(e) => setBlockSearch(e.target.value)}
-                  className="w-full pl-9 pr-3 py-1.5 border border-slate-300 rounded-lg text-xs"
-                />
-              </div>
-
-              <select
-                value={selectedDistrictId}
-                onChange={(e) => setSelectedDistrictId(e.target.value)}
-                className="px-3 py-1.5 border border-slate-300 rounded-lg text-xs bg-white"
-              >
-                <option value="">All Districts</option>
-                {districts?.map((d: any) => (
-                  <option key={d.district_id} value={d.district_id}>
-                    District: {d.name}
-                  </option>
-                ))}
-              </select>
+          <div className="flex items-center gap-3">
+            <select
+              value={selectedDistrictId}
+              onChange={(e) => setSelectedDistrictId(e.target.value)}
+              className="py-2 px-3 border border-slate-300 rounded-lg text-xs font-medium"
+            >
+              <option value="">All Districts</option>
+              {(Array.isArray(districts) ? districts : []).map((d: any) => (
+                <option key={d.district_id} value={d.district_id}>{d.name}</option>
+              ))}
+            </select>
+            <div className="relative w-72">
+              <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
+              <input
+                type="text"
+                value={blockSearch}
+                onChange={(e) => setBlockSearch(e.target.value)}
+                placeholder="Search blocks..."
+                className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg text-xs"
+              />
             </div>
-
-            <span className="text-xs text-slate-500 font-mono">
-              Showing {blocks?.length || 0} Blocks
-            </span>
           </div>
 
-          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-xs">
-            <table className="w-full text-xs text-left">
-              <thead className="bg-slate-50 text-slate-600 font-semibold uppercase">
+          <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold uppercase tracking-wider">
                 <tr>
-                  <th className="p-3">LGD Block Code</th>
                   <th className="p-3">Block Name</th>
-                  <th className="p-3">Parent District</th>
-                  <th className="p-3">Villages Count</th>
-                  <th className="p-3">Beneficiaries</th>
-                  <th className="p-3">Status</th>
-                  <th className="p-3 text-right">Actions</th>
+                  <th className="p-3">District</th>
+                  <th className="p-3">LGD Block Code</th>
+                  <th className="p-3 text-center">Status</th>
+                  {user?.role === 'ADMIN' && <th className="p-3 text-right">Actions</th>}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 font-sans">
+              <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
                 {blocksLoading ? (
-                  <tr>
-                    <td colSpan={7} className="p-8 text-center text-slate-400">Loading blocks...</td>
-                  </tr>
-                ) : blocks && blocks.length > 0 ? (
-                  blocks.map((b: any) => (
-                    <tr key={b.block_id} className="hover:bg-slate-50/70">
-                      <td className="p-3 font-mono font-bold text-slate-700">
-                        {b.lgd_block_code || '—'}
-                      </td>
+                  <tr><td colSpan={5} className="p-4 text-center text-slate-400">Loading blocks...</td></tr>
+                ) : (Array.isArray(blocks) ? blocks : []).length === 0 ? (
+                  <tr><td colSpan={5} className="p-4 text-center text-slate-400">No blocks found</td></tr>
+                ) : (
+                  (Array.isArray(blocks) ? blocks : []).map((b: any) => (
+                    <tr key={b.block_id} className="hover:bg-slate-50">
                       <td className="p-3 font-semibold text-slate-900">{b.name}</td>
-                      <td className="p-3 text-slate-700 font-medium">
-                        {b.district?.name} <span className="text-slate-400 font-mono">({b.district?.lgd_district_code})</span>
-                      </td>
-                      <td className="p-3 font-mono text-slate-600">{b._count?.villages || 0} Villages</td>
-                      <td className="p-3 font-mono text-slate-600">{b._count?.beneficiaries || 0} Farmers</td>
-                      <td className="p-3">
-                        <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ${b.is_active ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600'}`}>
-                          {b.is_active ? 'ACTIVE' : 'INACTIVE'}
+                      <td className="p-3">{b.district?.name || '---'}</td>
+                      <td className="p-3 font-mono">{b.lgd_block_code || '---'}</td>
+                      <td className="p-3 text-center">
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                          b.is_active ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600'
+                        }`}>
+                          {b.is_active ? 'Active' : 'Inactive'}
                         </span>
                       </td>
-                      <td className="p-3 text-right">
-                        <div className="flex items-center justify-end space-x-2">
+                      {user?.role === 'ADMIN' && (
+                        <td className="p-3 text-right space-x-2">
                           <button
-                            onClick={() => {
-                              setSelectedBlockId(b.block_id);
-                              setActiveTab('villages');
-                            }}
-                            className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-xs font-semibold"
+                            onClick={() => toggleBlockMutation.mutate(b.block_id)}
+                            className="text-sky-600 hover:text-sky-800 font-semibold"
                           >
-                            View Villages &rarr;
+                            {b.is_active ? 'Deactivate' : 'Activate'}
                           </button>
-                          {user?.role === 'ADMIN' && (
-                            <>
-                              <button
-                                onClick={() => toggleBlockMutation.mutate(b.block_id)}
-                                className={`px-2 py-1 rounded text-xs font-semibold ${
-                                  b.is_active ? 'bg-amber-50 text-amber-700 hover:bg-amber-100' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
-                                }`}
-                                title={b.is_active ? 'Deactivate block' : 'Activate block'}
-                              >
-                                {b.is_active ? 'Deactivate' : 'Activate'}
-                              </button>
-                              <button
-                                onClick={() => {
-                                  if (confirm(`Delete block "${b.name}"? If referenced by villages or beneficiaries, deletion will be blocked.`)) {
-                                    deleteBlockMutation.mutate(b.block_id);
-                                  }
-                                }}
-                                className="px-2 py-1 bg-rose-50 text-rose-700 hover:bg-rose-100 rounded text-xs font-semibold"
-                                title="Delete block"
-                              >
-                                Delete
-                              </button>
-                            </>
-                          )}
-                        </div>
-                      </td>
+                          <button
+                            onClick={() => deleteBlockMutation.mutate(b.block_id)}
+                            className="text-rose-600 hover:text-rose-800 font-semibold"
+                          >
+                            Delete
+                          </button>
+                        </td>
+                      )}
                     </tr>
                   ))
-                ) : (
-                  <tr>
-                    <td colSpan={7} className="p-8 text-center text-slate-400">No blocks found matching filters.</td>
-                  </tr>
                 )}
               </tbody>
             </table>
@@ -566,353 +553,412 @@ export default function LocationsPage() {
         </div>
       )}
 
-      {/* TAB 3: VILLAGES */}
+      {/* Tab 3: Revenue Villages */}
+      {activeTab === 'revenue-villages' && (
+        <div className="space-y-4">
+          <div className="flex items-center gap-3">
+            <select
+              value={selectedBlockId}
+              onChange={(e) => setSelectedBlockId(e.target.value)}
+              className="py-2 px-3 border border-slate-300 rounded-lg text-xs font-medium"
+            >
+              <option value="">All Blocks</option>
+              {(Array.isArray(blocks) ? blocks : []).map((b: any) => (
+                <option key={b.block_id} value={b.block_id}>{b.name} ({b.district?.name})</option>
+              ))}
+            </select>
+            <div className="relative w-72">
+              <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
+              <input
+                type="text"
+                value={rvSearch}
+                onChange={(e) => setRvSearch(e.target.value)}
+                placeholder="Search revenue villages..."
+                className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg text-xs"
+              />
+            </div>
+          </div>
+
+          <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold uppercase tracking-wider">
+                <tr>
+                  <th className="p-3">Revenue Village Name</th>
+                  <th className="p-3">Block</th>
+                  <th className="p-3">LGD Code</th>
+                  <th className="p-3 text-center">Status</th>
+                  {user?.role === 'ADMIN' && <th className="p-3 text-right">Actions</th>}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
+                {rvLoading ? (
+                  <tr><td colSpan={5} className="p-4 text-center text-slate-400">Loading revenue villages...</td></tr>
+                ) : revenueVillages.length === 0 ? (
+                  <tr><td colSpan={5} className="p-4 text-center text-slate-400">No revenue villages found</td></tr>
+                ) : (
+                  revenueVillages.map((rv: any) => (
+                    <tr key={rv.revenue_village_id} className="hover:bg-slate-50">
+                      <td className="p-3 font-semibold text-slate-900">{rv.name}</td>
+                      <td className="p-3">{rv.block?.name || '---'}</td>
+                      <td className="p-3 font-mono">{rv.lgd_revenue_village_code || '---'}</td>
+                      <td className="p-3 text-center">
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                          rv.is_active ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600'
+                        }`}>
+                          {rv.is_active ? 'Active' : 'Inactive'}
+                        </span>
+                      </td>
+                      {user?.role === 'ADMIN' && (
+                        <td className="p-3 text-right space-x-2">
+                          <button
+                            onClick={() => toggleRvMutation.mutate(rv.revenue_village_id)}
+                            className="text-sky-600 hover:text-sky-800 font-semibold"
+                          >
+                            {rv.is_active ? 'Deactivate' : 'Activate'}
+                          </button>
+                          <button
+                            onClick={() => deleteRvMutation.mutate(rv.revenue_village_id)}
+                            className="text-rose-600 hover:text-rose-800 font-semibold"
+                          >
+                            Delete
+                          </button>
+                        </td>
+                      )}
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Tab 4: Villages */}
       {activeTab === 'villages' && (
         <div className="space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="relative w-64">
-                <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
-                <input
-                  type="text"
-                  placeholder="Search village name..."
-                  value={villageSearch}
-                  onChange={(e) => {
-                    setVillageSearch(e.target.value);
-                    setVillagePage(1);
-                  }}
-                  className="w-full pl-9 pr-3 py-1.5 border border-slate-300 rounded-lg text-xs"
-                />
-              </div>
+          <div className="flex items-center gap-3">
+            <select
+              value={selectedBlockId}
+              onChange={(e) => {
+                setSelectedBlockId(e.target.value);
+                setSelectedRvId('');
+              }}
+              className="py-2 px-3 border border-slate-300 rounded-lg text-xs font-medium"
+            >
+              <option value="">All Blocks</option>
+              {(Array.isArray(blocks) ? blocks : []).map((b: any) => (
+                <option key={b.block_id} value={b.block_id}>{b.name}</option>
+              ))}
+            </select>
 
-              <select
-                value={selectedBlockId}
-                onChange={(e) => {
-                  setSelectedBlockId(e.target.value);
-                  setVillagePage(1);
-                }}
-                className="px-3 py-1.5 border border-slate-300 rounded-lg text-xs bg-white"
-              >
-                <option value="">All Blocks</option>
-                {blocks?.map((b: any) => (
-                  <option key={b.block_id} value={b.block_id}>
-                    Block: {b.name} ({b.district?.name})
-                  </option>
-                ))}
-              </select>
-            </div>
+            <select
+              value={selectedRvId}
+              onChange={(e) => setSelectedRvId(e.target.value)}
+              className="py-2 px-3 border border-slate-300 rounded-lg text-xs font-medium"
+            >
+              <option value="">All Revenue Villages</option>
+              {revenueVillages.map((rv: any) => (
+                <option key={rv.revenue_village_id} value={rv.revenue_village_id}>{rv.name}</option>
+              ))}
+            </select>
 
-            <div className="text-xs text-slate-500 font-mono">
-              Page {villageMeta.page} of {villageMeta.totalPages} ({villageMeta.total.toLocaleString()} Villages)
+            <div className="relative w-72">
+              <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
+              <input
+                type="text"
+                value={villageSearch}
+                onChange={(e) => setVillageSearch(e.target.value)}
+                placeholder="Search villages..."
+                className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg text-xs"
+              />
             </div>
           </div>
 
-          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-xs">
-            <table className="w-full text-xs text-left">
-              <thead className="bg-slate-50 text-slate-600 font-semibold uppercase">
+          <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold uppercase tracking-wider">
                 <tr>
-                  <th className="p-3">LGD Village Code</th>
                   <th className="p-3">Village Name</th>
-                  <th className="p-3">Parent Block</th>
-                  <th className="p-3">Parent District</th>
-                  <th className="p-3">Beneficiaries</th>
-                  <th className="p-3">Status</th>
-                  <th className="p-3 text-right">Actions</th>
+                  <th className="p-3">Revenue Village</th>
+                  <th className="p-3">Block</th>
+                  <th className="p-3">LGD Code</th>
+                  <th className="p-3 text-center">Status</th>
+                  {user?.role === 'ADMIN' && <th className="p-3 text-right">Actions</th>}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 font-sans">
+              <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
                 {villagesLoading ? (
-                  <tr>
-                    <td colSpan={7} className="p-8 text-center text-slate-400">Loading villages...</td>
-                  </tr>
-                ) : villages && villages.length > 0 ? (
+                  <tr><td colSpan={6} className="p-4 text-center text-slate-400">Loading villages...</td></tr>
+                ) : villages.length === 0 ? (
+                  <tr><td colSpan={6} className="p-4 text-center text-slate-400">No villages found</td></tr>
+                ) : (
                   villages.map((v: any) => (
-                    <tr key={v.village_id} className="hover:bg-slate-50/70">
-                      <td className="p-3 font-mono font-bold text-slate-700">
-                        {v.lgd_village_code || '—'}
-                      </td>
+                    <tr key={v.village_id} className="hover:bg-slate-50">
                       <td className="p-3 font-semibold text-slate-900">{v.name}</td>
-                      <td className="p-3 text-slate-700">
-                        {v.block?.name || '—'}
-                      </td>
-                      <td className="p-3 text-slate-600">
-                        {v.block?.district?.name || '—'}
-                      </td>
-                      <td className="p-3 font-mono text-slate-600">{v._count?.beneficiaries || 0} Farmers</td>
-                      <td className="p-3">
-                        <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ${v.is_active ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600'}`}>
-                          {v.is_active ? 'ACTIVE' : 'INACTIVE'}
+                      <td className="p-3">{v.revenueVillage?.name || '---'}</td>
+                      <td className="p-3">{v.block?.name || '---'}</td>
+                      <td className="p-3 font-mono">{v.lgd_village_code || '---'}</td>
+                      <td className="p-3 text-center">
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                          v.is_active ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600'
+                        }`}>
+                          {v.is_active ? 'Active' : 'Inactive'}
                         </span>
                       </td>
-                      <td className="p-3 text-right">
-                        {user?.role === 'ADMIN' && (
-                          <div className="flex items-center justify-end space-x-2">
-                            <button
-                              onClick={() => toggleVillageMutation.mutate(v.village_id)}
-                              className={`px-2 py-1 rounded text-xs font-semibold ${
-                                v.is_active ? 'bg-amber-50 text-amber-700 hover:bg-amber-100' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
-                              }`}
-                              title={v.is_active ? 'Deactivate village' : 'Activate village'}
-                            >
-                              {v.is_active ? 'Deactivate' : 'Activate'}
-                            </button>
-                            <button
-                              onClick={() => {
-                                if (confirm(`Delete village "${v.name}"? If referenced by beneficiaries or land records, deletion will be blocked.`)) {
-                                  deleteVillageMutation.mutate(v.village_id);
-                                }
-                              }}
-                              className="px-2 py-1 bg-rose-50 text-rose-700 hover:bg-rose-100 rounded text-xs font-semibold"
-                              title="Delete village"
-                            >
-                              Delete
-                            </button>
-                          </div>
-                        )}
-                      </td>
+                      {user?.role === 'ADMIN' && (
+                        <td className="p-3 text-right space-x-2">
+                          <button
+                            onClick={() => toggleVillageMutation.mutate(v.village_id)}
+                            className="text-sky-600 hover:text-sky-800 font-semibold"
+                          >
+                            {v.is_active ? 'Deactivate' : 'Activate'}
+                          </button>
+                          <button
+                            onClick={() => deleteVillageMutation.mutate(v.village_id)}
+                            className="text-rose-600 hover:text-rose-800 font-semibold"
+                          >
+                            Delete
+                          </button>
+                        </td>
+                      )}
                     </tr>
                   ))
-                ) : (
-                  <tr>
-                    <td colSpan={7} className="p-8 text-center text-slate-400">No villages found.</td>
-                  </tr>
                 )}
               </tbody>
             </table>
           </div>
-
-          {/* Pagination Controls */}
-          {villageMeta.totalPages > 1 && (
-            <div className="flex items-center justify-between pt-2">
-              <button
-                disabled={villagePage <= 1}
-                onClick={() => setVillagePage((p) => Math.max(1, p - 1))}
-                className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-xs font-semibold disabled:opacity-50"
-              >
-                &larr; Previous Page
-              </button>
-
-              <span className="text-xs text-slate-600 font-mono">
-                Page {villagePage} of {villageMeta.totalPages}
-              </span>
-
-              <button
-                disabled={villagePage >= villageMeta.totalPages}
-                onClick={() => setVillagePage((p) => p + 1)}
-                className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-xs font-semibold disabled:opacity-50"
-              >
-                Next Page &rarr;
-              </button>
-            </div>
-          )}
         </div>
       )}
 
-      {/* TAB 4: IMPORT MASTER */}
-      {activeTab === 'import' && <LocationImportManager />}
+      {/* Tab 5: Import */}
+      {activeTab === 'import' && (
+        <LocationImportManager />
+      )}
 
-      {/* CREATE DISTRICT MODAL */}
+      {/* District Creation Modal */}
       {showDistrictModal && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between pb-2 border-b border-slate-200">
-              <h3 className="text-base font-bold text-slate-900">Add District</h3>
-              <button onClick={() => setShowDistrictModal(false)}>
-                <X className="w-4 h-4 text-slate-400" />
-              </button>
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-xl border border-slate-200">
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold text-slate-900">Add District</h3>
+              <button onClick={() => setShowDistrictModal(false)}><X className="w-4 h-4 text-slate-400" /></button>
             </div>
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                createDistrictMutation.mutate();
-              }}
-              className="space-y-4"
-            >
+            <div className="space-y-3">
               <div>
-                <label className="block text-xs font-semibold text-slate-700 uppercase mb-1">LGD District Code</label>
-                <input
-                  type="number"
-                  placeholder="e.g. 528"
-                  value={districtLgdCode}
-                  onChange={(e) => setDistrictLgdCode(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-mono"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 uppercase mb-1">District Name *</label>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">District Name *</label>
                 <input
                   type="text"
-                  required
-                  placeholder="e.g. Coimbatore"
                   value={districtName}
                   onChange={(e) => setDistrictName(e.target.value)}
+                  placeholder="e.g. Coimbatore"
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs"
                 />
               </div>
-              <div className="flex justify-end space-x-2">
-                <button
-                  type="button"
-                  onClick={() => setShowDistrictModal(false)}
-                  className="px-3 py-1.5 bg-slate-100 rounded text-xs font-semibold"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={createDistrictMutation.isPending}
-                  className="px-3 py-1.5 bg-sky-600 text-white rounded text-xs font-semibold"
-                >
-                  Save District
-                </button>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">LGD Code</label>
+                <input
+                  type="number"
+                  value={districtLgdCode}
+                  onChange={(e) => setDistrictLgdCode(e.target.value)}
+                  placeholder="e.g. 528"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-mono"
+                />
               </div>
-            </form>
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <button onClick={() => setShowDistrictModal(false)} className="px-3 py-1.5 text-xs font-semibold text-slate-600">Cancel</button>
+              <button
+                disabled={!districtName.trim() || createDistrictMutation.isPending}
+                onClick={() => createDistrictMutation.mutate()}
+                className="px-4 py-1.5 bg-sky-600 hover:bg-sky-700 text-white rounded-lg text-xs font-semibold"
+              >
+                Save District
+              </button>
+            </div>
           </div>
         </div>
       )}
 
-      {/* CREATE BLOCK MODAL */}
+      {/* Block Creation Modal */}
       {showBlockModal && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between pb-2 border-b border-slate-200">
-              <h3 className="text-base font-bold text-slate-900">Add Block</h3>
-              <button onClick={() => setShowBlockModal(false)}>
-                <X className="w-4 h-4 text-slate-400" />
-              </button>
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-xl border border-slate-200">
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold text-slate-900">Add Block</h3>
+              <button onClick={() => setShowBlockModal(false)}><X className="w-4 h-4 text-slate-400" /></button>
             </div>
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                createBlockMutation.mutate();
-              }}
-              className="space-y-4"
-            >
+            <div className="space-y-3">
               <div>
-                <label className="block text-xs font-semibold text-slate-700 uppercase mb-1">Parent District *</label>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Target District *</label>
                 <select
                   value={targetDistrictId}
                   onChange={(e) => setTargetDistrictId(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs bg-white"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs"
                 >
-                  {districts?.map((d: any) => (
-                    <option key={d.district_id} value={d.district_id}>
-                      {d.name} ({d.lgd_district_code})
-                    </option>
+                  <option value="">Select District</option>
+                  {(Array.isArray(districts) ? districts : []).map((d: any) => (
+                    <option key={d.district_id} value={d.district_id}>{d.name}</option>
                   ))}
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-700 uppercase mb-1">LGD Block Code *</label>
-                <input
-                  type="number"
-                  required
-                  placeholder="e.g. 6482"
-                  value={blockLgdCode}
-                  onChange={(e) => setBlockLgdCode(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-mono"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 uppercase mb-1">Block Name *</label>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Block Name *</label>
                 <input
                   type="text"
-                  required
-                  placeholder="e.g. Pollachi North"
                   value={blockName}
                   onChange={(e) => setBlockName(e.target.value)}
+                  placeholder="e.g. Pollachi North"
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs"
                 />
               </div>
-              <div className="flex justify-end space-x-2">
-                <button
-                  type="button"
-                  onClick={() => setShowBlockModal(false)}
-                  className="px-3 py-1.5 bg-slate-100 rounded text-xs font-semibold"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={createBlockMutation.isPending}
-                  className="px-3 py-1.5 bg-slate-800 text-white rounded text-xs font-semibold"
-                >
-                  Save Block
-                </button>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">LGD Code *</label>
+                <input
+                  type="number"
+                  value={blockLgdCode}
+                  onChange={(e) => setBlockLgdCode(e.target.value)}
+                  placeholder="e.g. 6482"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-mono"
+                />
               </div>
-            </form>
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <button onClick={() => setShowBlockModal(false)} className="px-3 py-1.5 text-xs font-semibold text-slate-600">Cancel</button>
+              <button
+                disabled={!targetDistrictId || !blockName.trim() || !blockLgdCode || createBlockMutation.isPending}
+                onClick={() => createBlockMutation.mutate()}
+                className="px-4 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-semibold"
+              >
+                Save Block
+              </button>
+            </div>
           </div>
         </div>
       )}
 
-      {/* CREATE VILLAGE MODAL */}
-      {showVillageModal && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between pb-2 border-b border-slate-200">
-              <h3 className="text-base font-bold text-slate-900">Add Village</h3>
-              <button onClick={() => setShowVillageModal(false)}>
-                <X className="w-4 h-4 text-slate-400" />
-              </button>
+      {/* Revenue Village Creation Modal */}
+      {showRvModal && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-xl border border-slate-200">
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold text-slate-900">Add Revenue Village</h3>
+              <button onClick={() => setShowRvModal(false)}><X className="w-4 h-4 text-slate-400" /></button>
             </div>
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                createVillageMutation.mutate();
-              }}
-              className="space-y-4"
-            >
+            <div className="space-y-3">
               <div>
-                <label className="block text-xs font-semibold text-slate-700 uppercase mb-1">Parent Block *</label>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Target Block *</label>
                 <select
-                  value={targetBlockId}
-                  onChange={(e) => setTargetBlockId(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs bg-white"
+                  value={targetRvBlockId}
+                  onChange={(e) => setTargetRvBlockId(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs"
                 >
-                  {blocks?.map((b: any) => (
-                    <option key={b.block_id} value={b.block_id}>
-                      {b.name} ({b.district?.name})
-                    </option>
+                  <option value="">Select Block</option>
+                  {(Array.isArray(blocks) ? blocks : []).map((b: any) => (
+                    <option key={b.block_id} value={b.block_id}>{b.name} ({b.district?.name})</option>
                   ))}
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-700 uppercase mb-1">LGD Village Code</label>
-                <input
-                  type="number"
-                  placeholder="e.g. 223994"
-                  value={villageLgdCode}
-                  onChange={(e) => setVillageLgdCode(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-mono"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 uppercase mb-1">Village Name *</label>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Revenue Village Name *</label>
                 <input
                   type="text"
-                  required
-                  placeholder="e.g. Angambakkam"
-                  value={villageName}
-                  onChange={(e) => setVillageName(e.target.value)}
+                  value={rvName}
+                  onChange={(e) => setRvName(e.target.value)}
+                  placeholder="e.g. Revenue Village A"
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs"
                 />
               </div>
-              <div className="flex justify-end space-x-2">
-                <button
-                  type="button"
-                  onClick={() => setShowVillageModal(false)}
-                  className="px-3 py-1.5 bg-slate-100 rounded text-xs font-semibold"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={createVillageMutation.isPending}
-                  className="px-3 py-1.5 bg-emerald-600 text-white rounded text-xs font-semibold"
-                >
-                  Save Village
-                </button>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">LGD Code</label>
+                <input
+                  type="number"
+                  value={rvLgdCode}
+                  onChange={(e) => setRvLgdCode(e.target.value)}
+                  placeholder="e.g. 101"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-mono"
+                />
               </div>
-            </form>
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <button onClick={() => setShowRvModal(false)} className="px-3 py-1.5 text-xs font-semibold text-slate-600">Cancel</button>
+              <button
+                disabled={!targetRvBlockId || !rvName.trim() || createRvMutation.isPending}
+                onClick={() => createRvMutation.mutate()}
+                className="px-4 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-semibold"
+              >
+                Save Revenue Village
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Village Creation Modal */}
+      {showVillageModal && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-xl border border-slate-200">
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold text-slate-900">Add Village</h3>
+              <button onClick={() => setShowVillageModal(false)}><X className="w-4 h-4 text-slate-400" /></button>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Target Block *</label>
+                <select
+                  value={targetBlockId}
+                  onChange={(e) => setTargetBlockId(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs"
+                >
+                  <option value="">Select Block</option>
+                  {(Array.isArray(blocks) ? blocks : []).map((b: any) => (
+                    <option key={b.block_id} value={b.block_id}>{b.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Revenue Village</label>
+                <select
+                  value={targetRevenueVillageId}
+                  onChange={(e) => setTargetRevenueVillageId(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs"
+                >
+                  <option value="">Select Revenue Village</option>
+                  {revenueVillages.map((rv: any) => (
+                    <option key={rv.revenue_village_id} value={rv.revenue_village_id}>{rv.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Village Name *</label>
+                <input
+                  type="text"
+                  value={villageName}
+                  onChange={(e) => setVillageName(e.target.value)}
+                  placeholder="e.g. Angambakkam"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">LGD Code</label>
+                <input
+                  type="number"
+                  value={villageLgdCode}
+                  onChange={(e) => setVillageLgdCode(e.target.value)}
+                  placeholder="e.g. 223994"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-mono"
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <button onClick={() => setShowVillageModal(false)} className="px-3 py-1.5 text-xs font-semibold text-slate-600">Cancel</button>
+              <button
+                disabled={!targetBlockId || !villageName.trim() || createVillageMutation.isPending}
+                onClick={() => createVillageMutation.mutate()}
+                className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold"
+              >
+                Save Village
+              </button>
+            </div>
           </div>
         </div>
       )}

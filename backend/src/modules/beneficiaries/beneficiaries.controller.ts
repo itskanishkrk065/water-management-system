@@ -47,6 +47,35 @@ export class BeneficiariesController {
     return this.beneficiariesService.lookupByPhone(phone || '');
   }
 
+  @Get('collection-queue')
+  @ApiOperation({ summary: 'Get priority collection work queue for Collection Officers' })
+  async getCollectionQueue(
+    @Query('districtId') districtId?: string,
+    @Query('blockId') blockId?: string,
+    @Query('revenueVillageId') revenueVillageId?: string,
+    @Query('villageId') villageId?: string,
+    @Query('status') status?: string,
+    @Query('minAmount') minAmount?: string,
+    @Query('search') search?: string,
+  ) {
+    return this.beneficiariesService.getCollectionQueue({
+      districtId,
+      blockId,
+      revenueVillageId,
+      villageId,
+      status,
+      minAmount: minAmount ? parseFloat(minAmount) : undefined,
+      search,
+    });
+  }
+
+  @Post('check-duplicate')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Smart check for potential duplicate beneficiary before creation' })
+  async checkDuplicateBeneficiary(@Body() dto: { name: string; phoneNumber?: string; villageId?: string; surveyNumber?: string }) {
+    return this.beneficiariesService.checkDuplicateBeneficiary(dto);
+  }
+
   @Post('check-duplicates')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Check potential duplicate beneficiaries by phone, email, or name + village' })
@@ -103,6 +132,12 @@ export class BeneficiariesController {
   @ApiOperation({ summary: 'Get full beneficiary dossier across all operational tabs' })
   async findOne(@Param('id') id: string) {
     return this.beneficiariesService.findOne(id);
+  }
+
+  @Get(':id/next-action')
+  @ApiOperation({ summary: 'Get single most urgent operational Next Action for a beneficiary' })
+  async getNextAction(@Param('id') id: string) {
+    return this.beneficiariesService.getBeneficiaryNextAction(id);
   }
 
   @Get(':id/overview')

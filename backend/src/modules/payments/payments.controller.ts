@@ -1,7 +1,7 @@
 import { Controller, Get, Post, Param, Body, Query, UseGuards, Ip, Res } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { PaymentsService } from './payments.service';
-import { RecordPaymentDto, ReversePaymentDto } from './dto/payment.dto';
+import { RecordPaymentDto, ReversePaymentDto, RecordBulkBillPaymentDto } from './dto/payment.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -14,6 +14,24 @@ import { RoleName } from '../common/enums';
 @Controller('payments')
 export class PaymentsController {
   constructor(private readonly paymentsService: PaymentsService) {}
+
+  @Post('bulk-preview')
+  @Roles(RoleName.ADMIN, RoleName.ACCOUNTS, RoleName.FIELD_OFFICER)
+  @ApiOperation({ summary: 'Preview allocation of bulk payment across 5 installments' })
+  async previewBulkPayment(@Body() body: { billId: string; amount: number }) {
+    return this.paymentsService.previewBulkBillPayment(body.billId, body.amount);
+  }
+
+  @Post('bulk-record')
+  @Roles(RoleName.ADMIN, RoleName.ACCOUNTS)
+  @ApiOperation({ summary: 'Record bulk payment across 5 installments (Accounts / Admin)' })
+  async recordBulkPayment(
+    @Body() dto: RecordBulkBillPaymentDto,
+    @CurrentUser() user: RequestUser,
+    @Ip() ip: string,
+  ) {
+    return this.paymentsService.recordBulkBillPayment(dto, user.email, user.user_id, ip);
+  }
 
   @Post()
   @Roles(RoleName.ADMIN, RoleName.ACCOUNTS)

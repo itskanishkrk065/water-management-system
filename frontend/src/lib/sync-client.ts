@@ -68,8 +68,6 @@ export async function fetchSyncDiagnostics(): Promise<ClientSyncDiagnostics> {
     ? clientDiag.lastSyncAt
     : serverSyncStatus?.device?.lastSyncAt
     ? serverSyncStatus.device.lastSyncAt
-    : serverReachable
-    ? new Date().toISOString()
     : null;
 
   return {

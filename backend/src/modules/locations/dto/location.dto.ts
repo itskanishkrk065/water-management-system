@@ -42,11 +42,35 @@ export class CreateBlockDto {
   name: string;
 }
 
+export class CreateRevenueVillageDto {
+  @ApiProperty({ example: 'UUID of block' })
+  @IsUUID()
+  @IsNotEmpty()
+  blockId: string;
+
+  @ApiPropertyOptional({ example: 101 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  lgdRevenueVillageCode?: number;
+
+  @ApiProperty({ example: 'Revenue Village A' })
+  @IsString()
+  @IsNotEmpty()
+  name: string;
+}
+
 export class CreateVillageDto {
   @ApiPropertyOptional({ example: 'UUID of block' })
   @IsOptional()
   @IsUUID()
   blockId?: string;
+
+  @ApiPropertyOptional({ example: 'UUID of revenue village' })
+  @IsOptional()
+  @IsUUID()
+  revenueVillageId?: string;
 
   @ApiPropertyOptional({ example: 'UUID of legacy panchayat' })
   @IsOptional()
@@ -76,6 +100,38 @@ export class CreatePanchayatDto {
   @IsString()
   @IsNotEmpty()
   name: string;
+}
+
+export class QueryRevenueVillagesDto {
+  @ApiPropertyOptional({ example: 'UUID of block' })
+  @IsOptional()
+  @IsUUID()
+  blockId?: string;
+
+  @ApiPropertyOptional({ example: 'anga' })
+  @IsOptional()
+  @IsString()
+  search?: string;
+
+  @ApiPropertyOptional({ example: true })
+  @IsOptional()
+  @Type(() => Boolean)
+  @IsBoolean()
+  activeOnly?: boolean;
+
+  @ApiPropertyOptional({ example: 1, default: 1 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page?: number = 1;
+
+  @ApiPropertyOptional({ example: 50, default: 50 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  limit?: number = 50;
 }
 
 export class QueryVillagesDto {
@@ -108,6 +164,11 @@ export class QueryVillagesDto {
   @IsOptional()
   @IsUUID()
   blockId?: string;
+
+  @ApiPropertyOptional({ example: 'UUID of revenue village' })
+  @IsOptional()
+  @IsUUID()
+  revenueVillageId?: string;
 
   @ApiPropertyOptional({ example: 'UUID of legacy panchayat' })
   @IsOptional()
@@ -190,6 +251,30 @@ export class UpdateBlockDto {
   isActive?: boolean;
 }
 
+export class UpdateRevenueVillageDto {
+  @ApiPropertyOptional({ example: 'Revenue Village A' })
+  @IsOptional()
+  @IsString()
+  name?: string;
+
+  @ApiPropertyOptional({ example: 'UUID of block' })
+  @IsOptional()
+  @IsUUID()
+  blockId?: string;
+
+  @ApiPropertyOptional({ example: 101 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  lgdRevenueVillageCode?: number;
+
+  @ApiPropertyOptional({ example: true })
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
+}
+
 export class UpdateVillageDto {
   @ApiPropertyOptional({ example: 'Angambakkam' })
   @IsOptional()
@@ -200,6 +285,11 @@ export class UpdateVillageDto {
   @IsOptional()
   @IsUUID()
   blockId?: string;
+
+  @ApiPropertyOptional({ example: 'UUID of revenue village' })
+  @IsOptional()
+  @IsUUID()
+  revenueVillageId?: string;
 
   @ApiPropertyOptional({ example: 'UUID of legacy panchayat' })
   @IsOptional()

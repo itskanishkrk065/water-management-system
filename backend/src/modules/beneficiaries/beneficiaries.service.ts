@@ -389,6 +389,8 @@ export class BeneficiariesService {
     search?: string;
     districtId?: string;
     blockId?: string;
+    revenueVillageId?: string;
+    villageId?: string;
     panchayatId?: string;
     status?: BeneficiaryStatus;
     page?: number;
@@ -402,12 +404,17 @@ export class BeneficiariesService {
     if (query.status) where.status = query.status;
     if (query.districtId) where.district_id = query.districtId;
     if (query.blockId) where.block_id = query.blockId;
+    if (query.revenueVillageId) where.revenue_village_id = query.revenueVillageId;
+    if (query.villageId) where.village_id = query.villageId;
     if (query.panchayatId) where.panchayat_id = query.panchayatId;
 
     if (query.search) {
+      const trimmed = query.search.trim();
       where.OR = [
-        { name: { contains: query.search } },
-        { phone_number: { contains: query.search } },
+        { name: { contains: trimmed } },
+        { phone_number: { contains: trimmed } },
+        { beneficiary_id: { contains: trimmed } },
+        { landHoldings: { some: { parcels: { some: { survey_number: { contains: trimmed } } } } } },
       ];
     }
 
@@ -1320,9 +1327,317 @@ export class BeneficiariesService {
     };
   }
 
+  /**
+   * Identifies the single most urgent operational Next Action for a beneficiary.
+   */
+  async getBeneficiaryNextAction(id: string) {
+    const beneficiary = await this.prisma.beneficiary.findUnique({
+      where: { beneficiary_id: id },
+      include: {
+        developmentBills: {
+          where: { pending_amount: { gt: 0 } },
+          orderBy: { created_at: 'asc' },
+          include: {
+            installments: {
+              where: { status: { in: ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'] } },
+              orderBy: { installment_number: 'asc' },
+            },
+          },
+        },
+        runningBills: {
+          where: { pending_amount: { gt: 0 } },
+          orderBy: { created_at: 'asc' },
+        },
+        waterApplications: {
+          where: { status: { in: ['SUBMITTED', 'UNDER_REVIEW'] } },
+          orderBy: { created_at: 'asc' },
+        },
+        extensions: {
+          where: { status: 'REQUESTED' },
+          orderBy: { created_at: 'asc' },
+        },
+        infrastructures: {
+          where: { status: { in: ['PLANNED', 'UNDER_CONSTRUCTION'] } },
+          orderBy: { created_at: 'asc' },
+        },
+      },
+    });
+
+    if (!beneficiary) {
+      throw new NotFoundException('Beneficiary not found');
+    }
+
+    // 1. Payment Pending
+    let totalPendingDev = new Decimal(0);
+    for (const b of beneficiary.developmentBills) {
+      totalPendingDev = totalPendingDev.plus(new Decimal(b.pending_amount));
+    }
+    let totalPendingRunning = new Decimal(0);
+    for (const rb of beneficiary.runningBills) {
+      totalPendingRunning = totalPendingRunning.plus(new Decimal(rb.pending_amount));
+    }
+
+    const grandPending = totalPendingDev.plus(totalPendingRunning);
+
+    if (grandPending.greaterThan(0)) {
+      const firstInstallment = beneficiary.developmentBills[0]?.installments[0];
+      const targetBillId = beneficiary.developmentBills[0]?.bill_id || beneficiary.runningBills[0]?.running_bill_id;
+      return {
+        type: 'COLLECT_PAYMENT',
+        label: `Collect ₹${grandPending.toFixed(2)}`,
+        pendingAmount: grandPending.toString(),
+        billId: targetBillId,
+        installmentId: firstInstallment?.installment_id || null,
+        description: `Beneficiary has ₹${grandPending.toFixed(2)} pending payment obligation.`,
+        actionUrl: `/payments?beneficiaryId=${id}&billId=${targetBillId || ''}`,
+      };
+    }
+
+    // 2. Application Awaiting Review
+    if (beneficiary.waterApplications.length > 0) {
+      const app = beneficiary.waterApplications[0];
+      return {
+        type: 'REVIEW_APPLICATION',
+        label: 'Review Application',
+        applicationId: app.application_id,
+        description: `Water application '${app.application_id}' is awaiting review/approval.`,
+        actionUrl: `/water/applications?applicationId=${app.application_id}`,
+      };
+    }
+
+    // 3. Extension Awaiting Review
+    if (beneficiary.extensions.length > 0) {
+      const ext = beneficiary.extensions[0];
+      return {
+        type: 'REVIEW_EXTENSION',
+        label: 'Review Extension',
+        extensionId: ext.extension_id,
+        description: `Extension request '${ext.extension_id}' is awaiting review.`,
+        actionUrl: `/extensions?extensionId=${ext.extension_id}`,
+      };
+    }
+
+    // 4. Infrastructure Awaiting Commissioning
+    if (beneficiary.infrastructures.length > 0) {
+      const infra = beneficiary.infrastructures[0];
+      return {
+        type: 'COMMISSION_INFRASTRUCTURE',
+        label: 'Commission Infrastructure',
+        infrastructureId: infra.infrastructure_id,
+        description: `Infrastructure '${infra.infrastructure_id}' is ready for commissioning.`,
+        actionUrl: `/infrastructure?infrastructureId=${infra.infrastructure_id}`,
+      };
+    }
+
+    // 5. Caught Up
+    return {
+      type: 'CAUGHT_UP',
+      label: "✓ You're all caught up.",
+      description: 'No pending actions require immediate operator intervention.',
+      actionUrl: null,
+    };
+  }
+
+  /**
+   * Daily Collection Officer priority work queue.
+   */
+  async getCollectionQueue(query: {
+    districtId?: string;
+    blockId?: string;
+    revenueVillageId?: string;
+    villageId?: string;
+    status?: string;
+    minAmount?: number;
+    search?: string;
+  }) {
+    const where: Prisma.BeneficiaryWhereInput = {
+      status: BeneficiaryStatus.ACTIVE,
+      OR: [
+        { developmentBills: { some: { pending_amount: { gt: 0 } } } },
+        { runningBills: { some: { pending_amount: { gt: 0 } } } },
+      ],
+    };
+
+    if (query.districtId) where.district_id = query.districtId;
+    if (query.blockId) where.block_id = query.blockId;
+    if (query.revenueVillageId) where.revenue_village_id = query.revenueVillageId;
+    if (query.villageId) where.village_id = query.villageId;
+
+    if (query.search) {
+      const s = query.search.trim();
+      where.AND = [
+        {
+          OR: [
+            { name: { contains: s } },
+            { phone_number: { contains: s } },
+            { beneficiary_id: { contains: s } },
+          ],
+        },
+      ];
+    }
+
+    const beneficiaries = await this.prisma.beneficiary.findMany({
+      where,
+      include: {
+        district: true,
+        block: true,
+        village: true,
+        developmentBills: {
+          where: { pending_amount: { gt: 0 } },
+          include: {
+            installments: {
+              where: { status: { in: ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'] } },
+            },
+          },
+        },
+        runningBills: {
+          where: { pending_amount: { gt: 0 } },
+        },
+      },
+    });
+
+    const queue = beneficiaries
+      .map((b) => {
+        let devPending = new Decimal(0);
+        let pendingInstallments = 0;
+        let primaryBillId = b.developmentBills[0]?.bill_id || null;
+
+        for (const bill of b.developmentBills) {
+          devPending = devPending.plus(new Decimal(bill.pending_amount));
+          pendingInstallments += bill.installments.length;
+        }
+
+        let runPending = new Decimal(0);
+        for (const rb of b.runningBills) {
+          runPending = runPending.plus(new Decimal(rb.pending_amount));
+        }
+
+        const grandPending = devPending.plus(runPending);
+
+        return {
+          beneficiaryId: b.beneficiary_id,
+          name: b.name,
+          phoneNumber: b.phone_number,
+          districtName: b.district?.name || null,
+          blockName: b.block?.name || null,
+          villageName: b.village?.name || null,
+          pendingDevelopmentAmount: devPending.toFixed(2),
+          pendingRunningAmount: runPending.toFixed(2),
+          totalPendingAmount: grandPending.toFixed(2),
+          pendingInstallmentCount: pendingInstallments,
+          primaryBillId,
+        };
+      })
+      .filter((item) => {
+        if (query.minAmount !== undefined) {
+          return new Decimal(item.totalPendingAmount).gte(query.minAmount);
+        }
+        return true;
+      })
+      .sort((a, b) => new Decimal(b.totalPendingAmount).minus(new Decimal(a.totalPendingAmount)).toNumber());
+
+    const totalQueuePending = queue.reduce(
+      (sum, item) => sum.plus(new Decimal(item.totalPendingAmount)),
+      new Decimal(0),
+    );
+
+    return {
+      summary: {
+        totalBeneficiaries: queue.length,
+        totalPendingAmount: totalQueuePending.toFixed(2),
+      },
+      queue,
+    };
+  }
+
+  /**
+   * Smart duplicate beneficiary warning with similarity metrics.
+   */
+  async checkDuplicateBeneficiary(dto: {
+    name: string;
+    phoneNumber?: string;
+    villageId?: string;
+    surveyNumber?: string;
+  }) {
+    const candidates = await this.prisma.beneficiary.findMany({
+      where: {
+        OR: [
+          ...(dto.phoneNumber ? [{ phone_number: dto.phoneNumber.trim() }] : []),
+          { name: { contains: dto.name.trim().slice(0, 4) } },
+          ...(dto.villageId ? [{ village_id: dto.villageId }] : []),
+        ],
+      },
+      include: {
+        district: true,
+        village: true,
+        landHoldings: {
+          include: { parcels: true },
+        },
+      },
+    });
+
+    const results = candidates.map((c: any) => {
+      let score = 0;
+      let matchedFactors: string[] = [];
+
+      if (dto.phoneNumber && c.phone_number === dto.phoneNumber.trim()) {
+        score += 60;
+        matchedFactors.push('Phone number match');
+      }
+
+      const cNameLower = c.name.toLowerCase().replace(/\s+/g, '');
+      const inputNameLower = dto.name.toLowerCase().replace(/\s+/g, '');
+
+      if (cNameLower === inputNameLower) {
+        score += 35;
+        matchedFactors.push('Exact name match');
+      } else if (cNameLower.includes(inputNameLower) || inputNameLower.includes(cNameLower)) {
+        score += 20;
+        matchedFactors.push('Partial name match');
+      }
+
+      if (dto.villageId && c.village_id === dto.villageId) {
+        score += 15;
+        matchedFactors.push('Same village location');
+      }
+
+      if (dto.surveyNumber && c.landHoldings) {
+        const hasSurvey = c.landHoldings.some((h: any) =>
+          h.parcels?.some((p: any) => p.survey_number.toLowerCase() === dto.surveyNumber?.toLowerCase().trim()),
+        );
+        if (hasSurvey) {
+          score += 25;
+          matchedFactors.push('Survey number match');
+        }
+      }
+
+      const similarityPercent = Math.min(99, Math.max(10, score));
+
+      return {
+        beneficiaryId: c.beneficiary_id,
+        name: c.name,
+        phoneNumber: c.phone_number,
+        villageName: c.village?.name || null,
+        districtName: c.district?.name || null,
+        similarityPercent,
+        matchedFactors,
+      };
+    });
+
+    const highSimilarity = results
+      .filter((r) => r.similarityPercent >= 50)
+      .sort((a, b) => b.similarityPercent - a.similarityPercent);
+
+    return {
+      hasPotentialDuplicate: highSimilarity.length > 0,
+      duplicates: highSimilarity,
+    };
+  }
+
   private calculateTotalLand(holdings: { declared_total_area: any; status: LandStatus }[]): Decimal {
     return holdings
       .filter((h) => h.status === LandStatus.ACTIVE)
       .reduce((acc, h) => acc.plus(new Decimal(h.declared_total_area)), new Decimal(0));
   }
 }
+

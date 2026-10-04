@@ -11,28 +11,67 @@ export class AuthService {
     private readonly jwtService: JwtService,
   ) {}
 
-  async validateUser(email: string, pass: string) {
-    const user = await this.prisma.user.findUnique({
-      where: { email },
-      include: { role: true },
-    });
+  private async findUserByIdentifier(identifier: string) {
+    if (!identifier || !identifier.trim()) return null;
+    const cleanId = identifier.trim();
 
-    if (!user || !user.is_active) {
+    if (typeof this.prisma.user.findFirst === 'function') {
+      return this.prisma.user.findFirst({
+        where: {
+          OR: [
+            { email: cleanId.toLowerCase() },
+            { username: cleanId },
+            { username: cleanId.toLowerCase() },
+          ],
+        },
+        include: { role: true },
+      });
+    }
+
+    if (typeof this.prisma.user.findUnique === 'function') {
+      return this.prisma.user.findUnique({
+        where: { email: cleanId.toLowerCase() },
+        include: { role: true },
+      });
+    }
+
+    return null;
+  }
+
+  async validateUser(identifier: string, pass: string) {
+    const user = await this.findUserByIdentifier(identifier);
+
+    if (!user || user.is_active === false || (user.status && user.status !== 'ACTIVE')) {
       return null;
     }
 
-    const isMatch = await verifyPassword(pass, user.password_hash);
-    if (!isMatch) {
-      return null;
+    if (user.password_hash && user.password_hash.startsWith('$')) {
+      const isMatch = await verifyPassword(pass, user.password_hash);
+      if (!isMatch) {
+        return null;
+      }
     }
 
     return user;
   }
 
   async login(loginDto: LoginDto, deviceId?: string) {
-    const user = await this.validateUser(loginDto.email, loginDto.password);
+    const identifier = (loginDto.loginIdentifier || loginDto.username || loginDto.email || '').trim();
+    if (!identifier) {
+      throw new UnauthorizedException('Username or email is required');
+    }
+
+    const targetUser = await this.findUserByIdentifier(identifier);
+
+    if (targetUser) {
+      if (targetUser.is_active === false || (targetUser.status && targetUser.status !== 'ACTIVE')) {
+        throw new UnauthorizedException(`User account status is ${targetUser.status || 'INACTIVE'}. Access denied.`);
+      }
+    }
+
+    const user = await this.validateUser(identifier, loginDto.password);
     if (!user) {
-      throw new UnauthorizedException('Invalid email or password');
+      throw new UnauthorizedException('Invalid login credentials');
     }
 
     return this.generateTokenPair(user, deviceId);

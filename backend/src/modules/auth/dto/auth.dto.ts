@@ -2,12 +2,22 @@ import { IsEmail, IsNotEmpty, IsOptional, IsString, MinLength } from 'class-vali
 import { ApiProperty } from '@nestjs/swagger';
 
 export class LoginDto {
-  @ApiProperty({ example: 'admin@water.gov' })
-  @IsEmail()
-  @IsNotEmpty()
-  email: string;
+  @ApiProperty({ example: 'collector01', required: false })
+  @IsOptional()
+  @IsString()
+  email?: string;
 
-  @ApiProperty({ example: 'Admin@123456' })
+  @ApiProperty({ example: 'collector01', required: false })
+  @IsOptional()
+  @IsString()
+  username?: string;
+
+  @ApiProperty({ example: 'collector01', required: false })
+  @IsOptional()
+  @IsString()
+  loginIdentifier?: string;
+
+  @ApiProperty({ example: 'Secret@123456' })
   @IsString()
   @IsNotEmpty()
   @MinLength(6)

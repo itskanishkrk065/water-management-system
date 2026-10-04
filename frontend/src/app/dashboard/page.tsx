@@ -30,6 +30,7 @@ import Link from 'next/link';
 import { useAuth } from '@/lib/auth-context';
 import StatusBadge from '@/components/ui/StatusBadge';
 import KPICard from '@/components/ui/KPICard';
+import { FinancialMetricCard } from '@/components/ui/FinancialMetricCard';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable, { ColumnDef } from '@/components/ui/DataTable';
 
@@ -403,40 +404,20 @@ export default function DashboardPage() {
           iconVariant="emerald"
         />
 
-        <KPICard
+        <FinancialMetricCard
           title="Development Billing"
-          value={
-            isFieldOfficer
-              ? 'Restricted'
-              : statsLoading
-              ? '...'
-              : formatCurrency(stats?.financial?.total_development_billing ?? 0)
-          }
-          subtitle={
-            isFieldOfficer
-              ? 'Financial Role Required'
-              : `Paid: ${formatCurrency(stats?.financial?.total_development_paid ?? stats?.financial?.total_collected ?? 0)} • Pending: ${formatCurrency(stats?.financial?.total_development_pending ?? stats?.financial?.total_pending ?? 0)}`
-          }
+          pendingAmount={stats?.financial?.total_development_pending ?? stats?.financial?.total_pending ?? 0}
+          paidAmount={stats?.financial?.total_development_paid ?? stats?.financial?.total_collected ?? 0}
+          totalAmount={stats?.financial?.total_development_billing ?? 0}
           icon={Receipt}
-          iconVariant="amber"
         />
 
-        <KPICard
+        <FinancialMetricCard
           title="Running Billing"
-          value={
-            isFieldOfficer
-              ? 'Restricted'
-              : statsLoading
-              ? '...'
-              : formatCurrency(stats?.financial?.total_running_billing ?? 0)
-          }
-          subtitle={
-            isFieldOfficer
-              ? 'Financial Role Required'
-              : `Paid: ${formatCurrency(stats?.financial?.total_running_paid ?? 0)} • Pending: ${formatCurrency(stats?.financial?.total_running_pending ?? 0)}`
-          }
+          pendingAmount={stats?.financial?.total_running_pending ?? 0}
+          paidAmount={stats?.financial?.total_running_paid ?? 0}
+          totalAmount={stats?.financial?.total_running_billing ?? 0}
           icon={Droplets}
-          iconVariant="indigo"
         />
       </div>
 

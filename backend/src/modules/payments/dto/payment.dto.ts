@@ -86,3 +86,41 @@ export class ReversePaymentDto {
   @IsNotEmpty()
   reason: string;
 }
+
+export class RecordBulkBillPaymentDto {
+  @ApiProperty({ example: 'UUID of DevelopmentBill' })
+  @IsUUID()
+  @IsNotEmpty()
+  billId: string;
+
+  @ApiProperty({ example: 8000.00 })
+  @IsNumber()
+  @Min(0.01)
+  @IsNotEmpty()
+  amount: number;
+
+  @ApiProperty({ enum: PaymentMode, example: PaymentMode.CASH, required: false })
+  @IsOptional()
+  @IsEnum(PaymentMode)
+  paymentMode?: PaymentMode;
+
+  @ApiProperty({ example: 'UPI-REF-987654321', required: false })
+  @IsOptional()
+  @IsString()
+  paymentReference?: string;
+
+  @ApiProperty({ example: '2026-10-04', required: false })
+  @IsOptional()
+  @IsDateString()
+  paymentDate?: string;
+
+  @ApiProperty({ example: 'Bulk payment across 5 installments', required: false })
+  @IsOptional()
+  @IsString()
+  remarks?: string;
+
+  @ApiProperty({ example: 'IDEM-KEY-123456', required: false })
+  @IsOptional()
+  @IsString()
+  idempotencyKey?: string;
+}

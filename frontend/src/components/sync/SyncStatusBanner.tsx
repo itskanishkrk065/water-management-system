@@ -2,6 +2,8 @@
 
 import React, { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
+import { useAuth } from '@/lib/auth-context';
 import { fetchSyncDiagnostics, triggerDeviceSync } from '@/lib/sync-client';
 
 export interface SyncDiagnostics {
@@ -14,11 +16,21 @@ export interface SyncDiagnostics {
 }
 
 export default function SyncStatusBanner() {
+  const { user } = useAuth();
+  const pathname = usePathname();
+
+  const isUnauthenticatedRoute =
+    !user ||
+    pathname === '/login' ||
+    pathname === '/beneficiary/login' ||
+    pathname?.startsWith('/login');
+
   const [diag, setDiag] = useState<SyncDiagnostics | null>(null);
   const [isDraining, setIsDraining] = useState(false);
   const [dismissed, setDismissed] = useState(false);
 
   const fetchDiagnosticsData = useCallback(async () => {
+    if (isUnauthenticatedRoute) return;
     try {
       const data = await fetchSyncDiagnostics();
       setDiag(data);
@@ -36,9 +48,10 @@ export default function SyncStatusBanner() {
             },
       );
     }
-  }, []);
+  }, [isUnauthenticatedRoute]);
 
   useEffect(() => {
+    if (isUnauthenticatedRoute) return;
     fetchDiagnosticsData();
     const interval = setInterval(fetchDiagnosticsData, 15000);
     window.addEventListener('focus', fetchDiagnosticsData);
@@ -46,7 +59,9 @@ export default function SyncStatusBanner() {
       clearInterval(interval);
       window.removeEventListener('focus', fetchDiagnosticsData);
     };
-  }, [fetchDiagnosticsData]);
+  }, [fetchDiagnosticsData, isUnauthenticatedRoute]);
+
+  if (isUnauthenticatedRoute || !diag || dismissed) return null;
 
   const handleDrainNow = async () => {
     setIsDraining(true);
