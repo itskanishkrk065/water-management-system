@@ -715,6 +715,12 @@ model WaterUsageRecord {
   collection_date          DateTime         @default(now())
   actual_usage_litres      Decimal          @db.Decimal(14, 2)
   approved_litres_snapshot Decimal          @db.Decimal(14, 2)
+  approved_daily_quota_snapshot Decimal?    @db.Decimal(14, 2)
+  days_in_period           Int?
+  monthly_entitlement_litres Decimal?       @db.Decimal(14, 2)
+  actual_monthly_consumption_litres Decimal? @db.Decimal(14, 2)
+  tolerance_percentage     Decimal?         @db.Decimal(5, 2)
+  tolerance_status         String?
   usage_entry_mode         UsageEntryMode   @default(DIRECT)
   previous_meter_reading   Decimal?         @db.Decimal(16, 2)
   current_meter_reading    Decimal?         @db.Decimal(16, 2)
@@ -760,6 +766,12 @@ model RunningBill {
   tariff_version                      String?
   calculation_breakdown               String?
   approved_litres_snapshot            Decimal     @db.Decimal(14, 2)
+  approved_daily_quota_snapshot       Decimal?    @db.Decimal(14, 2)
+  days_in_period                      Int?
+  monthly_entitlement_snapshot        Decimal?    @db.Decimal(14, 2)
+  actual_monthly_consumption_snapshot Decimal?    @db.Decimal(14, 2)
+  tolerance_percentage_snapshot       Decimal?    @db.Decimal(5, 2)
+  tolerance_status_snapshot           String?
   actual_usage_litres_snapshot        Decimal?    @db.Decimal(14, 2)
   running_cost_per_litre_snapshot     Decimal     @db.Decimal(18, 4)
   amount_due                          Decimal     @db.Decimal(18, 2)
@@ -787,6 +799,21 @@ model RunningBill {
   @@index([status])
   @@index([is_legacy])
   @@map("running_bills")
+}
+
+model WaterConsumptionDraft {
+  draft_id                            String   @id @default(uuid()) @db.Uuid
+  allotment_id                        String   @db.Uuid
+  beneficiary_id                      String   @db.Uuid
+  billing_period                      String
+  actual_monthly_consumption_litres Decimal  @db.Decimal(14, 2)
+  updated_by                          String?
+  created_at                          DateTime @default(now())
+  updated_at                          DateTime @updatedAt
+
+  @@unique([allotment_id, billing_period])
+  @@index([billing_period])
+  @@map("water_consumption_drafts")
 }
 
 model SystemClockState {

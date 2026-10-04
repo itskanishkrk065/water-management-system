@@ -35,8 +35,8 @@ import StatusBadge from '@/components/ui/StatusBadge';
 export default function RunningBillsManager() {
   const queryClient = useQueryClient();
 
-  // Tab State: 'overview' | 'usage' | 'bills' | 'payments'
-  const [activeTab, setActiveTab] = useState<'overview' | 'usage' | 'bills' | 'payments'>('overview');
+  // Tab State: 'month-end' | 'overview' | 'usage' | 'bills' | 'payments'
+  const [activeTab, setActiveTab] = useState<'month-end' | 'overview' | 'usage' | 'bills' | 'payments'>('month-end');
 
   // Filter & Pagination State
   const [page, setPage] = useState(1);
@@ -44,6 +44,14 @@ export default function RunningBillsManager() {
   const [selectedStatus, setSelectedStatus] = useState<string>('');
   const [selectedBillingPeriod, setSelectedBillingPeriod] = useState<string>('2026-10');
   const [selectedDistrictId, setSelectedDistrictId] = useState<string>('');
+
+  // Month-End Specific State (CRITICAL: durable draft inputs state)
+  const [monthEndPage, setMonthEndPage] = useState(1);
+  const [monthEndSearch, setMonthEndSearch] = useState('');
+  const [monthEndQuickFilter, setMonthEndQuickFilter] = useState('ALL');
+  const [draftInputs, setDraftInputs] = useState<Record<string, string>>({});
+  const [showBatchConfirmModal, setShowBatchConfirmModal] = useState(false);
+  const [batchResultSummary, setBatchResultSummary] = useState<any | null>(null);
 
   // Modals
   const [showRecordUsageModal, setShowRecordUsageModal] = useState(false);
@@ -88,6 +96,139 @@ export default function RunningBillsManager() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [showRecordUsageModal, payModalBill, detailBillId]);
+
+  // Load draftInputs from localStorage when period changes (CRITICAL: durable draft persistence)
+  React.useEffect(() => {
+    try {
+      const saved = localStorage.getItem(`watergrid_drafts_${selectedBillingPeriod}`);
+      if (saved) {
+        setDraftInputs(JSON.parse(saved));
+      } else {
+        setDraftInputs({});
+      }
+    } catch {}
+  }, [selectedBillingPeriod]);
+
+  // Durable draft update helper that updates state and syncs to localStorage
+  const updateDraftInput = (allotmentId: string, val: string) => {
+    setDraftInputs((prev) => {
+      const updated = { ...prev, [allotmentId]: val };
+      try {
+        localStorage.setItem(`watergrid_drafts_${selectedBillingPeriod}`, JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+  };
+
+  // Fetch Eligible Beneficiaries for Month-End Running Billing
+  const { data: eligibleData, isLoading: isEligibleLoading, refetch: refetchEligible } = useQuery({
+    queryKey: [
+      'eligible-beneficiaries-month-end',
+      monthEndPage,
+      monthEndSearch,
+      monthEndQuickFilter,
+      selectedBillingPeriod,
+      selectedDistrictId,
+    ],
+    queryFn: async () => {
+      const res = await apiClient.get('/billing/running-charges/eligible-beneficiaries', {
+        params: {
+          page: monthEndPage,
+          limit: 15,
+          search: monthEndSearch.trim() || undefined,
+          entryStatus: monthEndQuickFilter !== 'ALL' ? monthEndQuickFilter : undefined,
+          billingPeriod: selectedBillingPeriod,
+          districtId: selectedDistrictId || undefined,
+        },
+      });
+      return res.data;
+    },
+    enabled: activeTab === 'month-end' || activeTab === 'overview',
+  });
+
+  // Seed draftInputs from API if not already edited locally
+  React.useEffect(() => {
+    if (eligibleData?.items) {
+      setDraftInputs((prev) => {
+        let changed = false;
+        const next = { ...prev };
+        eligibleData.items.forEach((item: any) => {
+          if (
+            next[item.allotmentId] === undefined &&
+            item.enteredConsumptionLiters !== null &&
+            item.enteredConsumptionLiters !== undefined
+          ) {
+            next[item.allotmentId] = String(item.enteredConsumptionLiters);
+            changed = true;
+          }
+        });
+        if (changed) {
+          try {
+            localStorage.setItem(`watergrid_drafts_${selectedBillingPeriod}`, JSON.stringify(next));
+          } catch {}
+          return next;
+        }
+        return prev;
+      });
+    }
+  }, [eligibleData, selectedBillingPeriod]);
+
+  // Save Drafts Mutation
+  const saveDraftsMutation = useMutation({
+    mutationFn: async () => {
+      const entries = Object.entries(draftInputs)
+        .filter(([_, val]) => val !== undefined && val !== null && val.trim() !== '')
+        .map(([allotmentId, val]) => ({
+          allotmentId,
+          actualMonthlyConsumptionLiters: parseFloat(val),
+        }))
+        .filter((e) => !isNaN(e.actualMonthlyConsumptionLiters));
+
+      const res = await apiClient.post('/billing/running-charges/save-drafts', {
+        billingPeriod: selectedBillingPeriod,
+        entries,
+      });
+      return res.data;
+    },
+    onSuccess: (data: any) => {
+      alert(`Draft saved successfully for ${data.savedCount} beneficiaries.`);
+      queryClient.invalidateQueries({ queryKey: ['eligible-beneficiaries-month-end'] });
+    },
+  });
+
+  // Generate Batch Running Bills Mutation
+  const generateBatchBillsMutation = useMutation({
+    mutationFn: async () => {
+      const entries = Object.entries(draftInputs)
+        .filter(([_, val]) => val !== undefined && val !== null && val.trim() !== '')
+        .map(([allotmentId, val]) => ({
+          allotmentId,
+          actualMonthlyConsumptionLiters: parseFloat(val),
+        }))
+        .filter((e) => !isNaN(e.actualMonthlyConsumptionLiters));
+
+      if (entries.length === 0) {
+        throw new Error('No monthly consumption values entered to generate bills.');
+      }
+
+      const res = await apiClient.post('/billing/running-charges/generate-batch', {
+        billingPeriod: selectedBillingPeriod,
+        entries,
+      });
+      return res.data;
+    },
+    onSuccess: (data: any) => {
+      setBatchResultSummary(data);
+      setShowBatchConfirmModal(false);
+      queryClient.invalidateQueries({ queryKey: ['eligible-beneficiaries-month-end'] });
+      queryClient.invalidateQueries({ queryKey: ['running-bills-summary'] });
+      queryClient.invalidateQueries({ queryKey: ['running-bills-list'] });
+      queryClient.invalidateQueries({ queryKey: ['water-usage-list'] });
+    },
+    onError: (err: any) => {
+      alert(err.response?.data?.message || err.message || 'Failed to generate running bills batch');
+    },
+  });
 
   // 1. Fetch Calendar Periods (Part 4, 5)
   const { data: periodsData } = useQuery({
@@ -400,6 +541,7 @@ export default function RunningBillsManager() {
       {/* ── Main Module Navigation Tabs (Part 33) ──────────────────────── */}
       <div className="flex items-center space-x-1 border-b border-slate-200">
         {[
+          { id: 'month-end', label: 'Month-End Running Billing', icon: CalendarDays },
           { id: 'overview', label: 'Overview & Position', icon: Activity },
           { id: 'usage', label: `Usage Collection (${summary?.operations?.usageRecorded || 0})`, icon: Droplets },
           { id: 'bills', label: `Running Bills (${summary?.financials?.totalBills || 0})`, icon: Receipt },
@@ -423,6 +565,292 @@ export default function RunningBillsManager() {
           );
         })}
       </div>
+
+      {/* ── TAB: MONTH-END CUMULATIVE RUNNING BILLING ──────────────────── */}
+      {activeTab === 'month-end' && (
+        <div className="space-y-6">
+          {/* Banner & Action Bar */}
+          <div className="bg-sky-950/40 border border-sky-800/60 p-4 rounded-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4 text-sky-100">
+            <div className="space-y-1">
+              <div className="flex items-center space-x-2">
+                <span className="px-2.5 py-0.5 bg-sky-500/20 text-sky-300 font-bold text-[11px] rounded-md uppercase tracking-wider">
+                  Authoritative Business Model
+                </span>
+                <span className="text-xs font-semibold text-sky-200">
+                  {selectedBillingPeriod} ({eligibleData?.meta?.daysInPeriod || 30} Days in Period)
+                </span>
+              </div>
+              <h2 className="text-base font-bold text-white">Month-End Cumulative Water Delivery Billing</h2>
+              <p className="text-xs text-sky-200/80">
+                Monthly entitled quantity = <strong>Daily Approved Quota &times; Days in Billing Period</strong>.
+                Enter actual cumulative monthly litres delivered for each beneficiary. Tolerance (&plusmn;3%) provides validation without altering entered values.
+              </p>
+            </div>
+
+            <div className="flex items-center space-x-2 shrink-0">
+              <button
+                onClick={() => saveDraftsMutation.mutate()}
+                disabled={saveDraftsMutation.isPending}
+                className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-sky-300 border border-sky-700/50 font-semibold rounded-xl text-xs transition flex items-center space-x-1.5"
+              >
+                <span>Save Draft Entries</span>
+              </button>
+
+              <button
+                onClick={() => setShowBatchConfirmModal(true)}
+                disabled={generateBatchBillsMutation.isPending}
+                className="px-4 py-2 bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold rounded-xl text-xs shadow-md transition flex items-center space-x-1.5"
+              >
+                <span>Generate Running Bills</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Filters & Search */}
+          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+              {/* Quick Filter Pills */}
+              <div className="flex items-center space-x-1.5 overflow-x-auto pb-1 md:pb-0 text-xs">
+                <span className="text-slate-400 font-medium mr-1 flex items-center space-x-1">
+                  <Filter className="w-3.5 h-3.5" />
+                  <span>Filter:</span>
+                </span>
+                {[
+                  { id: 'ALL', label: 'ALL' },
+                  { id: 'PENDING_ENTRY', label: 'PENDING ENTRY' },
+                  { id: 'ENTERED', label: 'ENTERED' },
+                  { id: 'WITHIN_TOLERANCE', label: 'WITHIN TOLERANCE' },
+                  { id: 'BELOW_TOLERANCE', label: 'BELOW TOLERANCE' },
+                  { id: 'ABOVE_TOLERANCE', label: 'ABOVE TOLERANCE' },
+                  { id: 'BILL_GENERATED', label: 'BILL GENERATED' },
+                ].map((f) => (
+                  <button
+                    key={f.id}
+                    onClick={() => {
+                      setMonthEndQuickFilter(f.id);
+                      setMonthEndPage(1);
+                    }}
+                    className={`px-3 py-1.5 rounded-lg font-semibold text-[11px] transition whitespace-nowrap ${
+                      monthEndQuickFilter === f.id
+                        ? 'bg-sky-600 text-white shadow-xs'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    {f.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Search Bar */}
+              <div className="relative w-full md:w-64">
+                <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Search name, phone, code..."
+                  value={monthEndSearch}
+                  onChange={(e) => {
+                    setMonthEndSearch(e.target.value);
+                    setMonthEndPage(1);
+                  }}
+                  className="w-full pl-9 pr-4 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500"
+                />
+                {monthEndSearch && (
+                  <button
+                    onClick={() => setMonthEndSearch('')}
+                    className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-600"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Eligible Beneficiaries Grid */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+            <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <span className="text-xs font-bold text-slate-700">Eligible Beneficiaries Grid</span>
+                <span className="text-[11px] text-slate-400 font-mono">
+                  ({eligibleData?.meta?.total || 0} total)
+                </span>
+              </div>
+              <div className="text-[11px] text-sky-700 font-medium bg-sky-50 px-2.5 py-1 rounded-md border border-sky-100">
+                &check; Pagination &amp; Filter changes preserve entered values
+              </div>
+            </div>
+
+            {isEligibleLoading ? (
+              <div className="p-12 text-center text-xs text-slate-400 space-y-2">
+                <RefreshCw className="w-6 h-6 animate-spin mx-auto text-sky-500" />
+                <p>Loading eligible beneficiaries...</p>
+              </div>
+            ) : eligibleData?.items?.length === 0 ? (
+              <div className="p-12 text-center space-y-2">
+                <AlertCircle className="w-8 h-8 text-slate-300 mx-auto" />
+                <p className="text-xs font-semibold text-slate-600">No matching eligible beneficiaries found</p>
+                <p className="text-[11px] text-slate-400">Try adjusting filters or selected billing period.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-100/70 border-b border-slate-200 text-slate-600 font-semibold uppercase text-[10px] tracking-wider">
+                    <tr>
+                      <th className="py-3 px-4">Beneficiary</th>
+                      <th className="py-3 px-4 text-right">Daily Quota</th>
+                      <th className="py-3 px-4 text-center">Days</th>
+                      <th className="py-3 px-4 text-right">Monthly Entitlement</th>
+                      <th className="py-3 px-4 text-center min-w-[160px]">Actual Monthly Litres</th>
+                      <th className="py-3 px-4 text-center">Variance &amp; Tolerance</th>
+                      <th className="py-3 px-4 text-right">Running Bill Amount</th>
+                      <th className="py-3 px-4 text-center">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {eligibleData.items.map((item: any) => {
+                      const enteredVal = draftInputs[item.allotmentId] ?? (item.enteredConsumptionLiters !== null ? String(item.enteredConsumptionLiters) : '');
+                      const numEntered = parseFloat(enteredVal);
+                      const hasEntered = !isNaN(numEntered) && enteredVal.trim() !== '';
+
+                      const dailyQuota = item.approvedDailyQuotaLiters || 0;
+                      const entitlement = item.monthlyEntitlementLiters || (dailyQuota * (item.daysInPeriod || 30));
+                      const rate = item.runningRatePerLiter || 0.5;
+
+                      const minTol = entitlement * 0.97;
+                      const maxTol = entitlement * 1.03;
+                      const variance = hasEntered ? numEntered - entitlement : 0;
+                      const variancePct = entitlement > 0 ? (variance / entitlement) * 100 : 0;
+
+                      let tolStatus: 'WITHIN_TOLERANCE' | 'BELOW_TOLERANCE' | 'ABOVE_TOLERANCE' = 'WITHIN_TOLERANCE';
+                      if (hasEntered) {
+                        if (numEntered < minTol) tolStatus = 'BELOW_TOLERANCE';
+                        else if (numEntered > maxTol) tolStatus = 'ABOVE_TOLERANCE';
+                      }
+
+                      const calculatedBill = hasEntered ? numEntered * rate : null;
+
+                      return (
+                        <tr key={item.allotmentId} className="hover:bg-slate-50/80 transition">
+                          <td className="py-3 px-4 space-y-0.5">
+                            <div className="font-bold text-slate-900">{item.beneficiaryName}</div>
+                            <div className="text-[11px] text-slate-500 font-mono">
+                              {item.beneficiaryCode} &bull; {item.villageName || item.districtName || 'N/A'}
+                            </div>
+                          </td>
+
+                          <td className="py-3 px-4 text-right font-mono font-medium text-slate-700">
+                            {dailyQuota.toLocaleString()} L/day
+                          </td>
+
+                          <td className="py-3 px-4 text-center font-mono text-slate-600">
+                            {item.daysInPeriod}
+                          </td>
+
+                          <td className="py-3 px-4 text-right font-mono font-bold text-sky-700">
+                            {entitlement.toLocaleString()} L
+                          </td>
+
+                          <td className="py-3 px-4 text-center">
+                            {item.alreadyBilled ? (
+                              <span className="font-mono font-bold text-slate-900 bg-slate-100 px-3 py-1 rounded-lg border border-slate-200">
+                                {numEntered.toLocaleString()} L
+                              </span>
+                            ) : (
+                              <input
+                                type="number"
+                                placeholder="Enter monthly litres..."
+                                value={enteredVal}
+                                onChange={(e) => updateDraftInput(item.allotmentId, e.target.value)}
+                                className={`w-36 px-3 py-1.5 text-center font-mono font-bold text-slate-900 border rounded-xl focus:outline-none focus:ring-2 transition ${
+                                  hasEntered
+                                    ? tolStatus === 'WITHIN_TOLERANCE'
+                                      ? 'border-emerald-400 bg-emerald-50/30 focus:ring-emerald-400'
+                                      : tolStatus === 'ABOVE_TOLERANCE'
+                                      ? 'border-amber-500 bg-amber-50/40 focus:ring-amber-500'
+                                      : 'border-yellow-400 bg-yellow-50/30 focus:ring-yellow-400'
+                                    : 'border-slate-300 bg-white focus:ring-sky-500'
+                                }`}
+                              />
+                            )}
+                          </td>
+
+                          <td className="py-3 px-4 text-center">
+                            {hasEntered ? (
+                              <div className="space-y-0.5">
+                                <div className="text-[10px] font-mono text-slate-500">
+                                  {variance >= 0 ? `+${variance.toLocaleString()}` : variance.toLocaleString()} L ({variancePct >= 0 ? `+${variancePct.toFixed(2)}` : variancePct.toFixed(2)}%)
+                                </div>
+                                <span
+                                  className={`inline-block px-2.5 py-0.5 text-[10px] font-extrabold rounded-md uppercase tracking-wider ${
+                                    tolStatus === 'WITHIN_TOLERANCE'
+                                      ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                                      : tolStatus === 'ABOVE_TOLERANCE'
+                                      ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                                      : 'bg-yellow-100 text-yellow-800 border border-yellow-200'
+                                  }`}
+                                >
+                                  {tolStatus.replace('_', ' ')}
+                                </span>
+                              </div>
+                            ) : (
+                              <span className="text-[11px] text-slate-400 font-normal">Pending Input</span>
+                            )}
+                          </td>
+
+                          <td className="py-3 px-4 text-right font-mono font-bold text-slate-900">
+                            {calculatedBill !== null ? formatCurrency(calculatedBill) : '—'}
+                          </td>
+
+                          <td className="py-3 px-4 text-center">
+                            {item.alreadyBilled ? (
+                              <span className="px-2.5 py-1 bg-emerald-50 text-emerald-700 font-bold text-[10px] rounded-lg border border-emerald-200">
+                                BILLED ({item.existingBillNumber})
+                              </span>
+                            ) : hasEntered ? (
+                              <span className="px-2.5 py-1 bg-sky-50 text-sky-700 font-bold text-[10px] rounded-lg border border-sky-200">
+                                DRAFT ENTERED
+                              </span>
+                            ) : (
+                              <span className="px-2.5 py-1 bg-slate-100 text-slate-500 text-[10px] rounded-lg border border-slate-200">
+                                PENDING
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* Pagination Footer */}
+            {eligibleData?.meta?.totalPages > 1 && (
+              <div className="px-5 py-3 bg-slate-50 border-t border-slate-200 flex items-center justify-between text-xs text-slate-600">
+                <div>
+                  Page <strong>{monthEndPage}</strong> of <strong>{eligibleData.meta.totalPages}</strong> ({eligibleData.meta.total} eligible)
+                </div>
+                <div className="flex items-center space-x-2">
+                  <button
+                    onClick={() => setMonthEndPage((p) => Math.max(1, p - 1))}
+                    disabled={monthEndPage <= 1}
+                    className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg font-semibold hover:bg-slate-100 disabled:opacity-40 transition"
+                  >
+                    Previous
+                  </button>
+                  <button
+                    onClick={() => setMonthEndPage((p) => Math.min(eligibleData.meta.totalPages, p + 1))}
+                    disabled={monthEndPage >= eligibleData.meta.totalPages}
+                    className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg font-semibold hover:bg-slate-100 disabled:opacity-40 transition"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ── TAB 1: OVERVIEW & POSITION ─────────────────────────────────── */}
       {activeTab === 'overview' && (
@@ -1328,6 +1756,131 @@ export default function RunningBillsManager() {
                 className="px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-semibold"
               >
                 Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── BATCH BILL GENERATION CONFIRMATION MODAL ────────────────────── */}
+      {showBatchConfirmModal && (
+        <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4 animate-in fade-in zoom-in-95">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="text-base font-bold text-slate-900 flex items-center space-x-2">
+                <Receipt className="w-5 h-5 text-sky-600" />
+                <span>Confirm Running Bills Generation</span>
+              </h3>
+              <button onClick={() => setShowBatchConfirmModal(false)} className="text-slate-400 hover:text-slate-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs text-slate-600">
+              <p>
+                You are generating authoritative running bills for period <strong>{selectedBillingPeriod}</strong>.
+              </p>
+              <div className="bg-sky-50 border border-sky-100 p-3 rounded-xl space-y-1 text-slate-800 font-mono text-xs">
+                <div>Entered Beneficiaries: <strong>{Object.keys(draftInputs).filter((k) => draftInputs[k]?.trim()).length}</strong></div>
+                <div>Billing Period: <strong>{selectedBillingPeriod}</strong></div>
+              </div>
+              <p className="text-slate-500">
+                Only beneficiaries with entered monthly litres will be processed. Un-entered beneficiaries remain pending.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end space-x-3 pt-2 border-t border-slate-100">
+              <button
+                onClick={() => setShowBatchConfirmModal(false)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl text-xs transition"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => generateBatchBillsMutation.mutate()}
+                disabled={generateBatchBillsMutation.isPending}
+                className="px-5 py-2 bg-sky-600 hover:bg-sky-500 text-white font-bold rounded-xl text-xs shadow-md transition flex items-center space-x-1.5"
+              >
+                {generateBatchBillsMutation.isPending && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
+                <span>Generate Bills Now</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── BATCH GENERATION RESULT SUMMARY MODAL ───────────────────────── */}
+      {batchResultSummary && (
+        <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 space-y-4 animate-in fade-in zoom-in-95">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="text-base font-bold text-slate-900 flex items-center space-x-2">
+                <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                <span>Batch Generation Summary</span>
+              </h3>
+              <button onClick={() => setBatchResultSummary(null)} className="text-slate-400 hover:text-slate-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-4 gap-2 text-center text-xs">
+              <div className="bg-emerald-50 border border-emerald-200 p-2.5 rounded-xl">
+                <div className="text-[10px] text-emerald-700 font-bold uppercase">Generated</div>
+                <div className="text-base font-extrabold text-emerald-700 font-mono">{batchResultSummary.generatedCount || 0}</div>
+              </div>
+              <div className="bg-slate-50 border border-slate-200 p-2.5 rounded-xl">
+                <div className="text-[10px] text-slate-600 font-bold uppercase">Already Billed</div>
+                <div className="text-base font-extrabold text-slate-700 font-mono">{batchResultSummary.alreadyBilledCount || 0}</div>
+              </div>
+              <div className="bg-amber-50 border border-amber-200 p-2.5 rounded-xl">
+                <div className="text-[10px] text-amber-700 font-bold uppercase">Out of Tol</div>
+                <div className="text-base font-extrabold text-amber-700 font-mono">{batchResultSummary.requiresReviewCount || 0}</div>
+              </div>
+              <div className="bg-rose-50 border border-rose-200 p-2.5 rounded-xl">
+                <div className="text-[10px] text-rose-700 font-bold uppercase">Failed</div>
+                <div className="text-base font-extrabold text-rose-700 font-mono">{batchResultSummary.failedCount || 0}</div>
+              </div>
+            </div>
+
+            <div className="max-h-56 overflow-y-auto border border-slate-200 rounded-xl">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-100 text-slate-600 text-[10px] uppercase font-bold sticky top-0">
+                  <tr>
+                    <th className="py-2 px-3">Beneficiary</th>
+                    <th className="py-2 px-3 text-right">Bill Number</th>
+                    <th className="py-2 px-3 text-right">Amount</th>
+                    <th className="py-2 px-3 text-center">Tolerance</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {batchResultSummary.details?.map((d: any, idx: number) => (
+                    <tr key={idx} className="hover:bg-slate-50">
+                      <td className="py-2 px-3 font-medium text-slate-900">{d.beneficiaryName || d.allotmentId}</td>
+                      <td className="py-2 px-3 text-right font-mono text-slate-700">{d.billNumber || d.status}</td>
+                      <td className="py-2 px-3 text-right font-mono font-bold text-slate-900">
+                        {d.amountDue !== undefined ? formatCurrency(d.amountDue) : '—'}
+                      </td>
+                      <td className="py-2 px-3 text-center text-[10px] font-bold">
+                        {d.toleranceStatus ? (
+                          <span className={d.toleranceStatus === 'WITHIN_TOLERANCE' ? 'text-emerald-600' : 'text-amber-600'}>
+                            {d.toleranceStatus}
+                          </span>
+                        ) : (
+                          '—'
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="flex justify-end pt-2">
+              <button
+                onClick={() => setBatchResultSummary(null)}
+                className="px-5 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl text-xs transition"
+              >
+                Close Summary
               </button>
             </div>
           </div>

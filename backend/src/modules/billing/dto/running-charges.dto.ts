@@ -155,3 +155,80 @@ export class UpdateBillingPeriodDto {
   @IsString()
   status?: string;
 }
+
+export class ConsumptionEntryItemDto {
+  @ApiProperty({ description: 'Water Allotment ID' })
+  @IsString()
+  @IsNotEmpty()
+  allotmentId: string;
+
+  @ApiProperty({ description: 'Actual monthly consumption in litres' })
+  @IsNumber()
+  @Min(0, { message: 'Monthly consumption cannot be negative' })
+  actualMonthlyConsumptionLiters: number;
+}
+
+export class SaveConsumptionDraftsDto {
+  @ApiProperty({ description: 'Billing Period Code, e.g. 2026-10' })
+  @IsString()
+  @IsNotEmpty()
+  billingPeriod: string;
+
+  @ApiProperty({ type: [ConsumptionEntryItemDto] })
+  entries: ConsumptionEntryItemDto[];
+}
+
+export class GenerateBatchRunningBillsDto {
+  @ApiProperty({ description: 'Billing Period Code, e.g. 2026-10' })
+  @IsString()
+  @IsNotEmpty()
+  billingPeriod: string;
+
+  @ApiProperty({ type: [ConsumptionEntryItemDto] })
+  entries: ConsumptionEntryItemDto[];
+}
+
+export class EligibleBeneficiariesFilterDto {
+  @ApiPropertyOptional({ description: 'Billing period, e.g. 2026-10' })
+  @IsOptional()
+  @IsString()
+  billingPeriod?: string;
+
+  @ApiPropertyOptional({ description: 'District ID filter' })
+  @IsOptional()
+  @IsString()
+  districtId?: string;
+
+  @ApiPropertyOptional({ description: 'Panchayat/Block ID filter' })
+  @IsOptional()
+  @IsString()
+  blockId?: string;
+
+  @ApiPropertyOptional({ description: 'Village ID filter' })
+  @IsOptional()
+  @IsString()
+  villageId?: string;
+
+  @ApiPropertyOptional({ description: 'Project Scheme ID filter' })
+  @IsOptional()
+  @IsString()
+  projectId?: string;
+
+  @ApiPropertyOptional({ description: 'Search term (beneficiary name, phone, code)' })
+  @IsOptional()
+  @IsString()
+  search?: string;
+
+  @ApiPropertyOptional({ description: 'Filter by entry status: ALL | PENDING_ENTRY | ENTERED | WITHIN_TOLERANCE | BELOW_TOLERANCE | ABOVE_TOLERANCE | BILL_GENERATED | NOT_BILLED' })
+  @IsOptional()
+  @IsString()
+  entryStatus?: string;
+
+  @ApiPropertyOptional({ default: 1 })
+  @IsOptional()
+  page?: string;
+
+  @ApiPropertyOptional({ default: 20 })
+  @IsOptional()
+  limit?: string;
+}

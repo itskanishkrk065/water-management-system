@@ -7,7 +7,6 @@ import {
   CreateInstallmentTemplateDto,
   GenerateRunningBillDto,
   PreviewRunningBillsDto,
-  GenerateBatchRunningBillsDto,
 } from './dto/billing.dto';
 import {
   RecordWaterUsageDto,
@@ -16,6 +15,9 @@ import {
   VoidUsageRecordDto,
   RunningChargesFilterDto,
   UpdateBillingPeriodDto,
+  EligibleBeneficiariesFilterDto,
+  SaveConsumptionDraftsDto,
+  GenerateBatchRunningBillsDto,
 } from './dto/running-charges.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
@@ -194,6 +196,33 @@ export class BillingController {
     return this.runningBillingService.voidUsageRecord(id, dto, user.user_id, ip);
   }
 
+  @Get('running-charges/eligible-beneficiaries')
+  @ApiOperation({ summary: 'List eligible beneficiaries for month-end running billing' })
+  async getEligibleBeneficiaries(@Query() query: EligibleBeneficiariesFilterDto) {
+    return this.runningBillingService.getEligibleBeneficiariesForMonthEnd(query);
+  }
+
+  @Post('running-charges/save-drafts')
+  @Roles(RoleName.ADMIN, RoleName.ACCOUNTS)
+  @ApiOperation({ summary: 'Save draft monthly consumption entries' })
+  async saveConsumptionDrafts(
+    @Body() dto: SaveConsumptionDraftsDto,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.runningBillingService.saveConsumptionDrafts(dto, user.user_id);
+  }
+
+  @Post('running-charges/generate-batch')
+  @Roles(RoleName.ADMIN, RoleName.ACCOUNTS)
+  @ApiOperation({ summary: 'Generate RunningBills in batch for entered monthly consumption values' })
+  async generateBatchRunningBills(
+    @Body() dto: GenerateBatchRunningBillsDto,
+    @CurrentUser() user: RequestUser,
+    @Ip() ip: string,
+  ) {
+    return this.runningBillingService.generateBatchRunningBills(dto, user.user_id, ip);
+  }
+
   // =========================================================================
   // RUNNING BILLS & DASHBOARD ENDPOINTS
   // =========================================================================
@@ -217,8 +246,8 @@ export class BillingController {
   @Post('running-bills/batch-generate')
   @Roles(RoleName.ADMIN, RoleName.ACCOUNTS)
   @ApiOperation({ summary: 'Batch generate running bills for eligible beneficiaries' })
-  async generateBatchRunningBills(
-    @Body() dto: GenerateBatchRunningBillsDto,
+  async generateLegacyBatchRunningBills(
+    @Body() dto: any,
     @CurrentUser() user: RequestUser,
     @Ip() ip: string,
   ) {

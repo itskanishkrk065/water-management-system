@@ -29,6 +29,70 @@ import {
 } from './dto/running-charges.dto';
 import { Prisma } from '@prisma/client';
 
+import {
+  SaveConsumptionDraftsDto,
+  GenerateBatchRunningBillsDto,
+  EligibleBeneficiariesFilterDto,
+} from './dto/running-charges.dto';
+
+export function getDaysInBillingPeriod(periodCode: string): number {
+  if (!periodCode || !/^\d{4}-\d{2}$/.test(periodCode)) {
+    return 30; // fallback default
+  }
+  const [yearStr, monthStr] = periodCode.split('-');
+  const year = parseInt(yearStr, 10);
+  const month = parseInt(monthStr, 10);
+  return new Date(year, month, 0).getDate();
+}
+
+export interface ToleranceResult {
+  monthlyEntitlementLiters: Decimal;
+  actualMonthlyConsumptionLiters: Decimal;
+  minToleranceLiters: Decimal;
+  maxToleranceLiters: Decimal;
+  varianceLiters: Decimal;
+  variancePercentage: Decimal;
+  tolerancePercentage: Decimal;
+  status: 'WITHIN_TOLERANCE' | 'BELOW_TOLERANCE' | 'ABOVE_TOLERANCE';
+}
+
+export function calculateTolerance(
+  dailyQuotaLiters: Decimal | number | string,
+  daysInPeriod: number,
+  actualMonthlyConsumptionLiters: Decimal | number | string,
+  tolerancePct = 3.0,
+): ToleranceResult {
+  const dailyQuota = new Decimal(dailyQuotaLiters);
+  const entitlement = dailyQuota.times(daysInPeriod);
+  const actual = new Decimal(actualMonthlyConsumptionLiters);
+  const tolPctDec = new Decimal(tolerancePct);
+
+  const minTol = entitlement.times(new Decimal(1).minus(tolPctDec.dividedBy(100)));
+  const maxTol = entitlement.times(new Decimal(1).plus(tolPctDec.dividedBy(100)));
+  const variance = actual.minus(entitlement);
+  const variancePct = entitlement.gt(0) ? variance.times(100).dividedBy(entitlement) : new Decimal(0);
+
+  let status: 'WITHIN_TOLERANCE' | 'BELOW_TOLERANCE' | 'ABOVE_TOLERANCE';
+  if (actual.gte(minTol) && actual.lte(maxTol)) {
+    status = 'WITHIN_TOLERANCE';
+  } else if (actual.lt(minTol)) {
+    status = 'BELOW_TOLERANCE';
+  } else {
+    status = 'ABOVE_TOLERANCE';
+  }
+
+  return {
+    monthlyEntitlementLiters: entitlement,
+    actualMonthlyConsumptionLiters: actual,
+    minToleranceLiters: DecimalUtil.roundMoney(minTol),
+    maxToleranceLiters: DecimalUtil.roundMoney(maxTol),
+    varianceLiters: variance,
+    variancePercentage: DecimalUtil.roundMoney(variancePct),
+    tolerancePercentage: tolPctDec,
+    status,
+  };
+}
+
 export interface RunningChargesEligibility {
   eligible: boolean;
   allotmentId: string;
@@ -1041,5 +1105,361 @@ export class RunningBillingService {
     }
 
     return bill;
+  }
+
+  /**
+   * Retrieves list of active beneficiaries with commissioned infrastructure for month-end running billing.
+   */
+  async getEligibleBeneficiariesForMonthEnd(filter: EligibleBeneficiariesFilterDto) {
+    const periodCode = filter.billingPeriod || this.clock.currentBillingPeriod();
+    const daysInPeriod = getDaysInBillingPeriod(periodCode);
+    const page = Math.max(1, filter.page ? parseInt(filter.page, 10) : 1);
+    const limit = Math.max(1, Math.min(100, filter.limit ? parseInt(filter.limit, 10) : 20));
+
+    const whereAllotment: Prisma.WaterAllotmentWhereInput = {
+      infrastructure: {
+        status: InfrastructureStatus.COMMISSIONED,
+      },
+      beneficiary: {
+        status: BeneficiaryStatus.ACTIVE,
+      },
+    };
+
+    if (filter.districtId) {
+      whereAllotment.beneficiary = { ...(whereAllotment.beneficiary as any), district_id: filter.districtId };
+    }
+    if (filter.blockId) {
+      whereAllotment.beneficiary = { ...(whereAllotment.beneficiary as any), block_id: filter.blockId };
+    }
+    if (filter.villageId) {
+      whereAllotment.beneficiary = { ...(whereAllotment.beneficiary as any), village_id: filter.villageId };
+    }
+    if (filter.projectId) {
+      whereAllotment.application = { project_id: filter.projectId };
+    }
+    if (filter.search && filter.search.trim()) {
+      const search = filter.search.trim();
+      whereAllotment.OR = [
+        { beneficiary: { name: { contains: search } } },
+        { beneficiary: { phone_number: { contains: search } } },
+        { beneficiary: { email: { contains: search } } },
+      ];
+    }
+
+    const allotments = await this.prisma.waterAllotment.findMany({
+      where: whereAllotment,
+      include: {
+        beneficiary: {
+          include: {
+            district: { select: { name: true } },
+            block: { select: { name: true } },
+            village: { select: { name: true } },
+          },
+        },
+        infrastructure: true,
+        application: { include: { project: { select: { project_name: true } } } },
+        waterUsageRecords: {
+          where: { billingPeriod: { period_code: periodCode } },
+          include: { runningBill: true },
+        },
+      },
+    });
+
+    let drafts: any[] = [];
+    try {
+      drafts = await (this.prisma as any).waterConsumptionDraft.findMany({
+        where: { billing_period: periodCode },
+      });
+    } catch {}
+    const draftMap = new Map<string, any>();
+    drafts.forEach((d: any) => draftMap.set(d.allotment_id, d));
+
+    const items = [];
+    for (const allotment of allotments) {
+      const ben = allotment.beneficiary;
+      const infra = allotment.infrastructure;
+      const existingUsage = allotment.waterUsageRecords[0];
+      const existingBill = existingUsage?.runningBill;
+      const draft = draftMap.get(allotment.allotment_id);
+
+      const approvedDailyQuota = new Decimal(allotment.approved_litres);
+      const monthlyEntitlement = approvedDailyQuota.times(daysInPeriod);
+
+      let runningRate = new Decimal('0.50');
+      try {
+        const tariff = await this.ratesService.getApplicableTariff(
+          allotment.application.project_id,
+          this.clock.now(),
+          'RUNNING' as any,
+        );
+        if (tariff && tariff.running_cost_per_litre) {
+          runningRate = new Decimal(tariff.running_cost_per_litre.toString());
+        }
+      } catch {}
+
+      let enteredConsumption: number | null = null;
+      if (existingUsage && existingUsage.actual_usage_litres !== null) {
+        enteredConsumption = new Decimal(existingUsage.actual_usage_litres).toNumber();
+      } else if (draft && draft.actual_monthly_consumption_litres !== null) {
+        enteredConsumption = new Decimal(draft.actual_monthly_consumption_litres).toNumber();
+      }
+
+      let toleranceRes: ToleranceResult | null = null;
+      let calculatedBillAmount: number | null = null;
+
+      if (enteredConsumption !== null) {
+        toleranceRes = calculateTolerance(approvedDailyQuota, daysInPeriod, enteredConsumption, 3.0);
+        calculatedBillAmount = new Decimal(enteredConsumption).times(runningRate).toNumber();
+      }
+
+      let entryStatus = 'PENDING_ENTRY';
+      if (existingBill) {
+        entryStatus = 'BILL_GENERATED';
+      } else if (enteredConsumption !== null) {
+        entryStatus = 'ENTERED';
+      }
+
+      if (filter.entryStatus && filter.entryStatus !== 'ALL') {
+        if (filter.entryStatus === 'PENDING_ENTRY' && entryStatus !== 'PENDING_ENTRY') continue;
+        if (filter.entryStatus === 'ENTERED' && entryStatus !== 'ENTERED') continue;
+        if (filter.entryStatus === 'BILL_GENERATED' && entryStatus !== 'BILL_GENERATED') continue;
+        if (filter.entryStatus === 'NOT_BILLED' && entryStatus === 'BILL_GENERATED') continue;
+        if (filter.entryStatus === 'WITHIN_TOLERANCE' && toleranceRes?.status !== 'WITHIN_TOLERANCE') continue;
+        if (filter.entryStatus === 'BELOW_TOLERANCE' && toleranceRes?.status !== 'BELOW_TOLERANCE') continue;
+        if (filter.entryStatus === 'ABOVE_TOLERANCE' && toleranceRes?.status !== 'ABOVE_TOLERANCE') continue;
+      }
+
+      items.push({
+        allotmentId: allotment.allotment_id,
+        beneficiaryId: ben.beneficiary_id,
+        beneficiaryCode: `BEN-${ben.beneficiary_id.slice(0, 8)}`,
+        beneficiaryName: ben.name,
+        phoneNumber: ben.phone_number,
+        districtName: ben.district?.name,
+        blockName: ben.block?.name,
+        villageName: ben.village?.name,
+        projectName: allotment.application?.project?.project_name,
+        infrastructureStatus: infra?.status || 'NOT_PLANNED',
+        commissionedDate: infra?.commissioned_date ? infra.commissioned_date.toISOString() : null,
+        billingPeriod: periodCode,
+        approvedDailyQuotaLiters: approvedDailyQuota.toNumber(),
+        daysInPeriod,
+        monthlyEntitlementLiters: monthlyEntitlement.toNumber(),
+        runningRatePerLiter: runningRate.toNumber(),
+        enteredConsumptionLiters: enteredConsumption,
+        toleranceStatus: toleranceRes ? toleranceRes.status : null,
+        varianceLiters: toleranceRes ? toleranceRes.varianceLiters.toNumber() : null,
+        variancePercentage: toleranceRes ? toleranceRes.variancePercentage.toNumber() : null,
+        calculatedBillAmount,
+        entryStatus,
+        alreadyBilled: Boolean(existingBill),
+        existingBillId: existingBill?.running_bill_id || null,
+        existingBillNumber: existingBill?.bill_number || null,
+      });
+    }
+
+    const total = items.length;
+    const paginatedItems = items.slice((page - 1) * limit, page * limit);
+
+    return {
+      items: paginatedItems,
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+        billingPeriod: periodCode,
+        daysInPeriod,
+      },
+    };
+  }
+
+  /**
+   * Saves monthly consumption draft entries without generating authoritative bills.
+   */
+  async saveConsumptionDrafts(dto: SaveConsumptionDraftsDto, userId?: string) {
+    const periodCode = dto.billingPeriod;
+    let savedCount = 0;
+
+    for (const entry of dto.entries) {
+      if (entry.actualMonthlyConsumptionLiters === undefined || entry.actualMonthlyConsumptionLiters === null) {
+        continue;
+      }
+      const allotment = await this.prisma.waterAllotment.findUnique({
+        where: { allotment_id: entry.allotmentId },
+        select: { allotment_id: true, beneficiary_id: true },
+      });
+      if (!allotment) continue;
+
+      try {
+        await (this.prisma as any).waterConsumptionDraft.upsert({
+          where: {
+            allotment_id_billing_period: {
+              allotment_id: entry.allotmentId,
+              billing_period: periodCode,
+            },
+          },
+          update: {
+            actual_monthly_consumption_litres: new Decimal(entry.actualMonthlyConsumptionLiters),
+            updated_by: userId || null,
+          },
+          create: {
+            allotment_id: entry.allotmentId,
+            beneficiary_id: allotment.beneficiary_id,
+            billing_period: periodCode,
+            actual_monthly_consumption_litres: new Decimal(entry.actualMonthlyConsumptionLiters),
+            updated_by: userId || null,
+          },
+        });
+        savedCount++;
+      } catch {}
+    }
+
+    return { success: true, savedCount, billingPeriod: periodCode };
+  }
+
+  /**
+   * Generates RunningBills in batch for entered monthly consumption values.
+   */
+  async generateBatchRunningBills(dto: GenerateBatchRunningBillsDto, userId?: string, ipAddress?: string) {
+    const periodCode = dto.billingPeriod;
+    const daysInPeriod = getDaysInBillingPeriod(periodCode);
+
+    let generatedCount = 0;
+    let alreadyBilledCount = 0;
+    let requiresReviewCount = 0;
+    let invalidCount = 0;
+    let failedCount = 0;
+
+    const details: any[] = [];
+
+    for (const entry of dto.entries) {
+      if (
+        entry.actualMonthlyConsumptionLiters === undefined ||
+        entry.actualMonthlyConsumptionLiters === null ||
+        isNaN(Number(entry.actualMonthlyConsumptionLiters))
+      ) {
+        invalidCount++;
+        continue;
+      }
+
+      try {
+        const actualConsumption = new Decimal(entry.actualMonthlyConsumptionLiters);
+
+        const eligibility = await this.getEligibility(entry.allotmentId, periodCode);
+        if (!eligibility.eligible) {
+          failedCount++;
+          details.push({
+            allotmentId: entry.allotmentId,
+            status: 'FAILED',
+            reason: eligibility.reason || 'Not eligible',
+          });
+          continue;
+        }
+
+        if (eligibility.alreadyBilled) {
+          alreadyBilledCount++;
+          details.push({
+            allotmentId: entry.allotmentId,
+            beneficiaryName: eligibility.beneficiaryName,
+            status: 'ALREADY_BILLED',
+            existingBillId: eligibility.existingBillId,
+          });
+          continue;
+        }
+
+        const dailyQuota = new Decimal(eligibility.approvedLitres);
+        const toleranceRes = calculateTolerance(dailyQuota, daysInPeriod, actualConsumption, 3.0);
+        const ratePerLitre = new Decimal(eligibility.runningRatePerLitre);
+        const amountDue = DecimalUtil.roundMoney(actualConsumption.times(ratePerLitre));
+
+        const record = await this.recordWaterUsage(
+          {
+            allotmentId: entry.allotmentId,
+            billingPeriod: periodCode,
+            usageEntryMode: UsageEntryMode.DIRECT,
+            actualUsageLitres: actualConsumption.toNumber(),
+            collectionDate: this.clock.now().toISOString(),
+            generateBillImmediately: false,
+            notes: `Month-End Cumulative Entry (${daysInPeriod} days, Entitlement: ${toleranceRes.monthlyEntitlementLiters.toFixed(
+              0,
+            )} L, Tolerance: ${toleranceRes.status})`,
+          },
+          userId,
+          ipAddress,
+        );
+
+        await this.prisma.waterUsageRecord.update({
+          where: { usage_id: record.usageRecord.usage_id },
+          data: {
+            approved_daily_quota_snapshot: dailyQuota,
+            days_in_period: daysInPeriod,
+            monthly_entitlement_litres: toleranceRes.monthlyEntitlementLiters,
+            actual_monthly_consumption_litres: actualConsumption,
+            tolerance_percentage: 3.0,
+            tolerance_status: toleranceRes.status,
+          },
+        });
+
+        const bill = await this.generateBillFromUsage(record.usageRecord.usage_id, userId, ipAddress, {
+          overrideOverAllocation: true,
+        });
+
+        await this.prisma.runningBill.update({
+          where: { running_bill_id: bill.running_bill_id },
+          data: {
+            approved_daily_quota_snapshot: dailyQuota,
+            days_in_period: daysInPeriod,
+            monthly_entitlement_snapshot: toleranceRes.monthlyEntitlementLiters,
+            actual_monthly_consumption_snapshot: actualConsumption,
+            tolerance_percentage_snapshot: 3.0,
+            tolerance_status_snapshot: toleranceRes.status,
+          },
+        });
+
+        try {
+          await (this.prisma as any).waterConsumptionDraft.deleteMany({
+            where: {
+              allotment_id: entry.allotmentId,
+              billing_period: periodCode,
+            },
+          });
+        } catch {}
+
+        generatedCount++;
+        if (toleranceRes.status !== 'WITHIN_TOLERANCE') {
+          requiresReviewCount++;
+        }
+
+        details.push({
+          allotmentId: entry.allotmentId,
+          beneficiaryName: eligibility.beneficiaryName,
+          billNumber: bill.bill_number,
+          runningBillId: bill.running_bill_id,
+          actualMonthlyConsumptionLiters: actualConsumption.toNumber(),
+          monthlyEntitlementLiters: toleranceRes.monthlyEntitlementLiters.toNumber(),
+          toleranceStatus: toleranceRes.status,
+          amountDue: amountDue.toNumber(),
+          status: 'SUCCESS',
+        });
+      } catch (err: any) {
+        this.logger.error(`Failed to generate running bill for allotment ${entry.allotmentId}: ${err.message}`, err.stack);
+        failedCount++;
+        details.push({
+          allotmentId: entry.allotmentId,
+          status: 'FAILED',
+          reason: err.message || 'Error generating bill',
+        });
+      }
+    }
+
+    return {
+      generatedCount,
+      alreadyBilledCount,
+      requiresReviewCount,
+      invalidCount,
+      failedCount,
+      details,
+    };
   }
 }
