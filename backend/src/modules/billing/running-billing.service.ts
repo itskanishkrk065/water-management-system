@@ -429,8 +429,12 @@ export class RunningBillingService {
       throw new NotFoundException(`Water usage record '${usageId}' not found. Cannot generate bill without usage.`);
     }
 
-    if (usage.runningBill || usage.status === WaterUsageStatus.BILLED) {
-      throw new BadRequestException(`Running bill has already been generated for this usage record (${usage.runningBill?.bill_number || usage.usage_id}).`);
+    if (usage.runningBill) {
+      return usage.runningBill;
+    }
+
+    if (usage.status === WaterUsageStatus.BILLED) {
+      throw new BadRequestException(`Running bill has already been generated for this usage record (${usage.usage_id}).`);
     }
 
     if (usage.status === WaterUsageStatus.VOIDED) {
@@ -443,7 +447,11 @@ export class RunningBillingService {
       );
     }
 
-    // Double-check no active bill exists for this allotment and billing period
+    if (usage.runningBill) {
+      return usage.runningBill;
+    }
+
+    // Idempotent check: If an active running bill already exists for this allotment and billing period, return it
     const existingBill = await this.prisma.runningBill.findFirst({
       where: {
         allotment_id: usage.allotment_id,
@@ -452,9 +460,17 @@ export class RunningBillingService {
       },
     });
     if (existingBill) {
-      throw new BadRequestException(
-        `An active running bill (${existingBill.bill_number}) already exists for this beneficiary in period ${usage.billingPeriod.period_code}.`,
-      );
+      if (usage.status !== WaterUsageStatus.BILLED) {
+        await this.prisma.waterUsageRecord.update({
+          where: { usage_id: usage.usage_id },
+          data: {
+            status: WaterUsageStatus.BILLED,
+            verified_at: this.clock.now(),
+            verified_by: adminUserId || null,
+          },
+        });
+      }
+      return existingBill;
     }
 
     const actualUsageLitres = new Decimal(usage.actual_usage_litres);
@@ -478,39 +494,76 @@ export class RunningBillingService {
       },
     ];
 
-    const currentCount = await this.prisma.runningBill.count();
     const year = usage.usage_period_start.getFullYear();
-    const billNumber = `RUN-${year}-${String(currentCount + 1).padStart(5, '0')}`;
 
-    // Transactionally create RunningBill and mark WaterUsageRecord BILLED
+    // Transactionally create RunningBill with retry logic for bill_number uniqueness and mark WaterUsageRecord BILLED
     const bill = await this.prisma.$transaction(async (tx) => {
-      const created = await tx.runningBill.create({
-        data: {
-          bill_number: billNumber,
-          allotment_id: usage.allotment_id,
-          beneficiary_id: usage.beneficiary_id,
-          rate_id: usage.tariff_id || usage.allotment.rate_id,
-          billing_period: usage.billingPeriod.period_code,
-          billing_period_id: usage.billing_period_id,
-          usage_id: usage.usage_id,
-          billing_period_start: usage.usage_period_start,
-          billing_period_end: usage.usage_period_end,
-          running_charge_start_date_snapshot: usage.usage_period_start,
-          commissioned_date_snapshot: usage.usage_period_start,
-          tariff_version: usage.tariff_version || 'STANDARD',
-          calculation_breakdown: JSON.stringify(breakdown),
-          approved_litres_snapshot: usage.approved_litres_snapshot,
-          actual_usage_litres_snapshot: actualUsageLitres,
-          running_cost_per_litre_snapshot: ratePerLitre,
-          amount_due: amountDue,
-          amount_paid: new Decimal(0),
-          pending_amount: amountDue,
-          due_date: dueDate,
-          status: BillStatus.PENDING,
-          is_legacy: false,
-          legacy_classification: null,
-        },
-      });
+      let created: any = null;
+      let attempts = 0;
+
+      while (!created && attempts < 10) {
+        attempts++;
+        const prefix = `RUN-${year}-`;
+        const lastBill = typeof tx.runningBill?.findFirst === 'function' ? await tx.runningBill.findFirst({
+          where: { bill_number: { startsWith: prefix } },
+          orderBy: { bill_number: 'desc' },
+          select: { bill_number: true },
+        }) : null;
+
+        let maxSeq = 0;
+        if (lastBill && lastBill.bill_number) {
+          const match = lastBill.bill_number.match(/RUN-\d{4}-(\d+)/);
+          if (match) {
+            maxSeq = parseInt(match[1], 10);
+          }
+        }
+
+        const count = await tx.runningBill.count({
+          where: { bill_number: { startsWith: prefix } },
+        });
+
+        const nextSeq = Math.max(maxSeq, count) + (attempts - 1) + 1;
+        const candidateNumber = `${prefix}${String(nextSeq).padStart(5, '0')}`;
+
+        try {
+          created = await tx.runningBill.create({
+            data: {
+              bill_number: candidateNumber,
+              allotment_id: usage.allotment_id,
+              beneficiary_id: usage.beneficiary_id,
+              rate_id: usage.tariff_id || usage.allotment.rate_id,
+              billing_period: usage.billingPeriod.period_code,
+              billing_period_id: usage.billing_period_id,
+              usage_id: usage.usage_id,
+              billing_period_start: usage.usage_period_start,
+              billing_period_end: usage.usage_period_end,
+              running_charge_start_date_snapshot: usage.usage_period_start,
+              commissioned_date_snapshot: usage.usage_period_start,
+              tariff_version: usage.tariff_version || 'STANDARD',
+              calculation_breakdown: JSON.stringify(breakdown),
+              approved_litres_snapshot: usage.approved_litres_snapshot,
+              actual_usage_litres_snapshot: actualUsageLitres,
+              running_cost_per_litre_snapshot: ratePerLitre,
+              amount_due: amountDue,
+              amount_paid: new Decimal(0),
+              pending_amount: amountDue,
+              due_date: dueDate,
+              status: BillStatus.PENDING,
+              is_legacy: false,
+              legacy_classification: null,
+            },
+          });
+        } catch (err: any) {
+          if (err.code === 'P2002' && (err.meta?.target?.includes('bill_number') || String(err.message).includes('bill_number'))) {
+            continue;
+          }
+          throw err;
+        }
+      }
+
+      if (!created) {
+        throw new BadRequestException('Failed to allocate a collision-safe bill number. Please try again.');
+      }
 
       await tx.waterUsageRecord.update({
         where: { usage_id: usage.usage_id },

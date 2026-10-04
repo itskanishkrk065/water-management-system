@@ -591,37 +591,72 @@ export class BillingService {
     }
 
     const year = pStart.getFullYear();
-    const currentCount = await this.prisma.runningBill.count();
 
     const createdBills = await this.prisma.$transaction(async (tx) => {
       const results: any[] = [];
-      let seq = currentCount + 1;
 
       for (const item of eligibleItems) {
-        const billNumber = this.generateRunningBillNumber(year, seq++);
-        const bill = await tx.runningBill.create({
-          data: {
-            bill_number: billNumber,
-            allotment_id: item.allotmentId,
-            beneficiary_id: item.beneficiaryId,
-            rate_id: item.components[0]?.tariffId,
-            billing_period: item.billingPeriod,
-            billing_period_start: new Date(item.billingPeriodStart),
-            billing_period_end: new Date(item.billingPeriodEnd),
-            running_charge_start_date_snapshot: item.runningChargeStartDate ? new Date(item.runningChargeStartDate) : null,
-            commissioned_date_snapshot: item.commissionedDate ? new Date(item.commissionedDate) : null,
-            tariff_version: item.tariffVersion,
-            calculation_breakdown: JSON.stringify(item.components),
-            approved_litres_snapshot: new Decimal(item.approvedLitres),
-            running_cost_per_litre_snapshot: new Decimal(item.runningRatePerLitre),
-            amount_due: new Decimal(item.calculatedAmount),
-            amount_paid: new Decimal(0),
-            pending_amount: new Decimal(item.calculatedAmount),
-            due_date: dueDate,
-            status: BillStatus.PENDING,
-          },
-        });
-        results.push(bill);
+        let created: any = null;
+        let attempts = 0;
+
+        while (!created && attempts < 10) {
+          attempts++;
+          const prefix = `RUN-${year}-`;
+          const lastBill = typeof tx.runningBill?.findFirst === 'function' ? await tx.runningBill.findFirst({
+            where: { bill_number: { startsWith: prefix } },
+            orderBy: { bill_number: 'desc' },
+            select: { bill_number: true },
+          }) : null;
+
+          let maxSeq = 0;
+          if (lastBill && lastBill.bill_number) {
+            const match = lastBill.bill_number.match(/RUN-\d{4}-(\d+)/);
+            if (match) {
+              maxSeq = parseInt(match[1], 10);
+            }
+          }
+
+          const count = await tx.runningBill.count({
+            where: { bill_number: { startsWith: prefix } },
+          });
+
+          const nextSeq = Math.max(maxSeq, count) + (attempts - 1) + 1;
+          const candidateNumber = this.generateRunningBillNumber(year, nextSeq);
+
+          try {
+            created = await tx.runningBill.create({
+              data: {
+                bill_number: candidateNumber,
+                allotment_id: item.allotmentId,
+                beneficiary_id: item.beneficiaryId,
+                rate_id: item.components[0]?.tariffId,
+                billing_period: item.billingPeriod,
+                billing_period_start: new Date(item.billingPeriodStart),
+                billing_period_end: new Date(item.billingPeriodEnd),
+                running_charge_start_date_snapshot: item.runningChargeStartDate ? new Date(item.runningChargeStartDate) : null,
+                commissioned_date_snapshot: item.commissionedDate ? new Date(item.commissionedDate) : null,
+                tariff_version: item.tariffVersion,
+                calculation_breakdown: JSON.stringify(item.components),
+                approved_litres_snapshot: new Decimal(item.approvedLitres),
+                running_cost_per_litre_snapshot: new Decimal(item.runningRatePerLitre),
+                amount_due: new Decimal(item.calculatedAmount),
+                amount_paid: new Decimal(0),
+                pending_amount: new Decimal(item.calculatedAmount),
+                due_date: dueDate,
+                status: BillStatus.PENDING,
+              },
+            });
+          } catch (err: any) {
+            if (err.code === 'P2002' && (err.meta?.target?.includes('bill_number') || String(err.message).includes('bill_number'))) {
+              continue;
+            }
+            throw err;
+          }
+        }
+
+        if (created) {
+          results.push(created);
+        }
       }
 
       return results;

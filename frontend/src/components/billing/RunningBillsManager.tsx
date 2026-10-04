@@ -70,6 +70,25 @@ export default function RunningBillsManager() {
   const [payRemarks, setPayRemarks] = useState('');
   const [payError, setPayError] = useState<string | null>(null);
 
+  // ESC Key Modal Listener (UX-ESC-001..007)
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (showRecordUsageModal) {
+          setShowRecordUsageModal(false);
+        }
+        if (payModalBill) {
+          setPayModalBill(null);
+        }
+        if (detailBillId) {
+          setDetailBillId(null);
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showRecordUsageModal, payModalBill, detailBillId]);
+
   // 1. Fetch Calendar Periods (Part 4, 5)
   const { data: periodsData } = useQuery({
     queryKey: ['billing-calendar-periods'],
