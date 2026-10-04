@@ -41,18 +41,43 @@ describe('Real Lifecycle, Database State & Operational Scope Verification', () =
     dbExplorerService = module.get<DeveloperDbExplorerService>(DeveloperDbExplorerService);
   });
 
+  async function getOrCreateTestBeneficiaryAndProject() {
+    let project = await prisma.project.findFirst({ where: { status: 'ACTIVE' } });
+    if (!project) {
+      project = await prisma.project.create({
+        data: {
+          project_code: `PROJ-${Date.now()}`,
+          project_name: 'Test Project Scheme',
+          status: 'ACTIVE',
+        },
+      });
+    }
+
+    let beneficiary = await prisma.beneficiary.findFirst({ where: { status: 'ACTIVE' } });
+    if (!beneficiary) {
+      beneficiary = await prisma.beneficiary.create({
+        data: {
+          name: 'Test Beneficiary',
+          phone_number: `9${Math.floor(100000000 + Math.random() * 900000000)}`,
+          status: 'ACTIVE',
+        },
+      });
+    }
+
+    return { beneficiary, project };
+  }
+
   it('TEST A: Cancelling a water application excludes it from CURRENT and includes it in HISTORY', async () => {
     // 1. Get or create test beneficiary & project
-    const beneficiary = await prisma.beneficiary.findFirst({ where: { status: 'ACTIVE' } });
-    const project = await prisma.project.findFirst({ where: { status: 'ACTIVE' } });
+    const { beneficiary, project } = await getOrCreateTestBeneficiaryAndProject();
     expect(beneficiary).toBeDefined();
     expect(project).toBeDefined();
 
     // 2. Create holding & water application
     const holding = await prisma.landHolding.create({
       data: {
-        beneficiary_id: beneficiary!.beneficiary_id,
-        project_id: project!.project_id,
+        beneficiary_id: beneficiary.beneficiary_id,
+        project_id: project.project_id,
         declared_total_area: 3.5,
         status: LandStatus.ACTIVE,
       },
@@ -60,8 +85,8 @@ describe('Real Lifecycle, Database State & Operational Scope Verification', () =
 
     const app = await prisma.waterApplication.create({
       data: {
-        beneficiary_id: beneficiary!.beneficiary_id,
-        project_id: project!.project_id,
+        beneficiary_id: beneficiary.beneficiary_id,
+        project_id: project.project_id,
         land_id: holding.land_id,
         required_litres: 120000,
         status: ApplicationStatus.SUBMITTED,
@@ -91,13 +116,12 @@ describe('Real Lifecycle, Database State & Operational Scope Verification', () =
   });
 
   it('TEST B: Voiding an approved water application excludes it from CURRENT and includes it in HISTORY', async () => {
-    const beneficiary = await prisma.beneficiary.findFirst({ where: { status: 'ACTIVE' } });
-    const project = await prisma.project.findFirst({ where: { status: 'ACTIVE' } });
+    const { beneficiary, project } = await getOrCreateTestBeneficiaryAndProject();
 
     const holding = await prisma.landHolding.create({
       data: {
-        beneficiary_id: beneficiary!.beneficiary_id,
-        project_id: project!.project_id,
+        beneficiary_id: beneficiary.beneficiary_id,
+        project_id: project.project_id,
         declared_total_area: 2.0,
         status: LandStatus.ACTIVE,
       },
@@ -131,14 +155,13 @@ describe('Real Lifecycle, Database State & Operational Scope Verification', () =
   });
 
   it('TEST D & E: Deactivating a land holding cancels in-progress applications and preserves history without orphans', async () => {
-    const beneficiary = await prisma.beneficiary.findFirst({ where: { status: 'ACTIVE' } });
-    const project = await prisma.project.findFirst({ where: { status: 'ACTIVE' } });
+    const { beneficiary, project } = await getOrCreateTestBeneficiaryAndProject();
 
     // 1. Create holding
     const holding = await prisma.landHolding.create({
       data: {
-        beneficiary_id: beneficiary!.beneficiary_id,
-        project_id: project!.project_id,
+        beneficiary_id: beneficiary.beneficiary_id,
+        project_id: project.project_id,
         declared_total_area: 5.0,
         status: LandStatus.ACTIVE,
       },
@@ -147,8 +170,8 @@ describe('Real Lifecycle, Database State & Operational Scope Verification', () =
     // 2. Create in-progress water application linked to holding
     const app = await prisma.waterApplication.create({
       data: {
-        beneficiary_id: beneficiary!.beneficiary_id,
-        project_id: project!.project_id,
+        beneficiary_id: beneficiary.beneficiary_id,
+        project_id: project.project_id,
         land_id: holding.land_id,
         required_litres: 200000,
         status: ApplicationStatus.SUBMITTED,

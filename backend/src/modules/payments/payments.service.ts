@@ -2,7 +2,7 @@ import { Injectable, BadRequestException, NotFoundException, Optional } from '@n
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { RecordPaymentDto, ReversePaymentDto } from './dto/payment.dto';
-import { AuditAction, AuditEntityType, BillStatus, InstallmentStatus, PaymentStatus, PaymentMode } from '../common/enums';
+import { AuditAction, AuditEntityType, BillStatus, InstallmentStatus, PaymentStatus, PaymentMode, ExtensionStatus } from '../common/enums';
 import { Prisma } from '@prisma/client';
 import { DecimalUtil } from '../common/decimal.util';
 import { Decimal } from 'decimal.js';
@@ -100,11 +100,17 @@ export class PaymentsService {
           ? InstallmentStatus.PAID
           : InstallmentStatus.PARTIALLY_PAID;
 
+        const isExtensionBill = installment.bill?.bill_type === 'EXTENSION_DEVELOPMENT' || Boolean(installment.bill?.extension_id);
+        const paymentPurpose = isExtensionBill ? 'EXTENSION_DEVELOPMENT' : 'ORIGINAL_DEVELOPMENT';
+        const extId = installment.bill?.extension_id || null;
+
         // Create Payment record
         createdPayment = await tx.payment.create({
           data: {
             beneficiary_id: beneficiaryId,
             installment_id: dto.installmentId,
+            extension_id: extId,
+            payment_purpose: paymentPurpose,
             amount: payAmount,
             payment_date: paymentDate,
             payment_reference: ref,
@@ -143,6 +149,45 @@ export class PaymentsService {
               status: billStatus,
             },
           });
+
+          // If extension development bill, update extension paid & pending amounts and check activation
+          if (bill.extension_id) {
+            const ext = await tx.extension.findUnique({
+              where: { extension_id: bill.extension_id },
+              include: { developmentBills: { include: { installments: true } } },
+            });
+            if (ext) {
+              const extPaid = DecimalUtil.roundMoney(DecimalUtil.add(new Decimal(ext.paid_amount || 0), payAmount));
+              const extPending = DecimalUtil.roundMoney(DecimalUtil.sub(new Decimal(ext.extension_cost || 0), extPaid));
+              
+              let allPaid = extPending.isZero() || extPending.lessThanOrEqualTo(0);
+              if (allPaid) {
+                for (const b of ext.developmentBills) {
+                  for (const inst of b.installments) {
+                    const instState = inst.installment_id === dto.installmentId ? newStatus : inst.status;
+                    if (instState !== InstallmentStatus.PAID) {
+                      allPaid = false;
+                    }
+                  }
+                }
+              }
+
+              const extStatus = allPaid
+                ? ExtensionStatus.ACTIVE
+                : (extPaid.greaterThan(0) ? ExtensionStatus.PAYMENT_PENDING : ext.status);
+
+              await tx.extension.update({
+                where: { extension_id: ext.extension_id },
+                data: {
+                  paid_amount: extPaid,
+                  pending_amount: extPending,
+                  status: extStatus,
+                  activated_at: allPaid ? new Date() : ext.activated_at,
+                  activated_by: allPaid ? officer : ext.activated_by,
+                },
+              });
+            }
+          }
         }
       } else if (dto.runningBillId) {
         // 2. Payment for Running Bill
@@ -182,6 +227,7 @@ export class PaymentsService {
           data: {
             beneficiary_id: beneficiaryId,
             running_bill_id: dto.runningBillId,
+            payment_purpose: 'RUNNING_WATER',
             amount: payAmount,
             payment_date: paymentDate,
             payment_reference: ref,
@@ -203,18 +249,100 @@ export class PaymentsService {
         });
       } else if (dto.extensionId) {
         // 3. Payment for Extension
+        const ext = await tx.extension.findUnique({
+          where: { extension_id: dto.extensionId },
+          include: { developmentBills: { include: { installments: true } } },
+        });
+        if (!ext) {
+          throw new NotFoundException(`Extension ${dto.extensionId} not found`);
+        }
+
+        const beneficiaryId = dto.beneficiaryId || ext.beneficiary_id;
+        const extCost = new Decimal(ext.extension_cost || 0);
+        const currentPaid = new Decimal(ext.paid_amount || 0);
+        const pendingAmount = DecimalUtil.sub(extCost, currentPaid);
+
+        if (payAmount.greaterThan(pendingAmount)) {
+          throw new BadRequestException(
+            `Payment amount ₹${payAmount.toFixed(2)} exceeds pending extension amount ₹${pendingAmount.toFixed(2)}.`,
+          );
+        }
+
+        let targetInst: any = null;
+        for (const b of ext.developmentBills) {
+          for (const inst of b.installments) {
+            if (inst.status !== InstallmentStatus.PAID) {
+              targetInst = inst;
+              break;
+            }
+          }
+          if (targetInst) break;
+        }
+
         createdPayment = await tx.payment.create({
           data: {
-            beneficiary_id: dto.beneficiaryId,
+            beneficiary_id: beneficiaryId,
             extension_id: dto.extensionId,
+            installment_id: targetInst?.installment_id || null,
+            payment_purpose: 'EXTENSION_DEVELOPMENT',
             amount: payAmount,
             payment_date: paymentDate,
-            payment_reference: dto.paymentReference || null,
+            payment_reference: ref || dto.paymentReference || null,
             receipt_number: receiptNumber,
-            payment_mode: dto.paymentMode,
+            payment_mode: mode || dto.paymentMode,
             status: PaymentStatus.COMPLETED,
-            remarks: dto.remarks || null,
-            recorded_by: recordedBy,
+            remarks: remarks || dto.remarks || null,
+            recorded_by: officer || recordedBy,
+          },
+        });
+
+        const newExtPaid = DecimalUtil.roundMoney(DecimalUtil.add(currentPaid, payAmount));
+        const newExtPending = DecimalUtil.roundMoney(DecimalUtil.sub(extCost, newExtPaid));
+
+        if (targetInst) {
+          const instPaid = DecimalUtil.roundMoney(DecimalUtil.add(new Decimal(targetInst.amount_paid), payAmount));
+          const instPending = DecimalUtil.roundMoney(DecimalUtil.sub(new Decimal(targetInst.amount_due), instPaid));
+          const instStatus = instPending.isZero() ? InstallmentStatus.PAID : InstallmentStatus.PARTIALLY_PAID;
+
+          await tx.installment.update({
+            where: { installment_id: targetInst.installment_id },
+            data: {
+              amount_paid: instPaid,
+              pending_amount: instPending,
+              status: instStatus,
+            },
+          });
+
+          const devBill = await tx.developmentBill.findUnique({
+            where: { bill_id: targetInst.bill_id },
+          });
+          if (devBill) {
+            const bPaid = DecimalUtil.roundMoney(DecimalUtil.add(new Decimal(devBill.amount_paid), payAmount));
+            const bPending = DecimalUtil.roundMoney(DecimalUtil.sub(new Decimal(devBill.total_amount), bPaid));
+            const bStatus = bPending.isZero() ? BillStatus.PAID : BillStatus.PARTIALLY_PAID;
+
+            await tx.developmentBill.update({
+              where: { bill_id: devBill.bill_id },
+              data: {
+                amount_paid: bPaid,
+                pending_amount: bPending,
+                status: bStatus,
+              },
+            });
+          }
+        }
+
+        const isFullyPaid = newExtPending.isZero();
+        const extStatus = isFullyPaid ? ExtensionStatus.ACTIVE : ExtensionStatus.PAYMENT_PENDING;
+
+        await tx.extension.update({
+          where: { extension_id: dto.extensionId },
+          data: {
+            paid_amount: newExtPaid,
+            pending_amount: newExtPending,
+            status: extStatus,
+            activated_at: isFullyPaid ? new Date() : ext.activated_at,
+            activated_by: isFullyPaid ? (officer || recordedBy) : ext.activated_by,
           },
         });
       }

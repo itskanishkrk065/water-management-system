@@ -2182,11 +2182,13 @@ function AdminBeneficiaryDetailContent() {
       {/* ──────────────────────────────────────────────────────────── */}
       {activeTab === 'extensions' && (
         <div className="space-y-6">
-          <div>
-            <h3 className="text-base font-bold text-slate-900">Quota Extension Requests</h3>
-            <p className="text-xs text-slate-500">
-              Area and water quota expansions tracked independently from base allotments
-            </p>
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-base font-bold text-slate-900">Land & Water Quota Extension Records</h3>
+              <p className="text-xs text-slate-500">
+                Post-lock area/water expansions and late beneficiary connections tracked independently from original project scope
+              </p>
+            </div>
           </div>
 
           <div className="space-y-4">
@@ -2197,46 +2199,101 @@ function AdminBeneficiaryDetailContent() {
                   className="bg-white rounded-2xl border border-slate-200 p-6 space-y-4 shadow-sm"
                 >
                   <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                    <div className="font-bold text-slate-900 text-sm">
-                      Extension Request #{ext.extension_id.slice(0, 8)}
+                    <div className="flex items-center space-x-3">
+                      <div className="font-mono font-bold text-slate-900 text-sm">
+                        EXT-{ext.extension_id.slice(0, 8).toUpperCase()}
+                      </div>
+                      <span className="px-2.5 py-0.5 text-[11px] font-bold rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
+                        {ext.extension_type || (ext.is_late_beneficiary ? 'LATE_BENEFICIARY' : 'ADDITIONAL_WATER')}
+                      </span>
                     </div>
-                    <span className={`px-2.5 py-1 text-xs font-bold rounded-full border ${getStatusBadgeClass(ext.status)}`}>
-                      {ext.status}
-                    </span>
+                    <div className="flex items-center space-x-2">
+                      <span className={`px-2.5 py-1 text-xs font-bold rounded-full border ${getStatusBadgeClass(ext.status)}`}>
+                        {ext.status}
+                      </span>
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
                     <div>
-                      <span className="text-slate-500">Requested Area:</span>
+                      <span className="text-slate-500">Requested / Approved Area:</span>
                       <div className="font-bold text-slate-900 mt-0.5">
-                        {formatAcres(ext.additional_land_area)}
+                        {formatAcres(ext.approved_additional_area || ext.requested_additional_area || 0)}
                       </div>
                     </div>
                     <div>
-                      <span className="text-slate-500">Requested Litres:</span>
+                      <span className="text-slate-500">Requested / Approved Water:</span>
                       <div className="font-bold text-slate-900 mt-0.5">
-                        {formatLitres(ext.requested_litres)}
+                        {formatLitres(ext.approved_additional_litres || ext.requested_additional_litres || 0)}
                       </div>
                     </div>
                     <div>
-                      <span className="text-slate-500">Extension Cost:</span>
+                      <span className="text-slate-500">Extension Dev Rate:</span>
+                      <div className="font-bold text-slate-900 mt-0.5">
+                        {ext.additional_development_cost_per_litre ? `₹${ext.additional_development_cost_per_litre}/L` : '—'}
+                      </div>
+                    </div>
+                    <div>
+                      <span className="text-slate-500">Extension Dev Cost:</span>
                       <div className="font-bold text-slate-900 mt-0.5">
                         {formatCurrency(ext.extension_cost || 0)}
                       </div>
                     </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs pt-2 border-t border-slate-50">
                     <div>
-                      <span className="text-slate-500">Requested Date:</span>
-                      <div className="font-semibold text-slate-700 mt-0.5">
-                        {formatDate(ext.created_at)}
+                      <span className="text-slate-500">Installment Structure:</span>
+                      <div className="font-bold text-slate-800 mt-0.5">
+                        {ext.is_late_beneficiary ? '5 Installments (2.5%, 20%, 25%, 25%, 27.5%)' : '1 Single Installment (1/1 = 100%)'}
+                      </div>
+                    </div>
+                    <div>
+                      <span className="text-slate-500">Paid Amount:</span>
+                      <div className="font-bold text-emerald-700 mt-0.5">
+                        {formatCurrency(ext.paid_amount || 0)}
+                      </div>
+                    </div>
+                    <div>
+                      <span className="text-slate-500">Pending Amount:</span>
+                      <div className="font-bold text-rose-600 mt-0.5">
+                        {formatCurrency(ext.pending_amount || 0)}
+                      </div>
+                    </div>
+                    <div>
+                      <span className="text-slate-500">Activation Status:</span>
+                      <div className="font-bold text-slate-800 mt-0.5">
+                        {ext.activated_at ? (
+                          <span className="text-emerald-600 font-bold">ACTIVE ({formatDate(ext.activated_at)})</span>
+                        ) : ext.status === 'ACTIVE' ? (
+                          <span className="text-emerald-600 font-bold">ACTIVE</span>
+                        ) : (
+                          <span className="text-amber-600">Pending 100% Payment</span>
+                        )}
                       </div>
                     </div>
                   </div>
+
+                  {(ext.survey_number || ext.remarks) && (
+                    <div className="p-3 bg-slate-50 rounded-xl text-xs space-y-1 text-slate-600">
+                      {ext.survey_number && (
+                        <div>
+                          <span className="font-bold text-slate-700">Survey Parcel Info:</span> Survey #{ext.survey_number} {ext.subdivision_number ? `/ Sub ${ext.subdivision_number}` : ''}
+                        </div>
+                      )}
+                      {ext.remarks && (
+                        <div>
+                          <span className="font-bold text-slate-700">Remarks:</span> {ext.remarks}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               ))
             ) : (
               <div className="bg-white p-12 rounded-2xl border border-slate-200 text-center text-slate-400 space-y-2">
                 <ArrowUpRight className="w-10 h-10 mx-auto text-slate-300" />
-                <p className="font-semibold text-slate-700">No extension requests recorded</p>
+                <p className="font-semibold text-slate-700">No extension records found for this beneficiary</p>
               </div>
             )}
           </div>

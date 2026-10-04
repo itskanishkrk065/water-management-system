@@ -238,6 +238,8 @@ model Beneficiary {
   pincode              String?
   location_direction   String?
   location_description String?
+  is_late_beneficiary  Boolean  @default(false)
+  connection_type      String   @default("ORIGINAL")
   status               String   @default("ACTIVE")
   version              Int      @default(1)
   created_at           DateTime @default(now())
@@ -411,8 +413,10 @@ model WaterAllotment {
 
 model DevelopmentBill {
   bill_id                             String   @id @default(uuid())
-  allotment_id                        String   @unique
+  allotment_id                        String?  @unique
+  extension_id                        String?
   beneficiary_id                      String
+  bill_type                           String   @default("ORIGINAL_DEVELOPMENT")
   approved_litres_snapshot            Decimal
   development_cost_per_litre_snapshot Decimal
   total_amount                        Decimal
@@ -423,12 +427,14 @@ model DevelopmentBill {
   created_at                          DateTime @default(now())
   updated_at                          DateTime @updatedAt
 
-  allotment    WaterAllotment @relation(fields: [allotment_id], references: [allotment_id], onDelete: Restrict)
-  beneficiary  Beneficiary    @relation(fields: [beneficiary_id], references: [beneficiary_id], onDelete: Restrict)
+  allotment    WaterAllotment? @relation(fields: [allotment_id], references: [allotment_id], onDelete: Restrict)
+  extension    Extension?      @relation(fields: [extension_id], references: [extension_id], onDelete: SetNull)
+  beneficiary  Beneficiary     @relation(fields: [beneficiary_id], references: [beneficiary_id], onDelete: Restrict)
   installments Installment[]
 
   @@index([beneficiary_id, status])
   @@index([beneficiary_id])
+  @@index([extension_id])
   @@index([created_at])
   @@map("development_bills")
 }
@@ -463,6 +469,7 @@ model Payment {
   installment_id      String?
   running_bill_id     String?
   extension_id        String?
+  payment_purpose     String   @default("ORIGINAL_DEVELOPMENT")
   amount              Decimal
   payment_date        DateTime @default(now())
   payment_reference   String?
@@ -484,6 +491,7 @@ model Payment {
   @@index([installment_id, is_reversal])
   @@index([beneficiary_id])
   @@index([installment_id])
+  @@index([extension_id])
   @@index([running_bill_id])
   @@index([receipt_number])
   @@map("payments")
@@ -515,16 +523,16 @@ model Infrastructure {
 }
 
 model BillingPeriod {
-  billing_period_id    String    @id @default(uuid())
-  period_code          String    @unique
+  billing_period_id    String   @id @default(uuid())
+  period_code          String   @unique
   period_start         DateTime
   period_end           DateTime
-  status               String    @default("OPEN")
+  status               String   @default("OPEN")
   collection_start_date DateTime
   collection_end_date   DateTime
   payment_due_date     DateTime
-  created_at           DateTime  @default(now())
-  updated_at           DateTime  @updatedAt
+  created_at           DateTime @default(now())
+  updated_at           DateTime @updatedAt
   closed_at            DateTime?
 
   waterUsageRecords WaterUsageRecord[]
@@ -662,7 +670,9 @@ model SystemClockState {
 model Extension {
   extension_id                          String    @id @default(uuid())
   beneficiary_id                        String
-  original_allotment_id                 String
+  original_allotment_id                 String?
+  extension_type                        String    @default("ADDITIONAL_WATER")
+  is_late_beneficiary                   Boolean   @default(false)
   requested_additional_area             Decimal
   requested_additional_litres           Decimal
   approved_additional_area              Decimal?
@@ -670,19 +680,31 @@ model Extension {
   rate_id                               String?
   additional_development_cost_per_litre Decimal?
   extension_cost                        Decimal?
+  installment_count                     Int       @default(1)
+  paid_amount                           Decimal   @default(0)
+  pending_amount                        Decimal   @default(0)
   status                                String    @default("REQUESTED")
   requested_at                          DateTime  @default(now())
   approved_by                           String?
   approved_at                           DateTime?
+  activated_at                          DateTime?
+  activated_by                          String?
+  survey_number                         String?
+  subdivision_number                    String?
+  district_id                           String?
+  block_id                              String?
+  panchayat_id                          String?
+  village_id                            String?
   remarks                               String?
   version                               Int       @default(1)
   created_at                            DateTime  @default(now())
   updated_at                            DateTime  @updatedAt
 
   beneficiary       Beneficiary        @relation(fields: [beneficiary_id], references: [beneficiary_id], onDelete: Restrict)
-  originalAllotment WaterAllotment     @relation(fields: [original_allotment_id], references: [allotment_id], onDelete: Restrict)
+  originalAllotment WaterAllotment?    @relation(fields: [original_allotment_id], references: [allotment_id], onDelete: Restrict)
   rate              RateConfiguration? @relation(fields: [rate_id], references: [rate_id], onDelete: Restrict)
   payments          Payment[]
+  developmentBills  DevelopmentBill[]
 
   @@index([beneficiary_id])
   @@index([original_allotment_id])
