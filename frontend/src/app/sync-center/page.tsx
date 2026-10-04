@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { apiClient } from '@/lib/api';
+import { fetchSyncDiagnostics, triggerDeviceSync } from '@/lib/sync-client';
 
 type SyncTab = 'OVERVIEW' | 'OUTBOX' | 'CONFLICTS' | 'ADVANCES';
 
@@ -25,14 +26,14 @@ export default function SyncCenterPage() {
   const loadData = useCallback(async () => {
     setIsLoading(true);
     try {
-      const [diagRes, outboxRes, conflictsRes, advancesRes] = await Promise.allSettled([
-        apiClient.get('/sync/client-diagnostics'),
+      const [diagData, outboxRes, conflictsRes, advancesRes] = await Promise.allSettled([
+        fetchSyncDiagnostics(),
         apiClient.get(`/sync/outbox?status=${filterStatus}`),
         apiClient.get('/sync/conflicts'),
         apiClient.get('/sync/advance-ledger'),
       ]);
 
-      if (diagRes.status === 'fulfilled') setDiagnostics(diagRes.value.data);
+      if (diagData.status === 'fulfilled') setDiagnostics(diagData.value);
       if (outboxRes.status === 'fulfilled') setOutboxItems(outboxRes.value.data);
       if (conflictsRes.status === 'fulfilled') setConflicts(conflictsRes.value.data);
       if (advancesRes.status === 'fulfilled') setAdvances(advancesRes.value.data);
@@ -52,8 +53,7 @@ export default function SyncCenterPage() {
   const handleDrainNow = async () => {
     setIsDraining(true);
     try {
-      const res = await apiClient.post('/sync/client-drain');
-      const data = res.data;
+      const data = await triggerDeviceSync();
       showToast(
         `Sync completed: ${data.appliedCount || 0} applied, ${data.conflictCount || 0} conflicts, ${data.failedCount || 0} retried.`,
         data.conflictCount > 0 ? 'error' : 'success',

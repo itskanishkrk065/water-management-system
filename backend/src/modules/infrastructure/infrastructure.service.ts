@@ -88,6 +88,7 @@ export class InfrastructureService {
   ) {
     const existing = await this.prisma.infrastructure.findUnique({
       where: { infrastructure_id: id },
+      include: { allotment: true },
     });
     if (!existing) {
       throw new NotFoundException(`Infrastructure ${id} not found`);
@@ -98,6 +99,10 @@ export class InfrastructureService {
       status: dto.status,
       remarks: dto.remarks !== undefined ? dto.remarks : existing.remarks,
     };
+
+    if (existing.allotment?.beneficiary_id && !existing.beneficiary_id) {
+      updateData.beneficiary = { connect: { beneficiary_id: existing.allotment.beneficiary_id } };
+    }
 
     if (dto.status === InfrastructureStatus.PLANNED) {
       if (!existing.planned_date || dto.date) {

@@ -788,16 +788,32 @@ export class BeneficiaryPortalService {
   async getMyInfrastructure(userId: string) {
     const b = await this.getAuthenticatedBeneficiary(userId);
 
-    return this.prisma.infrastructure.findFirst({
+    let infra = await this.prisma.infrastructure.findFirst({
       where: {
         OR: [
           { beneficiary_id: b.beneficiary_id },
           { allotment: { beneficiary_id: b.beneficiary_id } },
         ],
+        status: InfrastructureStatus.COMMISSIONED,
       },
       include: { allotment: true },
-      orderBy: [{ updated_at: 'desc' }, { created_at: 'desc' }],
+      orderBy: [{ commissioned_date: 'desc' }, { updated_at: 'desc' }],
     });
+
+    if (!infra) {
+      infra = await this.prisma.infrastructure.findFirst({
+        where: {
+          OR: [
+            { beneficiary_id: b.beneficiary_id },
+            { allotment: { beneficiary_id: b.beneficiary_id } },
+          ],
+        },
+        include: { allotment: true },
+        orderBy: [{ updated_at: 'desc' }, { created_at: 'desc' }],
+      });
+    }
+
+    return infra;
   }
 
   /**
@@ -806,17 +822,30 @@ export class BeneficiaryPortalService {
   async getMyRunningBills(userId: string) {
     const b = await this.getAuthenticatedBeneficiary(userId);
 
-    const infra = await this.prisma.infrastructure.findFirst({
+    let infra = await this.prisma.infrastructure.findFirst({
       where: {
         OR: [
           { beneficiary_id: b.beneficiary_id },
           { allotment: { beneficiary_id: b.beneficiary_id } },
         ],
+        status: InfrastructureStatus.COMMISSIONED,
       },
-      orderBy: [{ updated_at: 'desc' }, { created_at: 'desc' }],
+      orderBy: [{ commissioned_date: 'desc' }, { updated_at: 'desc' }],
     });
 
-    const isCommissioned = infra?.status === 'COMMISSIONED';
+    if (!infra) {
+      infra = await this.prisma.infrastructure.findFirst({
+        where: {
+          OR: [
+            { beneficiary_id: b.beneficiary_id },
+            { allotment: { beneficiary_id: b.beneficiary_id } },
+          ],
+        },
+        orderBy: [{ updated_at: 'desc' }, { created_at: 'desc' }],
+      });
+    }
+
+    const isCommissioned = infra?.status === InfrastructureStatus.COMMISSIONED;
     const runningStartDate = infra?.running_charge_start_date || infra?.commissioned_date || null;
 
     const bills = await this.prisma.runningBill.findMany({

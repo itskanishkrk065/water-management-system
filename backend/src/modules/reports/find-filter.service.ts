@@ -124,7 +124,19 @@ export class FindFilterService {
       andConditions.push({ village_id: { in: dto.villageIds } });
     }
 
-    // 2. Beneficiary Filters
+    // 2. Beneficiary & Search Filters
+    if (dto.search && dto.search.trim()) {
+      const q = dto.search.trim();
+      andConditions.push({
+        OR: [
+          { name: { contains: q } },
+          { phone_number: { contains: q } },
+          { village: { name: { contains: q } } },
+          { district: { name: { contains: q } } },
+          { landHoldings: { some: { parcels: { some: { survey_number: { contains: q } } } } } },
+        ],
+      });
+    }
     if (dto.beneficiaryName) {
       andConditions.push({
         name: { contains: dto.beneficiaryName.trim() },
@@ -315,7 +327,10 @@ export class FindFilterService {
     // 7. Infrastructure Status Filter
     if (dto.infrastructureStatus) {
       andConditions.push({
-        infrastructures: { some: { status: dto.infrastructureStatus } },
+        OR: [
+          { infrastructures: { some: { status: dto.infrastructureStatus } } },
+          { waterAllotments: { some: { infrastructure: { status: dto.infrastructureStatus } } } },
+        ],
       });
     }
 
@@ -395,7 +410,9 @@ export class FindFilterService {
 
     // 2. Latest Application & Allotment
     const latestApp = b.waterApplications?.[0] || null;
-    const activeAllotment = b.waterAllotments?.[0] || null;
+    const activeAllotment = b.waterAllotments?.find((a: any) => a.approval_status === 'APPROVED')
+      || b.waterAllotments?.[0]
+      || null;
 
     // 3. Financials
     const bill = activeAllotment?.developmentBill || b.developmentBills?.[0] || null;
@@ -419,7 +436,11 @@ export class FindFilterService {
     }
 
     // 5. Infrastructure status
-    const infra = activeAllotment?.infrastructure || b.infrastructures?.[0] || null;
+    const infra = b.infrastructures?.find((i: any) => i.status === 'COMMISSIONED')
+      || b.waterAllotments?.find((a: any) => a.infrastructure?.status === 'COMMISSIONED')?.infrastructure
+      || activeAllotment?.infrastructure
+      || b.infrastructures?.[0]
+      || null;
 
     return {
       beneficiaryId: b.beneficiary_id,
@@ -439,7 +460,12 @@ export class FindFilterService {
       infrastructureStatus: infra ? infra.status : 'NOT_PLANNED',
       applicationStatus: latestApp ? latestApp.status : 'NO_APPLICATION',
       extensionCount: b.extensions?.length || 0,
-    };
+      allotment: activeAllotment ? {
+        allotment_id: activeAllotment.allotment_id,
+        approved_litres: activeAllotment.approved_litres,
+        infrastructure: infra,
+      } : null,
+    } as any;
   }
 
   /**

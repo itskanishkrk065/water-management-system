@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { apiClient } from './api';
+import { apiClient, setSecureToken } from './api';
 
 export interface UserProfile {
   user_id: string;
@@ -51,8 +51,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const res = await apiClient.post('/auth/login', { email, password: pass });
     const { accessToken, refreshToken, user: loggedInUser } = res.data;
 
-    localStorage.setItem('water_access_token', accessToken);
-    localStorage.setItem('water_refresh_token', refreshToken);
+    await setSecureToken('water_access_token', accessToken);
+    await setSecureToken('water_refresh_token', refreshToken);
     localStorage.setItem('water_user', JSON.stringify(loggedInUser));
 
     setUser(loggedInUser);
@@ -86,8 +86,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const res = await apiClient.post('/auth/beneficiary-signup', payload);
     const { accessToken, refreshToken, user: loggedInUser } = res.data;
 
-    localStorage.setItem('water_access_token', accessToken);
-    localStorage.setItem('water_refresh_token', refreshToken);
+    await setSecureToken('water_access_token', accessToken);
+    await setSecureToken('water_refresh_token', refreshToken);
     localStorage.setItem('water_user', JSON.stringify(loggedInUser));
 
     setUser(loggedInUser);
@@ -100,8 +100,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (e) {
       // Ignore network failures on logout
     } finally {
-      localStorage.removeItem('water_access_token');
-      localStorage.removeItem('water_refresh_token');
+      await setSecureToken('water_access_token', null);
+      await setSecureToken('water_refresh_token', null);
       localStorage.removeItem('water_user');
       setUser(null);
       router.push('/login');

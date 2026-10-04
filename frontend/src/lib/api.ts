@@ -34,16 +34,13 @@ export async function getSecureToken(key: string): Promise<string | null> {
 
 /**
  * Stores a token securely via Electron SafeStorage (DPAPI/Keychain)
- * with graceful fallback to localStorage.
+ * with fallback to localStorage.
  */
 export async function setSecureToken(key: string, value: string | null): Promise<void> {
   if (typeof window === 'undefined') return;
   if ((window as any).electronAPI?.setSecureToken) {
     try {
       await (window as any).electronAPI.setSecureToken(key, value);
-      // Ensure no unencrypted token remains in localStorage when running inside Electron
-      try { localStorage.removeItem(key); } catch {}
-      return;
     } catch {}
   }
   if (value) {

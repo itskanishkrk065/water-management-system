@@ -26,6 +26,7 @@ import {
   Database,
   Briefcase,
   ShieldCheck,
+  RefreshCw,
   Terminal,
 } from 'lucide-react';
 
@@ -176,6 +177,7 @@ export default function Sidebar() {
     {
       heading: 'SYSTEM',
       items: [
+        { label: 'Sync Center', href: '/sync-center', icon: RefreshCw },
         ...((isAdmin || isAccounts) ? [{ label: 'Data Integrity', href: '/admin/integrity', icon: ShieldCheck }] : []),
         { label: 'Audit History', href: '/audit', icon: History },
         ...(isAdmin ? [{ label: 'Backup & Restore', href: '/settings/backup', icon: Database }] : []),

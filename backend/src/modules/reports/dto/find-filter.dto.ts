@@ -36,6 +36,11 @@ export enum ReportingDateType {
 }
 
 export class FindFilterDto {
+  @ApiPropertyOptional({ example: 'Search name, phone, or village' })
+  @IsOptional()
+  @IsString()
+  search?: string;
+
   // 1. Location & Project Filters
   @ApiPropertyOptional({ example: 'UUID of Project Scheme' })
   @IsOptional()

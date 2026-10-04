@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
-import { apiClient } from '@/lib/api';
+import { fetchSyncDiagnostics, triggerDeviceSync } from '@/lib/sync-client';
 
 export interface SyncDiagnostics {
   state: 'ONLINE' | 'OFFLINE' | 'SYNCING' | 'ATTENTION_REQUIRED';
@@ -18,14 +18,11 @@ export default function SyncStatusBanner() {
   const [isDraining, setIsDraining] = useState(false);
   const [dismissed, setDismissed] = useState(false);
 
-  const fetchDiagnostics = useCallback(async () => {
+  const fetchDiagnosticsData = useCallback(async () => {
     try {
-      const res = await apiClient.get('/sync/client-diagnostics');
-      if (res.data && res.data.state) {
-        setDiag(res.data);
-      }
+      const data = await fetchSyncDiagnostics();
+      setDiag(data);
     } catch {
-      // In offline mode or standalone server mode
       setDiag((prev) =>
         prev
           ? { ...prev, state: 'OFFLINE' }
@@ -42,20 +39,20 @@ export default function SyncStatusBanner() {
   }, []);
 
   useEffect(() => {
-    fetchDiagnostics();
-    const interval = setInterval(fetchDiagnostics, 15000);
-    window.addEventListener('focus', fetchDiagnostics);
+    fetchDiagnosticsData();
+    const interval = setInterval(fetchDiagnosticsData, 15000);
+    window.addEventListener('focus', fetchDiagnosticsData);
     return () => {
       clearInterval(interval);
-      window.removeEventListener('focus', fetchDiagnostics);
+      window.removeEventListener('focus', fetchDiagnosticsData);
     };
-  }, [fetchDiagnostics]);
+  }, [fetchDiagnosticsData]);
 
   const handleDrainNow = async () => {
     setIsDraining(true);
     try {
-      await apiClient.post('/sync/client-drain');
-      await fetchDiagnostics();
+      await triggerDeviceSync();
+      await fetchDiagnosticsData();
     } catch {
       // Handled by diagnostics state
     } finally {

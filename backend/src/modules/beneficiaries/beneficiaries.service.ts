@@ -757,19 +757,21 @@ export class BeneficiariesService {
       totalRunningPending = totalRunningPending.plus(new Decimal(rb.pending_amount || 0));
     }
 
-    const primaryInfra = beneficiary.infrastructures?.[0] || beneficiary.waterAllotments?.[0]?.infrastructure || null;
+    const primaryInfra = beneficiary.infrastructures?.find((i: any) => i.status === InfrastructureStatus.COMMISSIONED)
+      || beneficiary.waterAllotments?.find((a: any) => a.infrastructure?.status === InfrastructureStatus.COMMISSIONED)?.infrastructure
+      || beneficiary.infrastructures?.[0]
+      || beneficiary.waterAllotments?.[0]?.infrastructure
+      || null;
+
     const isCommissioned = primaryInfra?.status === InfrastructureStatus.COMMISSIONED;
     const runningStartDate = primaryInfra?.running_charge_start_date || primaryInfra?.commissioned_date || null;
-    const hasStarted = runningStartDate && new Date(runningStartDate) <= new Date();
 
     const runningSummary = {
-      status: isCommissioned && hasStarted ? 'ACTIVE' : 'NOT_STARTED',
+      status: isCommissioned ? 'ACTIVE' : 'NOT_STARTED',
       reason: !primaryInfra
         ? 'Infrastructure not planned'
         : !isCommissioned
         ? `Infrastructure status is ${primaryInfra.status}`
-        : !hasStarted
-        ? `Running charges start on ${new Date(runningStartDate!).toISOString().slice(0, 10)}`
         : 'Active and eligible for running charges',
       commissionedDate: primaryInfra?.commissioned_date || null,
       runningChargeStartDate: runningStartDate,
