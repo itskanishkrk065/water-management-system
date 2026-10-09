@@ -19,7 +19,17 @@ export default function LoginPage() {
     try {
       await login(identifier, password);
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Invalid username/email or password');
+      const serverMessage = Array.isArray(err.response?.data?.message)
+        ? err.response.data.message.join(', ')
+        : err.response?.data?.message;
+
+      if (serverMessage) {
+        setError(serverMessage);
+      } else if (err.message === 'Network Error' || !err.response) {
+        setError('Unable to reach central authentication server. Please check your internet connection.');
+      } else {
+        setError('Invalid username/email or password');
+      }
     } finally {
       setLoading(false);
     }

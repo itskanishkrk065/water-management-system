@@ -39,7 +39,7 @@ export class CreateUserDto {
   @ApiPropertyOptional({ example: 'SecureTemp#2026' })
   @IsOptional()
   @IsString()
-  @MinLength(8)
+  @MinLength(6)
   password?: string;
 
   @ApiProperty({ example: 'A. Ramanathan' })

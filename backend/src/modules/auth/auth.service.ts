@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, InternalServerErrorException, Logger, BadRequestException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
 import { hashPassword, verifyPassword } from '../common/password.util';
@@ -6,6 +6,8 @@ import { LoginDto, RefreshTokenDto } from './dto/auth.dto';
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
@@ -15,41 +17,50 @@ export class AuthService {
     if (!identifier || !identifier.trim()) return null;
     const cleanId = identifier.trim();
 
-    if (typeof this.prisma.user.findFirst === 'function') {
-      return this.prisma.user.findFirst({
-        where: {
-          OR: [
-            { email: cleanId.toLowerCase() },
-            { username: cleanId },
-            { username: cleanId.toLowerCase() },
-          ],
-        },
-        include: { role: true },
-      });
-    }
-
-    if (typeof this.prisma.user.findUnique === 'function') {
-      return this.prisma.user.findUnique({
-        where: { email: cleanId.toLowerCase() },
-        include: { role: true },
-      });
-    }
-
-    return null;
+    return this.prisma.user.findFirst({
+      where: {
+        OR: [
+          { email: cleanId.toLowerCase() },
+          { username: cleanId },
+          { username: cleanId.toLowerCase() },
+          { phone: cleanId },
+          { employee_id: cleanId },
+        ],
+      },
+      include: { role: true },
+    });
   }
 
   async validateUser(identifier: string, pass: string) {
-    const user = await this.findUserByIdentifier(identifier);
+    let user: any;
+    try {
+      user = await this.findUserByIdentifier(identifier);
+    } catch (err: any) {
+      this.logger.error(`[Auth] Database outage/error looking up '${identifier}': ${err?.message || err}`);
+      throw new InternalServerErrorException('Central database is currently unavailable. Please try again later.');
+    }
 
-    if (!user || user.is_active === false || (user.status && user.status !== 'ACTIVE')) {
+    if (!user) {
+      this.logger.warn(`[Auth] Login rejected: No user record found for identifier '${identifier}'`);
       return null;
     }
 
-    if (user.password_hash && user.password_hash.startsWith('$')) {
-      const isMatch = await verifyPassword(pass, user.password_hash);
-      if (!isMatch) {
-        return null;
-      }
+    if (user.is_active === false || (user.status && user.status !== 'ACTIVE')) {
+      this.logger.warn(
+        `[Auth] Login rejected for '${identifier}': Account is ${user.status || 'INACTIVE'} (is_active=${user.is_active})`,
+      );
+      return null;
+    }
+
+    if (!user.password_hash) {
+      this.logger.error(`[Auth] Account '${identifier}' has empty password_hash`);
+      return null;
+    }
+
+    const isMatch = await verifyPassword(pass, user.password_hash);
+    if (!isMatch) {
+      this.logger.warn(`[Auth] Login rejected for '${identifier}': Password mismatch`);
+      return null;
     }
 
     return user;
@@ -58,15 +69,7 @@ export class AuthService {
   async login(loginDto: LoginDto, deviceId?: string) {
     const identifier = (loginDto.loginIdentifier || loginDto.username || loginDto.email || '').trim();
     if (!identifier) {
-      throw new UnauthorizedException('Username or email is required');
-    }
-
-    const targetUser = await this.findUserByIdentifier(identifier);
-
-    if (targetUser) {
-      if (targetUser.is_active === false || (targetUser.status && targetUser.status !== 'ACTIVE')) {
-        throw new UnauthorizedException(`User account status is ${targetUser.status || 'INACTIVE'}. Access denied.`);
-      }
+      throw new BadRequestException('Username, email, or login identifier is required');
     }
 
     const user = await this.validateUser(identifier, loginDto.password);

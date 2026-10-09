@@ -142,21 +142,32 @@ export default function UserManagementManager() {
     enabled: Boolean(selectedUser?.user_id) && showDetailDrawer && detailTab === 'audit',
   });
 
+  const [createdUserCreds, setCreatedUserCreds] = useState<{ username: string; tempPass: string } | null>(null);
+
   // Mutations
   const createUserMutation = useMutation({
     mutationFn: async (payload: any) => {
       const res = await apiClient.post('/users', payload);
       return res.data;
     },
-    onSuccess: () => {
+    onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ['admin-users-list'] });
       setShowCreateModal(false);
       resetCreateForm();
+      if (data?.temporaryPassword) {
+        setCreatedUserCreds({
+          username: data.username || data.email,
+          tempPass: data.temporaryPassword,
+        });
+      }
       setActionSuccess('User account provisioned successfully.');
       setTimeout(() => setActionSuccess(null), 4000);
     },
     onError: (err: any) => {
-      setActionError(err.response?.data?.message || err.message || 'Failed to create user');
+      const msg = Array.isArray(err.response?.data?.message)
+        ? err.response.data.message.join(', ')
+        : err.response?.data?.message || err.message || 'Failed to create user';
+      setActionError(msg);
     },
   });
 
@@ -767,6 +778,38 @@ export default function UserManagementManager() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* CREATED USER TEMPORARY PASSWORD MODAL */}
+      {createdUserCreds && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full border border-slate-200 overflow-hidden p-6 space-y-4">
+            <div className="flex items-center space-x-3 text-emerald-600">
+              <CheckCircle2 className="w-7 h-7 shrink-0" />
+              <h3 className="font-bold text-base text-slate-900">User Account Provisioned</h3>
+            </div>
+            <p className="text-xs text-slate-600">
+              A temporary password was generated for user <strong className="font-mono text-slate-900">{createdUserCreds.username}</strong>. Please record this password now:
+            </p>
+            <div className="p-3 bg-slate-100 rounded-xl border border-slate-200 flex justify-between items-center font-mono text-sm font-bold text-slate-800">
+              <span>{createdUserCreds.tempPass}</span>
+              <button
+                onClick={() => navigator.clipboard.writeText(createdUserCreds.tempPass)}
+                className="text-xs font-sans text-sky-600 hover:text-sky-700 font-semibold px-2 py-1 bg-white rounded border border-slate-200 shadow-xs cursor-pointer"
+              >
+                Copy
+              </button>
+            </div>
+            <div className="flex justify-end pt-2">
+              <button
+                onClick={() => setCreatedUserCreds(null)}
+                className="px-4 py-2 bg-slate-900 text-white font-bold text-xs rounded-xl hover:bg-slate-800 cursor-pointer"
+              >
+                Done
+              </button>
+            </div>
           </div>
         </div>
       )}
