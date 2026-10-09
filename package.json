@@ -37,7 +37,10 @@
       "buildResources": "build"
     },
     "icon": "build/icon.png",
-    "asar": false,
+    "asar": true,
+    "asarUnpack": [
+      "**/*.node"
+    ],
     "files": [
       "electron/**/*",
       "build/**/*",
@@ -72,6 +75,7 @@
     "win": {
       "icon": "build/icon.ico",
       "publisherName": "WaterGrid Development Authority",
+      "signAndEditExecutable": false,
       "target": [
         {
           "target": "nsis",
